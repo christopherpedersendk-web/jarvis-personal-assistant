@@ -17,12 +17,14 @@
   <link rel="stylesheet" href="/organizer.css" />
   <link rel="stylesheet" href="/intelligence.css" />
   <link rel="stylesheet" href="/meals.css" />
+  <link rel="stylesheet" href="/memory-v49.css" />
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
   <script src="/system-health.js" defer></script>
   <script src="/intelligence.js" defer></script>
   <script src="/meals.js" defer></script>
+  <script src="/memory-v49.js" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -77,7 +79,12 @@
           </form>
           <p id="knowledge-search-status" class="muted micro" aria-live="polite"></p>
           <div id="knowledge-results" class="knowledge-results" aria-live="polite"></div>
-          <p class="muted micro">v4.7 benytter lokal tekstbaseret retrieval. En embeddings-/vektorsøgningsadapter kan senere tilføjes efter særskilt tilvalg.</p>
+          <p class="muted micro">Søgningen er lokal og kildebaseret. Kun aktive, bekræftede oplysninger bruges som personlig hukommelse. En ekstern embeddings-tjeneste er ikke aktiveret.</p>
+        </section>
+        <section id="memory-workbench" class="panel intelligence-panel">
+          <div class="section-heading"><h2>Min hukommelse</h2><span class="tiny-label">RET · BEKRÆFT · GLEM</span></div>
+          <p class="muted small-text">Se hvad JARVIS husker, hvor det kommer fra og om det stadig gælder. Forslag bliver først personlige fakta, når du bekræfter dem.</p>
+          <div id="memory-workbench-content"></div>
         </section>
         <section class="panel intelligence-panel">
           <div class="section-heading"><h2>JARVIS' arbejdsprocedurer</h2><span class="tiny-label">SKILL.md</span></div>
@@ -118,10 +125,26 @@
       </div>
       <div id="tab-meals" class="tab-view hidden" role="region" aria-label="Madplaner og indkøb">
         <section class="panel meals-panel">
-          <div class="section-heading"><h2>Madplan og madhukommelse</h2><span class="tiny-label">PRIVATE PRÆFERENCER · INGEN KØB</span></div>
-          <p class="muted small-text">Gem din husstands faktiske ønsker og det, du har i køkkenet. JARVIS kan bruge dem til madplaner. Ingen kostrestriktioner antages automatisk; priser vises kun, når de kommer fra en butik.</p>
+          <div class="section-heading"><h2>Hvem spiser med?</h2><span class="tiny-label">HUSSTAND · DAGE · TEMAER</span></div>
+          <p class="muted small-text">Angiv din normale husstand og tilpas de enkelte dage. JARVIS gætter ikke, hvem der er hjemme, ud fra kalenderaftaler.</p>
+          <form id="meal-family-form" class="meal-form">
+            <label for="meal-adults">Voksne som standard</label><input id="meal-adults" type="number" min="0" max="24" required />
+            <label for="meal-children">Børn: aldre, adskilt af komma</label><input id="meal-children" maxlength="200" placeholder="Fx 4, 10 — ingen børn: lad feltet være tomt" />
+            <p class="muted micro">Portioner er justerbare planlægningsskøn, ikke kostvejledning. Du kan skrive fx <code>4:0.5, 10:0.75</code> for selv at angive portionsfaktorer.</p>
+            <p id="meal-family-status" class="muted micro" aria-live="polite"></p>
+            <button type="submit" class="primary">Gem normal husstand</button>
+          </form>
+          <div class="meal-actions">
+            <label for="meal-family-start">Dage fra</label><input id="meal-family-start" type="date" />
+            <button id="meal-family-show" type="button" class="secondary">Vis 7 dage</button>
+          </div>
+          <div id="meal-family-days" class="meal-family-grid"></div>
+        </section>
+        <section class="panel meals-panel">
+          <div class="section-heading"><h2>Fra forslag til madplan</h2><span class="tiny-label">1. REDIGÉR · 2. LAV LISTE · 3. VÆLG VARER</span></div>
+          <p class="muted small-text">Madplanen er først et udkast. Ret dage, retter og portioner, før du opretter indkøbslisten. Gemte kostønsker og fravalg gælder også på temadage.</p>
           <form id="meal-profile-form" class="meal-form">
-            <label for="meal-household">Personer</label><input id="meal-household" type="number" min="1" max="12" required />
+            <label for="meal-household">Standardportioner, hvis husstanden ikke er udfyldt</label><input id="meal-household" type="number" min="1" max="12" required />
             <label for="meal-diet">Kost</label><select id="meal-diet"><option value="omnivore">Almindelig</option><option value="vegetarian">Vegetarisk</option><option value="vegan">Vegansk</option></select>
             <label for="meal-budget">Budget i kr. (valgfrit mål – ikke en prisgaranti)</label><input id="meal-budget" type="number" min="50" max="10000" placeholder="Ikke fastsat" />
             <label for="meal-avoid">Undgå disse ingredienser (kommasepareret)</label><input id="meal-avoid" maxlength="500" placeholder="Fx svampe, nødder" />
@@ -133,9 +156,22 @@
             <label for="meal-start">Startdato</label><input id="meal-start" type="date" required />
             <label for="meal-days">Antal dage</label><select id="meal-days"><option>3</option><option selected>5</option><option>7</option></select>
             <label class="inline-check"><input id="meal-use-calendar" type="checkbox" /> Tilpas travle dage efter Google Kalender (valgfrit)</label>
-            <button type="submit" class="secondary">Lav ny madplan</button>
+            <button type="submit" class="secondary">Foreslå en madplan</button>
           </form>
           <div id="meal-plans" class="meal-plan-list" aria-live="polite"></div>
+        </section>
+        <section class="panel meals-panel">
+          <div class="section-heading"><h2>Opskriftshukommelse</h2><span class="tiny-label">INDBAKKE · KILDER · INSPIRATION</span></div>
+          <p class="muted small-text">Send <strong>Gem opskrift:</strong> efterfulgt af tekst eller et link til JARVIS på Discord, og vedhæft eventuelt et billede. Gennemgå ingredienser og portioner her, før opskriften bruges i en madplan.</p>
+          <p class="muted micro">Når du gemmer en opskrift, kan tekst og billeder behandles med din konfigurerede OpenAI-model. Udtrækket skal gennemgås før brug til indkøb.</p>
+          <form id="meal-recipe-form" class="meal-form">
+            <label for="meal-recipe-text">Opskrift eller note</label><textarea id="meal-recipe-text" rows="3" maxlength="12000" placeholder="Indsæt opskriften eller beskriv hvad du vil gemme."></textarea>
+            <label for="meal-recipe-urls">Opskriftslinks (ét HTTPS-link pr. linje)</label><textarea id="meal-recipe-urls" rows="2" maxlength="3000" placeholder="https://…"></textarea>
+            <p id="meal-recipe-status" class="muted micro" aria-live="polite"></p>
+            <button type="submit" class="secondary">Gem i opskriftsindbakken</button>
+          </form>
+          <div class="meal-actions"><button id="meal-recipes-refresh" type="button" class="secondary">Opdatér opskriftsindbakken</button></div>
+          <div id="meal-recipes" class="meal-recipe-list"></div>
         </section>
         <section class="panel meals-panel">
           <div class="section-heading"><h2>Google Kalender</h2><span class="tiny-label">KUN LÆSEADGANG</span></div>
@@ -147,9 +183,13 @@
           <div id="meal-google-events" class="meal-event-list" aria-live="polite"></div>
         </section>
         <section class="panel meals-panel">
-          <div class="section-heading"><h2>Nemlig.com</h2><span class="tiny-label">MCP · EKSPPLICIT GODKENDELSE</span></div>
+          <div class="section-heading"><h2>Nemlig.com</h2><span class="tiny-label">MCP · EKSPLICIT GODKENDELSE</span></div>
           <p class="muted small-text">Søg efter varer, og forbered en ændring af kurven. Intet ændres hos Nemlig, før du gennemgår det konkrete forslag og klikker <strong>Overfør til Nemlig</strong>. Eksisterende varer bevares. JARVIS kan <strong>aldrig gennemføre en bestilling eller betaling.</strong></p>
           <p id="meal-nemlig-status" class="muted micro" aria-live="polite"></p>
+          <h3>Indkøbsforslag fra madplaner</h3>
+          <p class="muted small-text">Vælg først “Find varer på Nemlig” ved en færdig indkøbsliste. Kontrollér varevalg og pakningsantal, og gem dine rettelser. Det ændrer endnu ikke din rigtige kurv.</p>
+          <div id="meal-shopping-drafts" class="meal-shopping-drafts"></div>
+          <h3>Find eller tilføj enkelte varer</h3>
           <form id="meal-nemlig-search-form" class="meal-search">
             <label for="meal-nemlig-search">Find varer</label><input id="meal-nemlig-search" minlength="2" maxlength="100" placeholder="Fx havremælk" required />
             <button type="submit" class="secondary">Søg på Nemlig</button>
@@ -178,7 +218,7 @@
       </div>
       <div id="tab-system" class="tab-view hidden" role="region" aria-label="System Health og opdateringer">
         <section class="panel">
-          <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.8</span></div>
+          <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.9</span></div>
           <p class="muted small-text">Faktiske målinger fra cloud-serveren. Status opdateres, mens du har Command Center åbent.</p>
           <div id="system-health-details" class="system-health-grid"></div>
           <button type="button" id="system-refresh" class="secondary">Opdater status</button>
@@ -213,7 +253,7 @@
           </form>
         </section>
         <section class="panel settings-panel">
-          <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.8</span></div>
+          <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.9</span></div>
           <p class="muted small-text">Redigér driftsindstillinger og iPhone-notifikationer her. Eksisterende hemmelige nøgler vises aldrig.</p>
           <form id="settings-form" class="task-form">
             <label for="max-runs">Maksimalt antal baggrundsopgaver pr. dag</label>
@@ -400,7 +440,7 @@
     </section>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-    <footer>JARVIS v4.3 · Command Center · Discord, tale og tekst med fælles hukommelse · Stemmen aktiveres kun, når du trykker Start</footer>
+    <footer>JARVIS v4.9 · Command Center · Discord, tale og tekst med fælles hukommelse · Stemmen aktiveres kun, når du trykker Start</footer>
   </main>
 </body>
 </html>

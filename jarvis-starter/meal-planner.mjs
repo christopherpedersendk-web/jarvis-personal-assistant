@@ -14,8 +14,88 @@ const RECIPES = Object.freeze([
 ]);
 
 const DIETS = ['omnivore', 'vegetarian', 'vegan'];
+export const MEAL_THEMES = Object.freeze(['everyday', 'child_friendly', 'vegan', 'vegetarian', 'date', 'party', 'quick']);
 const baseProfile = Object.freeze({ householdSize: 2, diet: 'omnivore', avoid: [], pantry: [], budgetDkk: null });
-const normalize = value => String(value || '').trim().toLocaleLowerCase('da-DK');
+const normalize = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('da-DK');
+const clone = value => structuredClone(value);
+const isObject = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const UNITS = new Set(['g', 'kg', 'ml', 'l', 'dl', 'cl', 'stk', 'fed', 'tsk', 'spsk', 'pakke']);
+const THEME_LABELS = { everyday: 'Hverdag', child_friendly: 'Børnevenlig', vegan: 'Vegansk', vegetarian: 'Vegetarisk', date: 'Date', party: 'Fest', quick: 'Hurtig' };
+const RECIPE_THEMES = {
+  'bean-chili': ['everyday', 'party'], 'pumpkin-pasta': ['date', 'vegetarian'],
+  'lentil-soup': ['everyday'], 'bean-tacos': ['child_friendly', 'party'],
+  couscous: ['quick', 'date'], 'vegetable-curry': ['everyday', 'party'],
+  'tomato-pasta': ['child_friendly', 'quick'], omelette: ['quick', 'everyday'],
+  'chicken-rice': ['child_friendly', 'everyday'],
+};
+
+function validateIngredients(value, { allowZero = false, max = 60 } = {}) {
+  if (!Array.isArray(value) || value.length > max) throw new Error('Ugyldig ingrediensliste.');
+  return value.map(item => {
+    if (!isObject(item) || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 100 ||
+        !UNITS.has(item.unit) || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) ||
+        item.quantity < 0 || (!allowZero && round(item.quantity) <= 0) || item.quantity > 1_000_000) {
+      throw new Error('Ingredienser skal have navn, gyldigt antal og en understøttet enhed.');
+    }
+    return { name: item.name.trim().replace(/\s+/g, ' '), quantity: round(item.quantity), unit: item.unit };
+  });
+}
+
+function round(value) { return Math.round((value + Number.EPSILON) * 1000) / 1000; }
+
+function canonicalAmount(item) {
+  const conversions = { kg: ['g', 1000], l: ['ml', 1000], dl: ['ml', 100], cl: ['ml', 10] };
+  const [unit, factor] = conversions[item.unit] || [item.unit, 1];
+  return { name: normalize(item.name), quantity: round(item.quantity * factor), unit };
+}
+
+function ingredientKey(item) { const converted = canonicalAmount(item); return `${converted.name}|${converted.unit}`; }
+
+function sameIngredients(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+function scaleIngredients(basis, baseServings, servings) {
+  if (!Number.isFinite(baseServings) || baseServings <= 0) throw new Error('Opskriftens grundportioner mangler.');
+  return basis.map(item => ({ ...item, quantity: round(item.quantity * servings / baseServings) })).filter(item => item.quantity > 0);
+}
+
+function validateTheme(theme = 'everyday') {
+  if (!MEAL_THEMES.includes(theme)) throw new Error('Vælg et understøttet tema for dagen.');
+  return theme;
+}
+
+// Editable cooking estimates, not nutritional recommendations or proof that a
+// particular dish is suitable for a child's age. The owner can override them.
+function estimatedChildPortion(age) { return age <= 5 ? 0.5 : age <= 12 ? 0.75 : 1; }
+
+function validateChildren(value) {
+  if (!Array.isArray(value) || value.length > 24) throw new Error('Angiv højst 24 børn med alder og portionsfaktor.');
+  return value.map(item => {
+    if (!isObject(item) || !Number.isInteger(item.age) || item.age < 0 || item.age > 17) throw new Error('Børns alder skal være et helt tal fra 0 til 17.');
+    const portion = item.portion ?? estimatedChildPortion(item.age);
+    if (typeof portion !== 'number' || !Number.isFinite(portion) || portion < 0.25 || portion > 3) throw new Error('Portionsfaktor skal være 0,25–3.');
+    return { age: item.age, portion: round(portion) };
+  });
+}
+
+function validateAttendance(value) {
+  if (!isObject(value) || !Number.isInteger(value.adults) || value.adults < 0 || value.adults > 24) throw new Error('Antal voksne skal være 0–24.');
+  const children = validateChildren(value.children);
+  if (value.adults + children.length > 24) throw new Error('Højst 24 personer pr. dag.');
+  return { adults: value.adults, children };
+}
+
+function validateDay(value) {
+  const attendance = validateAttendance(value);
+  if (value.skip !== undefined && typeof value.skip !== 'boolean') throw new Error('Spring dag over skal være sand eller falsk.');
+  return { ...attendance, theme: validateTheme(value.theme), skip: Boolean(value.skip) || attendance.adults + attendance.children.length === 0 };
+}
+
+function validateDays(value) {
+  if (!isObject(value) || Object.keys(value).length > 180) throw new Error('Husstandskalenderen kan have højst 180 dagsvalg.');
+  const result = {};
+  for (const [date, input] of Object.entries(value)) { parseDay(date); result[date] = validateDay(input); }
+  return result;
+}
 
 export function validateMealProfile(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Ugyldige madpræferencer.');
@@ -26,13 +106,13 @@ export function validateMealProfile(input) {
   if (!DIETS.includes(diet)) throw new Error('Vælg almindelig, vegetarisk eller vegansk mad.');
   if (budgetDkk !== null && (!Number.isInteger(budgetDkk) || budgetDkk < 50 || budgetDkk > 10000)) throw new Error('Budget skal være 50–10.000 kr.');
   if (!Array.isArray(input.avoid) || input.avoid.length > 20 || input.avoid.some(x => typeof x !== 'string' || x.length > 80)) throw new Error('Ugyldig liste over ingredienser, der skal undgås.');
-  if (!Array.isArray(input.pantry) || input.pantry.length > 60 || input.pantry.some(x =>
-    !x || typeof x.name !== 'string' || x.name.length > 80 || !['g', 'ml', 'stk', 'fed'].includes(x.unit) ||
-    !Number.isFinite(x.quantity) || x.quantity < 0 || x.quantity > 100000)) throw new Error('Ugyldigt lager af madvarer.');
+  let pantry;
+  try { pantry = validateIngredients(input.pantry, { allowZero: true }); }
+  catch { throw new Error('Ugyldigt lager af madvarer.'); }
   return {
     householdSize, diet, budgetDkk,
     avoid: [...new Set(input.avoid.map(normalize).filter(Boolean))],
-    pantry: input.pantry.map(x => ({ name: normalize(x.name), quantity: Math.round(x.quantity), unit: x.unit })),
+    pantry: pantry.map(x => ({ ...x, name: normalize(x.name) })),
   };
 }
 
@@ -54,73 +134,376 @@ function addDays(day, days) {
 
 function ingredientsFor(dishes, profile) {
   const combined = new Map();
-  for (const dish of dishes) for (const ingredient of dish.ingredients) {
-    const key = `${normalize(ingredient.name)}|${ingredient.unit}`;
-    const current = combined.get(key) || { name: ingredient.name, unit: ingredient.unit, quantity: 0 };
-    current.quantity += ingredient.quantity;
+  for (const dish of dishes.filter(x => !x.skip)) for (const source of dish.ingredients) {
+    const ingredient = canonicalAmount(source);
+    const key = ingredientKey(ingredient);
+    const current = combined.get(key) || { name: ingredient.name, unit: ingredient.unit, quantity: 0, requiredQuantity: 0, pantryUsed: 0 };
+    current.quantity = round(current.quantity + ingredient.quantity);
+    current.requiredQuantity = current.quantity;
     combined.set(key, current);
   }
-  for (const pantryItem of profile.pantry) {
-    const found = combined.get(`${normalize(pantryItem.name)}|${pantryItem.unit}`);
-    if (found) found.quantity = Math.max(0, found.quantity - pantryItem.quantity);
+  for (const source of profile.pantry) {
+    const pantryItem = canonicalAmount(source);
+    const found = combined.get(ingredientKey(pantryItem));
+    if (found) {
+      const used = Math.min(found.quantity, pantryItem.quantity);
+      found.quantity = round(found.quantity - used);
+      found.pantryUsed = round(found.pantryUsed + used);
+    }
   }
-  return [...combined.values()].filter(x => x.quantity > 0).sort((a, b) => a.name.localeCompare(b.name, 'da'));
+  return [...combined.values()].filter(x => x.quantity > 0).sort((a, b) => a.name.localeCompare(b.name, 'da') || a.unit.localeCompare(b.unit));
+}
+
+function effectiveDiet(profile, theme) {
+  if (profile.diet === 'vegan' || theme === 'vegan') return 'vegan';
+  if (profile.diet === 'vegetarian' || theme === 'vegetarian') return 'vegetarian';
+  return 'omnivore';
+}
+
+function ingredientConflicts(ingredients, diet) {
+  if (diet === 'omnivore') return false;
+  // This conservative check catches obvious mislabelling, not hidden allergens.
+  // Product labels and the user's own review remain necessary.
+  const meat = /(?:^|[^\p{L}])(?:kylling\p{L}*|oksekød|svinekød|bacon|skinke|pølse\p{L}*|laks|tun|torsk|rejer|hakket kød|chicken|beef|pork)(?:$|[^\p{L}])/iu;
+  const animal = /(?:^|[^\p{L}])(?:æg\p{L}*|egg\p{L}*|smør|ost|parmesan|mozzarella|fløde|yoghurt|yogurt|honning|komælk|sødmælk|letmælk|skummetmælk|mælk)(?:$|[^\p{L}])/iu;
+  return ingredients.some(item => {
+    const name = normalize(item.name);
+    if (/\b(?:vegansk|vegetabilsk|plantebaseret)\b/u.test(name)) return false;
+    return meat.test(name) || diet === 'vegan' && animal.test(name);
+  });
+}
+
+function compatible(recipe, profile, theme) {
+  const diet = effectiveDiet(profile, theme);
+  const allowed = diet === 'omnivore' || recipe.diet === 'vegan' || diet === 'vegetarian' && recipe.diet === 'vegetarian';
+  return allowed && !ingredientConflicts(recipe.ingredients, diet) &&
+    !recipe.ingredients.some(item => profile.avoid.some(term => normalize(item.name).includes(term)));
+}
+
+function assertCompatible(dish, profile) {
+  if (dish.skip) return;
+  if (!compatible(dish, profile, dish.theme)) throw new Error(`Retten “${dish.title}” stemmer ikke med kostvalg eller ingredienser, der skal undgås. Ret forslaget først.`);
+}
+
+function validRecipe(value) {
+  if (!isObject(value) || typeof value.id !== 'string' || !/^[\p{L}\p{N}._:-]{1,120}$/u.test(value.id) ||
+      typeof value.title !== 'string' || !value.title.trim() || value.title.length > 160 || !DIETS.includes(value.diet) ||
+      !Number.isInteger(value.minutes) || value.minutes < 1 || value.minutes > 720 ||
+      typeof value.servings !== 'number' || !Number.isFinite(value.servings) || value.servings <= 0 || value.servings > 100 ||
+      !Array.isArray(value.ingredients) || !value.ingredients.length) throw new Error('Opskriften mangler bekræftede ingredienser, kostvalg eller portioner.');
+  const ingredients = validateIngredients(value.ingredients);
+  const themes = Array.isArray(value.themes) ? value.themes.filter(x => MEAL_THEMES.includes(x)).slice(0, 7) : [];
+  const sourceRef = value.sourceRef && value.sourceRef.kind === 'recipe' && typeof value.sourceRef.id === 'string'
+    ? { kind: 'recipe', id: value.sourceRef.id.slice(0, 120), ...(Number.isInteger(value.sourceRef.revision) ? { revision: value.sourceRef.revision } : {}) }
+    : { kind: 'recipe-catalog', id: value.id };
+  return { id: value.id, title: value.title.trim(), diet: value.diet, minutes: value.minutes, servings: value.servings, ingredients, themes, sourceRef };
+}
+
+function checkRevision(plan, expected) {
+  if (!Number.isInteger(expected) || expected !== plan.revision) throw new Error('Madplanen er ændret. Genindlæs den aktuelle revision før du gemmer.');
+}
+
+function planServings(dishes) {
+  const numbers = [...new Set(dishes.filter(x => !x.skip).map(x => x.servings))];
+  return numbers.length === 1 ? numbers[0] : null;
 }
 
 export class MealPlanner {
-  constructor({ state, save = async () => {}, now = () => new Date() }) {
+  constructor({ state, save = async () => {}, now = () => new Date(), recipes = () => [] }) {
     this.state = state;
     this.save = save;
     this.now = now;
+    this.recipeSupplier = recipes;
     this.state.mealProfile ||= { ...baseProfile, avoid: [], pantry: [] };
     this.state.mealPlans ||= [];
+    this.state.mealHousehold ||= { configured: false, adults: null, children: [], days: {}, revision: 1 };
+    // The old release generated a list at draft creation. Preserve it as history,
+    // but require review before an old plan can produce a new cart proposal.
+    for (const plan of this.state.mealPlans) {
+      if (plan.schemaVersion === 2) continue;
+      plan.legacyShoppingList = clone(plan.shoppingList || []);
+      plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+      plan.schemaVersion = 2; plan.revision = 1; plan.status = 'draft'; plan.needsReview = true;
+      plan.householdStale = false; plan.profileStale = false; plan.recipeStale = false;
+      plan.staleReason = 'Importeret fra v4.8. Gennemgå forslaget før ny indkøbsliste.';
+      plan.dishes = (plan.dishes || []).map(dish => {
+        const builtin = RECIPES.find(recipe => recipe.id === dish.recipeId);
+        return { ...dish, theme: 'everyday', diet: builtin?.diet || 'omnivore', adults: null, children: [],
+          householdConfirmed: false, attendanceSource: 'legacy-unconfirmed', skip: false,
+          baseServings: dish.servings || plan.servings || this.profile().householdSize,
+          ingredientBasis: clone(dish.ingredients || []), reasons: ['Tidligere gemt forslag; husstand ikke fordelt på voksne og børn.'],
+          sourceRefs: [{ kind: 'recipe-catalog', id: dish.recipeId || 'legacy' }] };
+      });
+    }
   }
 
-  profile() { return { ...this.state.mealProfile, avoid: [...this.state.mealProfile.avoid], pantry: [...this.state.mealProfile.pantry] }; }
-  plans() { return this.state.mealPlans.slice(0, 12); }
+  profile() { return clone(this.state.mealProfile); }
+  plans() { return clone(this.state.mealPlans.slice(0, 12)); }
+  household() { return clone(this.state.mealHousehold); }
+
+  recipes() {
+    const builtins = RECIPES.map(recipe => ({ ...recipe, servings: 2,
+      ingredients: recipe.ingredients.map(([name, quantity, unit]) => ({ name, quantity, unit })),
+      themes: RECIPE_THEMES[recipe.id] || [], sourceRef: { kind: 'recipe-catalog', id: recipe.id } }));
+    const added = this.recipeSupplier();
+    const recipes = new Map(builtins.map(recipe => [recipe.id, validRecipe(recipe)]));
+    for (const input of Array.isArray(added) ? added.slice(0, 200) : []) {
+      try { const recipe = validRecipe(input); if (!recipes.has(recipe.id)) recipes.set(recipe.id, recipe); }
+      catch { /* An incomplete inbox item must never become a usable recipe. */ }
+    }
+    return [...recipes.values()];
+  }
+
+  invalidatePlans(reason, { dates = null, household = false, profile = false } = {}) {
+    for (const plan of this.state.mealPlans) {
+      if (dates && !plan.dishes.some(dish => dates.includes(dish.date))) continue;
+      plan.revision++; plan.status = 'draft'; plan.needsReview = true;
+      plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+      plan.householdStale ||= household; plan.profileStale ||= profile;
+      plan.staleReason = reason; plan.updatedAt = this.now().toISOString();
+    }
+  }
+
+  async invalidateRecipe(id) {
+    let changed = false;
+    for (const plan of this.state.mealPlans) {
+      if (!plan.dishes.some(dish => dish.sourceRefs?.some(source => source.kind === 'recipe' && source.id === id))) continue;
+      plan.revision++; plan.status = 'draft'; plan.needsReview = true; plan.recipeStale = true;
+      plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+      plan.staleReason = 'En gemt opskrift er ændret eller fjernet. Vælg en aktuel ret og gennemgå madplanen.';
+      plan.updatedAt = this.now().toISOString(); changed = true;
+    }
+    if (changed) await this.save();
+    return { changed };
+  }
 
   async setProfile(input) {
     this.state.mealProfile = { ...validateMealProfile(input), updatedAt: this.now().toISOString(), source: 'user-entered' };
+    this.invalidatePlans('Madpræferencer eller lager er ændret. Gennemgå madplanen igen.', { profile: true });
     await this.save();
     return this.profile();
   }
 
   async resetProfile() {
     this.state.mealProfile = { ...baseProfile, avoid: [], pantry: [] };
+    this.invalidatePlans('Madpræferencer er nulstillet. Gennemgå madplanen igen.', { profile: true });
     await this.save();
     return this.profile();
+  }
+
+  async setHousehold(input) {
+    const attendance = validateAttendance(input);
+    const days = input.days === undefined ? this.household().days : validateDays(input.days);
+    this.state.mealHousehold = { configured: true, ...attendance, days,
+      revision: (this.state.mealHousehold.revision || 0) + 1, updatedAt: this.now().toISOString() };
+    this.invalidatePlans('Husstanden er ændret. Opdatér portioner fra husstanden og gennemgå planen.', { household: true });
+    await this.save();
+    return this.household();
+  }
+
+  async setDay(date, input) {
+    parseDay(date);
+    if (!isObject(input)) throw new Error('Ugyldigt dagsvalg.');
+    const current = this.household();
+    const defaults = current.days[date] || (current.configured ? { adults: current.adults, children: current.children } : {});
+    const day = validateDay({ ...defaults, ...input });
+    if (!Object.hasOwn(current.days, date) && Object.keys(current.days).length >= 180) throw new Error('Husstandskalenderen kan have højst 180 dagsvalg.');
+    this.state.mealHousehold.days[date] = day;
+    this.state.mealHousehold.revision = (current.revision || 0) + 1;
+    this.state.mealHousehold.updatedAt = this.now().toISOString();
+    this.invalidatePlans(`Husstanden eller temaet den ${date} er ændret. Opdatér portioner og gennemgå planen.`, { dates: [date], household: true });
+    await this.save();
+    return this.household();
+  }
+
+  async removeDay(date) {
+    parseDay(date);
+    if (Object.hasOwn(this.state.mealHousehold.days, date)) {
+      delete this.state.mealHousehold.days[date];
+      this.state.mealHousehold.revision = (this.state.mealHousehold.revision || 0) + 1;
+      this.state.mealHousehold.updatedAt = this.now().toISOString();
+      this.invalidatePlans(`Dagsvalget den ${date} er fjernet. Gennemgå standardhusstanden.`, { dates: [date], household: true });
+      await this.save();
+    }
+    return this.household();
+  }
+
+  attendanceFor(date) {
+    const household = this.household();
+    const override = household.days[date];
+    if (override || household.configured) {
+      const attendance = override || { adults: household.adults, children: household.children, theme: 'everyday', skip: false };
+      const servings = round(attendance.adults + attendance.children.reduce((sum, child) => sum + child.portion, 0));
+      return { ...clone(attendance), servings: attendance.skip ? 0 : servings,
+        skip: Boolean(attendance.skip) || servings === 0, householdConfirmed: true,
+        attendanceSource: override ? 'day-override' : 'household-defaults' };
+    }
+    return { adults: null, children: [], theme: 'everyday', skip: false, servings: this.profile().householdSize,
+      householdConfirmed: false, attendanceSource: 'legacy-unconfirmed' };
+  }
+
+  assertRecipeSources(dishes) {
+    const current = new Map(this.recipes().filter(recipe => recipe.sourceRef.kind === 'recipe').map(recipe => [recipe.sourceRef.id, recipe.sourceRef]));
+    for (const dish of dishes.filter(item => !item.skip)) for (const source of dish.sourceRefs || []) {
+      if (source.kind !== 'recipe') continue;
+      const found = current.get(source.id);
+      if (!found || found.revision !== source.revision) throw new Error('En gemt opskrift er ændret eller fjernet. Vælg retten igen eller erstat den før en ny indkøbsliste.');
+    }
   }
 
   async createPlan({ startDate = localToday(this.now()), days = 5, calendarBusyDates = [] } = {}) {
     const date = parseDay(startDate);
     if (!Number.isInteger(days) || days < 1 || days > 7) throw new Error('Madplanen skal dække 1–7 dage.');
-    if (!Array.isArray(calendarBusyDates) || calendarBusyDates.length > 14 || calendarBusyDates.some(x => typeof x !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(x))) throw new Error('Ugyldig kalenderoversigt.');
+    if (!Array.isArray(calendarBusyDates) || calendarBusyDates.length > 100) throw new Error('Ugyldig kalenderoversigt.');
+    for (const day of calendarBusyDates) parseDay(day);
     const profile = this.profile();
-    const choices = RECIPES.filter(recipe =>
-      (profile.diet === 'omnivore' || recipe.diet === 'vegan' || (profile.diet === 'vegetarian' && recipe.diet === 'vegetarian')) &&
-      !recipe.ingredients.some(([name]) => profile.avoid.some(term => normalize(name).includes(term))));
-    if (choices.length < days) throw new Error('For få egnede opskrifter. Justér dine madpræferencer.');
+    const catalog = this.recipes();
     const busy = new Set(calendarBusyDates);
-    const rotation = (date.getUTCDate() + date.getUTCMonth()) % choices.length;
-    const available = [...choices.slice(rotation), ...choices.slice(0, rotation)];
+    const used = new Set();
+    const recent = new Set(this.state.mealPlans.slice(0, 3).flatMap(plan => plan.dishes.map(dish => dish.recipeId)));
+    const pantryKeys = new Set(profile.pantry.filter(item => item.quantity > 0).map(ingredientKey));
     const dishes = Array.from({ length: days }, (_, index) => {
       const day = addDays(date, index);
       const shortEvening = busy.has(day);
-      const candidateIndex = shortEvening ? available.reduce((best, recipe, i) => recipe.minutes < available[best].minutes ? i : best, 0) : 0;
-      const [recipe] = available.splice(candidateIndex, 1);
+      const attendance = this.attendanceFor(day);
+      if (attendance.skip) return { date: day, recipeId: null, title: 'Ingen mad hjemme', minutes: 0,
+        diet: profile.diet, ...attendance, busyDay: shortEvening, ingredients: [], ingredientBasis: [], baseServings: 1,
+        reasons: ['Dagen er fravalgt eller ingen er registreret hjemme.'], sourceRefs: [{ kind: 'household-day', date: day }] };
+      const choices = catalog.filter(recipe => compatible(recipe, profile, attendance.theme));
+      if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${day}. Tilføj en gennemgået opskrift, som opfylder kostvalget og undgå-listen.`);
+      const scored = choices.map((recipe, order) => ({ recipe, score:
+        (used.has(recipe.id) ? -1000 : 0) + (recipe.themes.includes(attendance.theme) ? 8 : 0) +
+        (recipe.sourceRef.kind === 'recipe' ? 5 : 0) + (recent.has(recipe.id) ? -2 : 0) +
+        recipe.ingredients.filter(item => pantryKeys.has(ingredientKey(item))).length * 0.5 -
+        (shortEvening || attendance.theme === 'quick' ? recipe.minutes * 2 : 0),
+        tie: (order + date.getUTCDate() + index) % choices.length }));
+      scored.sort((a, b) => b.score - a.score || a.tie - b.tie || a.recipe.id.localeCompare(b.recipe.id));
+      const recipe = scored[0].recipe;
+      const reasons = [attendance.householdConfirmed ? 'Portioner fra din gemte husstand for dagen.' : 'Foreløbigt portionsantal fra madpræferencer; voksne og børn er ikke bekræftet.'];
+      if (attendance.children.length) reasons.push('Børneportioner er redigerbare køkkenestimater, ikke ernæringsanbefalinger.');
+      if (shortEvening) reasons.push('Kalenderen markerer en travl dag; hurtigere retter prioriteres. Kalenderen bruges ikke til at gætte, hvem der er hjemme.');
+      if (attendance.theme !== 'everyday') reasons.push(recipe.themes.includes(attendance.theme) || ['vegan', 'vegetarian'].includes(attendance.theme)
+        ? `Valgt med dagens tema: ${THEME_LABELS[attendance.theme]}.` : `Dagens tema er ${THEME_LABELS[attendance.theme]}; kontrollér selv, at retten passer.`);
+      if (recipe.sourceRef.kind === 'recipe') reasons.push('Fra en gennemgået opskrift i din opskriftshukommelse.');
+      if (recipe.ingredients.some(item => pantryKeys.has(ingredientKey(item)))) reasons.push('Retten bruger ingredienser fra dit oplyste lager.');
+      if (used.has(recipe.id)) reasons.push('En ret gentages, fordi udvalget er begrænset af dine valg.');
+      used.add(recipe.id);
       return {
-      date: day, recipeId: recipe.id, title: recipe.title, minutes: recipe.minutes, busyDay: shortEvening,
-      servings: profile.householdSize,
-      ingredients: recipe.ingredients.map(([name, amount, unit]) => ({ name, quantity: Math.ceil(amount * profile.householdSize / 2), unit })),
-    }; });
+        date: day, recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
+        ...attendance, busyDay: shortEvening, ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
+        ingredients: scaleIngredients(recipe.ingredients, recipe.servings, attendance.servings), reasons,
+        sourceRefs: [clone(recipe.sourceRef), { kind: attendance.attendanceSource === 'day-override' ? 'household-day' : 'household', date: day }, { kind: 'meal-profile' }],
+      };
+    });
     const plan = {
-      id: randomUUID(), status: 'draft', createdAt: this.now().toISOString(), startDate,
-      days, servings: profile.householdSize, budgetTargetDkk: profile.budgetDkk,
+      id: randomUUID(), schemaVersion: 2, revision: 1, status: 'draft', createdAt: this.now().toISOString(), updatedAt: this.now().toISOString(), startDate,
+      days, servings: planServings(dishes), budgetTargetDkk: profile.budgetDkk,
       priceStatus: 'unknown-until-retailer-lookup', calendarAware: busy.size > 0, dishes,
-      shoppingList: ingredientsFor(dishes, profile),
+      needsReview: true, householdStale: false, profileStale: false, recipeStale: false, staleReason: null,
+      shoppingList: [], shoppingGeneratedAt: null, shoppingRevision: null,
     };
     this.state.mealPlans.unshift(plan);
     this.state.mealPlans = this.state.mealPlans.slice(0, 12);
+    await this.save();
+    return plan;
+  }
+
+  async updatePlan(id, input = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, input.expectedRevision);
+    if (input.refreshHousehold !== undefined && typeof input.refreshHousehold !== 'boolean') throw new Error('Ugyldigt valg af husstandsopdatering.');
+    if (plan.householdStale && !input.refreshHousehold) throw new Error('Husstanden er ændret. Opdatér portioner fra husstanden før du gemmer.');
+    const changes = input.dishes === undefined && input.refreshHousehold ? plan.dishes.map(dish => ({ date: dish.date })) : input.dishes;
+    if (!Array.isArray(changes) || changes.length !== plan.dishes.length) throw new Error('Alle madplanens dage skal medsendes.');
+    const byDate = new Map(changes.map(dish => [dish?.date, dish]));
+    if (byDate.size !== changes.length || changes.some(dish => !isObject(dish) || !plan.dishes.some(current => current.date === dish.date))) throw new Error('Madplanens datoer må ikke ændres eller gentages.');
+    const catalog = new Map(this.recipes().map(recipe => [recipe.id, recipe]));
+    const profile = this.profile();
+    const dishes = plan.dishes.map(previous => {
+      const patch = byDate.get(previous.date);
+      const attendance = input.refreshHousehold ? this.attendanceFor(previous.date) : {
+        adults: previous.adults, children: clone(previous.children), householdConfirmed: previous.householdConfirmed,
+        attendanceSource: previous.attendanceSource, servings: previous.servings, theme: previous.theme, skip: previous.skip,
+      };
+      const theme = validateTheme(patch.theme ?? attendance.theme);
+      if (patch.skip !== undefined && typeof patch.skip !== 'boolean') throw new Error('Spring dag over skal være sand eller falsk.');
+      const servings = patch.servings ?? attendance.servings;
+      if (typeof servings !== 'number' || !Number.isFinite(servings) || servings < 0 || servings > 72) throw new Error('Portioner skal være 0–72.');
+      const skip = (patch.skip ?? attendance.skip) || servings === 0;
+      let source = previous;
+      let changedRecipe = false;
+      if (patch.recipeId !== undefined && !(patch.recipeId === null && skip)) {
+        const selected = catalog.get(patch.recipeId);
+        if (!selected) throw new Error('Vælg en eksisterende gennemgået opskrift.');
+        const priorSource = previous.sourceRefs?.find(item => item.kind === 'recipe');
+        changedRecipe = patch.recipeId !== previous.recipeId || selected.sourceRef.kind === 'recipe' && selected.sourceRef.revision !== priorSource?.revision;
+        if (changedRecipe) source = selected;
+      }
+      if (!skip && !source.recipeId && !source.id && input.refreshHousehold && patch.ingredients === undefined) {
+        source = [...catalog.values()].filter(recipe => compatible(recipe, profile, theme))
+          .sort((a, b) => previous.busyDay || theme === 'quick' ? a.minutes - b.minutes : a.id.localeCompare(b.id))[0];
+        if (!source) throw new Error('Ingen egnet opskrift til den nye hjemmedag. Tilføj en gennemgået opskrift først.');
+        changedRecipe = true;
+      }
+      if (!skip && !source.recipeId && !source.id && (!patch.title || !patch.ingredients || !patch.diet)) throw new Error('Vælg en ret og ingredienser til dagen.');
+      const title = patch.title ?? source.title;
+      const minutes = patch.minutes ?? source.minutes;
+      const diet = patch.diet ?? source.diet;
+      if (typeof title !== 'string' || !title.trim() || title.length > 160 ||
+          !Number.isInteger(minutes) || minutes < (skip ? 0 : 1) || minutes > 720 || !DIETS.includes(diet)) throw new Error('Retten skal have titel, tilberedningstid og kosttype.');
+      let baseServings = changedRecipe ? source.servings : source.baseServings;
+      let ingredientBasis = changedRecipe ? clone(source.ingredients) : clone(source.ingredientBasis || source.ingredients);
+      if (patch.ingredients !== undefined && (changedRecipe || !sameIngredients(patch.ingredients, previous.ingredients))) {
+        ingredientBasis = validateIngredients(patch.ingredients);
+        baseServings = servings || 1;
+      }
+      if (!skip && (!ingredientBasis.length || !baseServings)) throw new Error('Tilføj konkrete ingredienser til retten, før der oprettes indkøbsliste.');
+      const ingredients = skip ? [] : scaleIngredients(ingredientBasis, baseServings, servings);
+      const manual = patch.servings !== undefined && servings !== attendance.servings;
+      const dish = { ...previous, ...attendance, theme, skip, servings: skip ? 0 : round(servings), title: title.trim(), minutes, diet,
+        recipeId: changedRecipe ? source.id : previous.recipeId || (!skip && patch.ingredients ? `custom:${previous.date}` : null),
+        baseServings, ingredientBasis, ingredients,
+        sourceRefs: changedRecipe ? [clone(source.sourceRef), { kind: 'household', date: previous.date }, { kind: 'meal-profile' }] : clone(previous.sourceRefs || []),
+        reasons: [input.refreshHousehold ? 'Portioner og tema opdateret fra den aktuelle husstand.' : 'Forslaget er tilrettet af dig.',
+          ...(manual ? ['Portionsantal er manuelt tilrettet i forhold til husstandsoplysningerne.'] : []),
+          'Kostvalg og undgå-liste er kontrolleret; vareetiketter skal stadig gennemgås.'],
+      };
+      assertCompatible(dish, profile);
+      return dish;
+    });
+    this.assertRecipeSources(dishes);
+    plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
+    plan.status = 'draft'; plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+    plan.needsReview = true; plan.householdStale = false; plan.profileStale = false; plan.recipeStale = false; plan.staleReason = null;
+    plan.budgetTargetDkk = profile.budgetDkk; plan.updatedAt = this.now().toISOString();
+    await this.save();
+    return plan;
+  }
+
+  async buildShoppingList(id, { expectedRevision } = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, expectedRevision);
+    if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Planens grundlag er ændret. Gennemgå og gem madplanen før indkøbslisten oprettes.');
+    this.assertRecipeSources(plan.dishes);
+    for (const dish of plan.dishes) assertCompatible(dish, this.profile());
+    plan.shoppingList = ingredientsFor(plan.dishes, this.profile());
+    plan.revision++; plan.shoppingRevision = plan.revision; plan.status = 'shopping_ready'; plan.needsReview = false;
+    plan.shoppingGeneratedAt = this.now().toISOString(); plan.updatedAt = this.now().toISOString(); plan.staleReason = null;
+    await this.save();
+    return plan;
+  }
+
+  async editShoppingList(id, { expectedRevision, items } = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, expectedRevision);
+    if (plan.status !== 'shopping_ready' || !plan.shoppingGeneratedAt || plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Opret en aktuel indkøbsliste fra den gennemgåede madplan først.');
+    const checked = validateIngredients(items);
+    const keys = checked.map(ingredientKey);
+    if (new Set(keys).size !== keys.length) throw new Error('Samme vare og enhed må kun stå én gang på indkøbslisten.');
+    const profile = this.profile();
+    if (ingredientConflicts(checked, profile.diet) || checked.some(item => profile.avoid.some(term => normalize(item.name).includes(term)))) throw new Error('Indkøbslisten er i konflikt med dine madpræferencer.');
+    plan.shoppingList = checked.map(item => ({ ...canonicalAmount(item), manuallyEdited: true }));
+    plan.revision++; plan.shoppingRevision = plan.revision; plan.updatedAt = this.now().toISOString();
     await this.save();
     return plan;
   }

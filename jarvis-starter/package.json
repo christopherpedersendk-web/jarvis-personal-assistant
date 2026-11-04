@@ -1,9 +1,9 @@
 {
   "name": "jarvis-personal-assistant-starter",
-  "version": "4.8.1",
+  "version": "4.9.0",
   "private": true,
   "type": "module",
-  "description": "A personal voice secretary with scheduled briefings, monitoring, shared memory, approvals and isolated code development",
+  "description": "A personal assistant with reviewed memory, household-aware meal drafts, recipe intake and approval-gated shopping",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "start": "node --env-file-if-exists=.env server.mjs",

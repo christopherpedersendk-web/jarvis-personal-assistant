@@ -19,11 +19,12 @@ test('meal profile persists explicit user facts, respects diet, avoids ingredien
   assert.equal(plan.dishes.every(x => !x.ingredients.some(y => /^(æg|kylling)/.test(y.name))), true);
   assert.equal(plan.priceStatus, 'unknown-until-retailer-lookup');
   assert.equal(plan.budgetTargetDkk, 800);
-  const comparison = new MealPlanner({ state: {}, now });
-  await comparison.setProfile({ householdSize: 4, diet: 'vegan', budgetDkk: 800, avoid: ['æg', 'kylling'], pantry: [] });
-  const withoutPantry = await comparison.createPlan({ startDate: '2026-11-05', days: 6 });
+  assert.deepEqual(plan.shoppingList, [], 'v4.9 drafts need owner review before list generation');
+  const neededRice = plan.dishes.flatMap(dish => dish.ingredients).filter(item => item.name === 'ris').reduce((sum, item) => sum + item.quantity, 0);
+  await planner.buildShoppingList(plan.id, { expectedRevision: plan.revision });
   assert.equal((plan.shoppingList.find(x => x.name === 'ris')?.quantity || 0),
-    Math.max(0, (withoutPantry.shoppingList.find(x => x.name === 'ris')?.quantity || 0) - 350));
+    Math.max(0, neededRice - 350));
+  assert.equal(plan.status, 'shopping_ready');
   assert.ok(saved >= 2);
   const docs = indexPersonalKnowledge(state);
   assert.ok(docs.some(x => x.type === 'meal-profile' && x.source.kind === 'meal-profile'));
@@ -71,13 +72,13 @@ test('Nemlig only reads before distinct explicit approval; absolute quantities a
   await assert.rejects(f.shopping.approve(proposal.id, false), /godkendelse/);
   await assert.rejects(f.shopping.approve(proposal.id, undefined), /godkendelse/);
   assert.equal(f.writes, 0);
-  const approved = await f.shopping.approve(proposal.id, true);
+  const approved = await f.shopping.approve(proposal.id, true, proposal.revision);
   assert.equal(approved.status, 'completed');
   assert.equal(f.writes, 1);
   assert.deepEqual(f.calls.at(-1).args, { items: [{ product_id: '12345', quantity: 5 }] });
   assert.equal(f.calls.some(c => /order|checkout|payment|place/i.test(c.name)), false);
   assert.equal(JSON.stringify(approved).includes('SECRET ADDRESS'), false);
-  await assert.rejects(f.shopping.approve(proposal.id, true), /allerede behandlet/);
+  await assert.rejects(f.shopping.approve(proposal.id, true, proposal.revision), /allerede behandlet/);
   assert.equal(f.writes, 1, 'double approval must not write twice');
   assert.ok(f.saved >= 3);
 });
@@ -90,10 +91,10 @@ test('Nemlig refuses unknown, duplicate and stale products, or basket changes be
   await assert.rejects(f.shopping.propose([{ productId: '12345', quantity: 0 }]), /Ugyldigt/);
   const proposal = await f.shopping.propose([{ productId: '12345', quantity: 1 }]);
   f.changeBasket({ Lines: [{ Id: '12345', Quantity: 4 }] });
-  await assert.rejects(f.shopping.approve(proposal.id, true), /ændret/);
+  await assert.rejects(f.shopping.approve(proposal.id, true, proposal.revision), /ændret/);
   assert.equal(f.writes, 0);
   await f.shopping.decline(proposal.id);
-  await assert.rejects(f.shopping.approve(proposal.id, true), /allerede behandlet/);
+  await assert.rejects(f.shopping.approve(proposal.id, true, proposal.revision), /allerede behandlet/);
 });
 
 test('Nemlig marks partial and unknown outcomes as single-use and never auto-retries a write', async () => {
@@ -106,10 +107,10 @@ test('Nemlig marks partial and unknown outcomes as single-use and never auto-ret
   } });
   await m.search('mel');
   const proposal = await m.propose([{ productId: '444', quantity: 2 }]);
-  const result = await m.approve(proposal.id, true);
+  const result = await m.approve(proposal.id, true, proposal.revision);
   assert.equal(result.status, 'unknown');
   assert.match(result.result.message, /Kontroller/);
-  await assert.rejects(m.approve(proposal.id, true), /allerede behandlet/);
+  await assert.rejects(m.approve(proposal.id, true, proposal.revision), /allerede behandlet/);
   assert.equal(calls, 1);
 });
 
