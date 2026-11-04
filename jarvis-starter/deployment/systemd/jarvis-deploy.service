@@ -17,4 +17,5 @@ ProtectHome=false
 LockPersonality=true
 RestrictSUIDSGID=true
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETUID CAP_SETGID
+AmbientCapabilities=CAP_SETUID CAP_SETGID
 
