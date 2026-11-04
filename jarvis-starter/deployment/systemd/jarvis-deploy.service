@@ -16,5 +16,5 @@ ReadWritePaths=/home/administrator/jarvis /var/lib/jarvis-deployer
 ProtectHome=false
 LockPersonality=true
 RestrictSUIDSGID=true
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
 
