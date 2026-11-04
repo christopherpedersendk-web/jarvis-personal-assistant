@@ -103,7 +103,7 @@ export function callLocalNemligMcp(name, args = {}, { directory = process.env.NE
       }
     });
     send({ id: 1, method: 'initialize', params: {
-      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'jarvis', version: '4.8.0' },
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'jarvis', version: '4.8.1' },
     } });
   });
 }
@@ -168,8 +168,10 @@ export class NemligShopping {
     return proposal;
   }
 
-  async approve(id, confirmation) {
-    if (confirmation !== 'OPDATER NEMLIG-KURV') throw new Error('Kurvændringen kræver udtrykkelig godkendelse i brugerfladen.');
+  async approve(id, approvedByOwner) {
+    // An authenticated, deliberate click on the displayed proposal is the
+    // approval. A missing or false flag must never mutate the real basket.
+    if (approvedByOwner !== true) throw new Error('Kurvændringen kræver udtrykkelig godkendelse via Overfør til Nemlig.');
     if (this.applying) throw new Error('Der behandles allerede en godkendt kurv.');
     const proposal = this.state.nemligProposals.find(x => x.id === id);
     if (!proposal || proposal.status !== 'pending') throw new Error('Forslaget findes ikke eller er allerede behandlet.');

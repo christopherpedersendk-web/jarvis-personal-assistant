@@ -544,7 +544,7 @@ async function route(req, res) {
     if (req.method === 'POST' && basketApproval) {
       try {
         const result = basketApproval[2] === 'approve'
-          ? await nemlig.approve(basketApproval[1], (await bodyJson(req)).confirmation)
+          ? await nemlig.approve(basketApproval[1], (await bodyJson(req)).approved)
           : await nemlig.decline(basketApproval[1]);
         return json(res, 200, { proposal: result });
       } catch (error) { return json(res, 409, { error: error.message }); }

@@ -100,15 +100,12 @@ function showNemligProposals(proposals) {
     card.append(mealNode('h4', statusLabels[proposal.status] || proposal.status));
     for (const item of proposal.additions || []) card.append(mealNode('p', `${item.name || item.productId}: ${item.previous} → ${item.target} (+${item.add})`, 'small-text'));
     if (proposal.status === 'pending') {
-      card.append(mealNode('p', `Udløber ${new Date(proposal.expiresAt).toLocaleString('da-DK')}. Skriv den nøjagtige tekst OPDATER NEMLIG-KURV for at godkende.`, 'muted micro'));
-      const input = document.createElement('input'); input.placeholder = 'OPDATER NEMLIG-KURV';
-      input.autocomplete = 'off'; input.setAttribute('aria-label', 'Indtast den eksakte godkendelsestekst');
-      const approve = mealNode('button', 'Godkend ændring af Nemlig-kurv', 'primary'); approve.type = 'button';
+      card.append(mealNode('p', `Udløber ${new Date(proposal.expiresAt).toLocaleString('da-DK')}. Et klik på Overfør til Nemlig godkender de viste tilføjelser til din rigtige kurv. Eksisterende varer fjernes ikke.`, 'muted micro'));
+      const approve = mealNode('button', 'Overfør til Nemlig', 'primary'); approve.type = 'button';
       approve.addEventListener('click', async () => {
-        if (input.value !== 'OPDATER NEMLIG-KURV') return toast('Skriv den nøjagtige godkendelsestekst.');
         approve.disabled = true;
         try {
-          await mealApi(`/api/nemlig/proposals/${proposal.id}/approve`, 'POST', { confirmation: input.value });
+          await mealApi(`/api/nemlig/proposals/${proposal.id}/approve`, 'POST', { approved: true });
           await refreshNemlig(); toast('Kurvændring behandlet. Kontrollér resultatet på Nemlig.');
         } catch (error) { toast(error.message); await refreshNemlig(); }
       });
@@ -117,7 +114,7 @@ function showNemligProposals(proposals) {
         try { await mealApi(`/api/nemlig/proposals/${proposal.id}/decline`, 'POST'); await refreshNemlig(); }
         catch (error) { toast(error.message); }
       });
-      card.append(input, approve, decline);
+      card.append(approve, decline);
     }
     if (proposal.result?.message) card.append(mealNode('p', proposal.result.message, 'muted micro'));
     if (proposal.result?.outcomes) card.append(mealNode('p', proposal.result.outcomes.map(x => `${x.productId}: ${x.status}`).join(' · '), 'muted micro'));
@@ -128,7 +125,7 @@ function showNemligProposals(proposals) {
 async function refreshNemlig() {
   const status = await mealApi('/api/nemlig/status');
   mealEl('meal-nemlig-status').textContent = status.configured
-    ? 'MCP tilgængelig. Kun søgning og kurvforslag uden godkendelse; ingen bestillinger.'
+    ? 'MCP tilgængelig. Søgning og forslag ændrer ikke kurven. Kun knappen Overfør til Nemlig kan godkende tilføjelser; ingen bestillinger.'
     : 'MCP ikke tilsluttet. Konfiguration kræver serveradministrator. Ingen adgang til Nemlig-kontoen endnu.';
   mealEl('meal-nemlig-search-form').querySelector('button').disabled = !status.configured;
   mealEl('meal-nemlig-propose').disabled = !status.configured;
