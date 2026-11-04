@@ -1,4 +1,5 @@
 // Discord Gateway v10. Ingen eksterne npm-afhængigheder (Node.js 22+).
+import { discordImageAttachment } from './recipe-fetch.mjs';
 const INTENTS = (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15);
 const SNOWFLAKE = /^\d{15,22}$/;
 
@@ -13,9 +14,18 @@ export function validateDiscordConfig(config) {
 
 export function authorizedDiscordMessage(event, config) {
   if (!config.userId || event?.author?.id !== config.userId || event?.author?.bot) return false;
-  if (!SNOWFLAKE.test(String(event.channel_id || ''))) return false;
+  if (!SNOWFLAKE.test(String(event.channel_id || '')) || !SNOWFLAKE.test(String(event.id || '')) || event.webhook_id) return false;
   if (event.guild_id && (!config.guildId || event.guild_id !== config.guildId)) return false;
-  return typeof event.content === 'string' && event.content.trim().length > 0 && event.content.trim().length <= 5000;
+  if (typeof event.content !== 'string' || event.content.trim().length > 5000) return false;
+  return Boolean(event.content.trim()) || discordMessageMetadata(event).attachments.length > 0;
+}
+
+// Only these metadata are passed to the recipe intake. In particular, never pass
+// an entire Discord event, member profile, embed or bot token to extraction.
+export function discordMessageMetadata(event) {
+  return { messageId: String(event.id || ''), channelId: String(event.channel_id || ''),
+    attachments: (Array.isArray(event.attachments) ? event.attachments : []).slice(0, 3)
+      .map(item => discordImageAttachment(item, { channelId: String(event.channel_id || '') })).filter(Boolean) };
 }
 
 export function splitDiscordMessage(value, max = 1900) {
@@ -182,9 +192,9 @@ export class DiscordGateway {
     if (!this.seen) this.seen = new Set();
     if (this.seen.has(event.id)) return false;
     this.seen.add(event.id);
-    if (this.seen.size > 500) this.seen.clear();
+    if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value);
     try {
-      const answer = await this.onMessage(event.content.trim());
+      const answer = await this.onMessage(event.content.trim(), discordMessageMetadata(event));
       await this.sendReply(event.channel_id, answer, generation);
     } catch (error) {
       this.lastError = 'Discord-beskeden kunne ikke behandles. Se serverloggen.';

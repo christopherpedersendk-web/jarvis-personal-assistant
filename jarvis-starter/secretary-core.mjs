@@ -1,5 +1,61 @@
 import { randomUUID } from 'node:crypto';
 
+export const MEMORY_CATEGORIES = Object.freeze(['preference', 'household', 'food', 'project', 'fact']);
+const MEMORY_CHANNELS = new Set(['manual', 'text', 'discord', 'voice', 'legacy']);
+const MEMORY_SOURCE_KINDS = new Set(['user', 'assistant', 'legacy']);
+const SECRET = /\bsk-[A-Za-z0-9_-]{16,}\b|\bgh[pousr]_[A-Za-z0-9]{16,}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAuthorization\s*:\s*Bearer\s+\S+|\b(?:api[_ -]?key|password|adgangskode|(?:access[_ -]?)?token|(?:client[_ -]?)?secret|NEMLIG_PASS)\s*[:=]\s*\S{6,}|\b(?:cpr|personnummer)\s*:?\s*\d{6}[- ]?\d{4}\b/i;
+
+function memoryText(text) {
+  if (typeof text !== 'string' || !text.trim() || text.length > 1200) throw new Error('Hukommelsespunktet skal være 1–1.200 tegn.');
+  if (SECRET.test(text)) throw new Error('Gem ikke adgangskoder, API-nøgler, CPR-numre eller andre hemmeligheder i hukommelsen.');
+  return text.trim();
+}
+
+const comparableText = text => String(text).normalize('NFKC').toLocaleLowerCase('da-DK').replace(/\s+/g, ' ').trim();
+
+function checkedExpiry(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string' || value.length > 40 || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value)) ||
+      new Date(`${value.slice(0, 10)}T12:00:00Z`).toISOString().slice(0, 10) !== value.slice(0, 10)) {
+    throw new Error('Udløb skal være et gyldigt ISO-tidspunkt eller tomt.');
+  }
+  return new Date(value).toISOString();
+}
+
+function checkedSource(source, fallback = { kind: 'user', channel: 'manual' }) {
+  if (source === undefined) return { ...fallback };
+  if (typeof source === 'string') source = { kind: 'user', channel: source };
+  if (!source || typeof source !== 'object' || Array.isArray(source) ||
+      Object.keys(source).some(key => !['kind', 'channel', 'messageId'].includes(key)) ||
+      !MEMORY_SOURCE_KINDS.has(source.kind || 'user') || !MEMORY_CHANNELS.has(source.channel || 'manual')) {
+    throw new Error('Ugyldig kilde til hukommelsespunktet.');
+  }
+  if (source.messageId !== undefined && (typeof source.messageId !== 'string' || !/^[a-zA-Z0-9:_-]{1,150}$/.test(source.messageId))) {
+    throw new Error('Ugyldigt kilde-ID.');
+  }
+  return { kind: source.kind || 'user', channel: source.channel || 'manual',
+    ...(source.messageId ? { messageId: source.messageId } : {}) };
+}
+
+function memoryExpired(memory, now) {
+  if (memory.expiresAt === null || memory.expiresAt === undefined || memory.expiresAt === '') return false;
+  return !Number.isFinite(Date.parse(memory.expiresAt)) || Date.parse(memory.expiresAt) <= now.getTime();
+}
+
+// Shared by every memory-context reader. Legacy entries were only saved on an
+// explicit remember request. New suggestions are never facts until confirmed.
+export function activePersonalMemory(memory, now = new Date()) {
+  if (!memory || memory.archived || typeof memory.text !== 'string' || !memory.text.trim() ||
+      SECRET.test(memory.text) || memory.confirmed === false || memoryExpired(memory, now)) return false;
+  return memory.status === 'confirmed' || (memory.status === undefined && memory.source?.kind !== 'assistant');
+}
+
+function checkRevision(memory, expectedRevision) {
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1 || expectedRevision !== memory.revision) {
+    throw new Error('Hukommelsespunktet er ændret. Genindlæs det, før du gemmer.');
+  }
+}
+
 export const DEFAULT_PLAYBOOK = `# JARVIS – sekretærens arbejdsinstruktioner
 
 ## Morgenrapport
@@ -23,7 +79,7 @@ export const DEFAULT_PLAYBOOK = `# JARVIS – sekretærens arbejdsinstruktioner
 `;
 
 export class SecretaryCore {
-  constructor({ state, save, now = () => new Date() }) {
+  constructor({ state, save = async () => {}, now = () => new Date() }) {
     this.state = state;
     this.save = save;
     this.now = now;
@@ -31,6 +87,18 @@ export class SecretaryCore {
     this.state.memories ||= [];
     this.state.inbox ||= [];
     this.state.approvals ||= [];
+    for (const memory of this.state.memories) {
+      if (!memory || typeof memory !== 'object') continue;
+      memory.category = MEMORY_CATEGORIES.includes(memory.category) ? memory.category : memory.projectId ? 'project' : 'fact';
+      memory.revision = Number.isInteger(memory.revision) && memory.revision > 0 ? memory.revision : 1;
+      const legacy = memory.status === undefined && memory.confirmed !== false && memory.source?.kind !== 'assistant';
+      memory.status = (memory.status === 'confirmed' && memory.confirmed !== false || legacy) ? 'confirmed' : 'proposed';
+      memory.confirmed = memory.status === 'confirmed';
+      try { memory.source = checkedSource(memory.source, { kind: 'legacy', channel: 'legacy' }); }
+      catch { memory.source = { kind: 'legacy', channel: 'legacy' }; }
+      memory.updatedAt ||= memory.createdAt || '';
+      memory.expiresAt ??= null;
+    }
   }
 
   async savePlaybook(content) {
@@ -41,26 +109,94 @@ export class SecretaryCore {
   }
 
   memoryContext() {
-    return this.state.memories.filter(x => !x.archived).map(x => `- ${x.text}`).join('\n').slice(0, 8000);
+    return this.state.memories.filter(x => activePersonalMemory(x, this.now()))
+      .map(x => `- [memory:${x.id} · ${x.category || 'fact'} · ${x.source?.kind || 'legacy'}/${x.source?.channel || 'legacy'} · revision ${x.revision || 1}] ${x.text}`)
+      .join('\n').slice(0, 8000);
   }
 
-  async remember(text, projectId = null) {
-    if (typeof text !== 'string' || !text.trim() || text.length > 1200) throw new Error('Hukommelsespunktet skal være 1–1.200 tegn.');
+  listMemories({ includeProposed = true } = {}) {
+    return this.state.memories.filter(x => x && !x.archived && (includeProposed || x.status === 'confirmed'))
+      .map(x => ({ ...structuredClone(x), active: activePersonalMemory(x, this.now()), expired: memoryExpired(x, this.now()) }));
+  }
+
+  async remember(text, projectId = null, metadata = {}) {
+    const value = memoryText(text);
     if (projectId !== null && (typeof projectId !== 'string' || projectId.length > 80)) throw new Error('Ugyldigt projekt-ID.');
-    if (this.state.memories.filter(x => !x.archived).length >= 200) throw new Error('Højst 200 aktive hukommelsespunkter.');
-    const item = { id: randomUUID(), text: text.trim(), projectId, archived: false, createdAt: this.now().toISOString() };
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) ||
+        Object.keys(metadata).some(key => !['category', 'source', 'confirmed', 'expiresAt'].includes(key))) throw new Error('Ugyldige hukommelsesfelter.');
+    const category = metadata.category ?? (projectId ? 'project' : 'fact');
+    if (!MEMORY_CATEGORIES.includes(category)) throw new Error('Ukendt hukommelseskategori.');
+    if (metadata.confirmed !== undefined && typeof metadata.confirmed !== 'boolean') throw new Error('Bekræftet skal være sand eller falsk.');
+    const source = checkedSource(metadata.source);
+    const expiresAt = checkedExpiry(metadata.expiresAt);
+    const status = metadata.confirmed === false || source.kind === 'assistant' ? 'proposed' : 'confirmed';
+    const duplicate = this.state.memories.find(x => x && !x.archived && !memoryExpired(x, this.now()) &&
+      (x.projectId || null) === projectId && comparableText(x.text) === comparableText(value));
+    // Do not silently promote a pending suggestion just because the model repeats it.
+    if (duplicate) return structuredClone(duplicate);
+    if (this.state.memories.filter(x => x && !x.archived).length >= 200) throw new Error('Højst 200 aktive hukommelsespunkter.');
+    const at = this.now().toISOString();
+    const item = { id: randomUUID(), text: value, projectId, category, source, status, confirmed: status === 'confirmed',
+      revision: 1, archived: false, createdAt: at, updatedAt: at, expiresAt, confirmedAt: status === 'confirmed' ? at : null };
     this.state.memories.unshift(item);
     await this.save();
-    return item;
+    return structuredClone(item);
   }
 
-  async archiveMemory(id) {
-    const item = this.state.memories.find(x => x.id === id && !x.archived);
-    if (!item) throw new Error('Hukommelsespunktet findes ikke.');
-    item.archived = true;
-    await this.save();
-    return item;
+  async proposeMemory(text, projectId = null, metadata = {}) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('Ugyldige hukommelsesfelter.');
+    return this.remember(text, projectId, { ...metadata, confirmed: false,
+      source: metadata.source || { kind: 'assistant', channel: 'text' } });
   }
+
+  async updateMemory(id, changes) {
+    const item = this.state.memories.find(x => x && x.id === id && !x.archived);
+    if (!item) throw new Error('Hukommelsespunktet findes ikke.');
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes) ||
+        Object.keys(changes).some(key => !['expectedRevision', 'text', 'category', 'expiresAt', 'source'].includes(key))) throw new Error('Ugyldige hukommelsesfelter.');
+    checkRevision(item, changes.expectedRevision);
+    const text = Object.hasOwn(changes, 'text') ? memoryText(changes.text) : item.text;
+    const category = changes.category ?? item.category;
+    if (!MEMORY_CATEGORIES.includes(category)) throw new Error('Ukendt hukommelseskategori.');
+    const expiresAt = Object.hasOwn(changes, 'expiresAt') ? checkedExpiry(changes.expiresAt) : item.expiresAt;
+    const source = Object.hasOwn(changes, 'source') ? checkedSource(changes.source)
+      : Object.hasOwn(changes, 'text') ? { kind: 'user', channel: 'manual' } : item.source;
+    const duplicate = this.state.memories.find(x => x && x.id !== id && !x.archived && !memoryExpired(x, this.now()) &&
+      (x.projectId || null) === (item.projectId || null) && comparableText(x.text) === comparableText(text));
+    if (duplicate) throw new Error('Det samme hukommelsespunkt er allerede gemt. Redigér det eksisterende punkt.');
+    item.originSource ||= { ...item.source };
+    Object.assign(item, { text, category, expiresAt, source, updatedAt: this.now().toISOString(), revision: item.revision + 1 });
+    // Keep proposals proposed; text editing is not a separate confirmation action.
+    await this.save();
+    return structuredClone(item);
+  }
+
+  async confirmMemory(id, { expectedRevision } = {}) {
+    const item = this.state.memories.find(x => x && x.id === id && !x.archived);
+    if (!item) throw new Error('Hukommelsespunktet findes ikke.');
+    checkRevision(item, expectedRevision);
+    if (item.status !== 'proposed') throw new Error('Hukommelsespunktet er allerede bekræftet.');
+    if (memoryExpired(item, this.now())) throw new Error('Hukommelsespunktet er udløbet. Ret udløbsdatoen først.');
+    memoryText(item.text);
+    Object.assign(item, { status: 'confirmed', confirmed: true, confirmedBy: 'user',
+      confirmedAt: this.now().toISOString(), updatedAt: this.now().toISOString(), revision: item.revision + 1 });
+    await this.save();
+    return structuredClone(item);
+  }
+
+  async archiveMemory(id, expectedRevision) {
+    const item = this.state.memories.find(x => x && x.id === id && !x.archived);
+    if (!item) throw new Error('Hukommelsespunktet findes ikke.');
+    if (expectedRevision !== undefined) checkRevision(item, expectedRevision);
+    item.archived = true;
+    item.updatedAt = this.now().toISOString();
+    item.revision++;
+    await this.save();
+    return structuredClone(item);
+  }
+
+  // This is a soft archive, not erasure of old backups or independent chat history.
+  async forgetMemory(id, expectedRevision) { return this.archiveMemory(id, expectedRevision); }
 
   async addInbox({ title, text, kind = 'info', taskId = null }) {
     const item = { id: randomUUID(), title: String(title).slice(0, 120), text: String(text).slice(0, 2500),

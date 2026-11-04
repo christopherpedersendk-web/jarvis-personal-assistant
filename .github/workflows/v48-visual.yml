@@ -1,4 +1,4 @@
-name: JARVIS v4.8 browser and safety smoke
+name: JARVIS v4.9 browser and safety smoke
 
 on:
   pull_request:
@@ -38,7 +38,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-v48-ui-screenshots
-          path: jarvis-starter/artifacts/v48-*.png
+          name: jarvis-v49-ui-screenshots
+          path: jarvis-starter/artifacts/v49-*.png
           retention-days: 14
           if-no-files-found: warn

@@ -1,10 +1,12 @@
-# JARVIS v4.8 – Google Kalender, madhukommelse, madplan og godkendt Nemlig-kurv
+# JARVIS v4.9 – Familie, redigerbar madplan, opskrifter og bedre hukommelse
 
-**v4.8-arbejdsbranch:** Tilføjer fanen **Mad & indkøb** med gemte husstandspræferencer, pantry, budgetmål, madplaner og indkøbslister. Lokal personlig søgning inkluderer nu eksplicit gemte madpræferencer og madplaner med kilde-ID'er. Google Kalender bruger OAuth2 og kun `calendar.readonly`; ved frivilligt tilvalg kan madplanen prioritere hurtigere retter på aftaledage. Kalenderaftalers tekst gemmes ikke i madplanerne.
+**v4.9-udviklingsversion til review:** Mad & indkøb har nu voksne, børn, alder, portionsfaktor og tema pr. dag. Madplanen starter som et redigerbart forslag. Efter gennemgang oprettes indkøbslisten, der kan redigeres og matches med Nemligs faktiske varer til et redigerbart kurvforslag. Eksisterende pantry og de valgte varer i Nemlig-kurven indgår i mængdeberegningen.
 
-Nemlig MCP fra [`kraenhansen/nemlig-mcp`](https://github.com/kraenhansen/nemlig-mcp) er en *valgfri*, som udgangspunkt deaktiveret adapter til produktsøgning, kurvlæsning og **kurvforslag**. Fra v4.8.1 ændrer JARVIS **kun** kurven efter at brugeren har gennemgået det konkrete forslag og trykket på **Overfør til Nemlig** i den loggede ind brugerflade. JARVIS har **ingen** bestillings-, checkout- eller betalingsfunktion. Chat, Discord og stemme kan kun forberede forslag. Se [V48_RELEASE.md](V48_RELEASE.md) for den oprindelige opsætning og [V481_RELEASE.md](V481_RELEASE.md) for den opdaterede godkendelse.
+Opskrifter kan gemmes som tekst, links eller Discord-billeder. Importer ligger i en privat indbakke og bruges først efter gennemgang. Personlig hukommelse har kilde, kategori, revision, rettelse, valgfrit udløb og arkivering; modeludledte forslag kræver brugerbekræftelse. Dags-/ugeoverblikket peger på dokumenterede mangler, ændringer og næste trin uden automatisk at ændre eksterne data. Se [V49_RELEASE.md](V49_RELEASE.md) for omfang, begrænsninger, test og opgraderingskontrol.
 
-Der er ingen nye runtime-npm-afhængigheder. De nye eksterne forbindelser kræver separat brugeropsætning og er **ikke** automatisk tilsluttede ved opgradering. Den eksisterende produktionsversion skal forblive uberørt, indtil v4.8 er reviewed, tagget, testet og godkendt via Auto-Update Manager.
+Nemlig MCP fra [`kraenhansen/nemlig-mcp`](https://github.com/kraenhansen/nemlig-mcp) er fortsat valgfri og deaktiveret uden den eksisterende opsætning. JARVIS ændrer **kun** kurven efter brugerens klik på **Overfør til Nemlig** på det konkrete, aktuelle forslag. Ingen ekstra indtastet bekræftelse. JARVIS har **ingen** bestillings-, checkout- eller betalingsfunktion. Chat, Discord og stemme kan kun forberede forslag. Google Kalender er fortsat kun læsning; aftaler bruges aldrig til at gætte, hvem der er hjemme.
+
+Der er ingen nye runtime-npm-afhængigheder og ingen automatisk ændring af eksisterende credentials. Opskriftsudtræk kan bruge den allerede konfigurerede OpenAI-tekstmodel; uden API-nøgle kan opskrifter stadig gemmes og gennemgås manuelt. Produktion forbliver på den godkendte version, indtil v4.9 er reviewed, tagget, testet og særskilt godkendt via Auto-Update Manager.
 
 ---
 

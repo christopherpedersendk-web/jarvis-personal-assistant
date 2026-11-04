@@ -810,8 +810,9 @@ async function handleVoiceTool(channel, call) {
       output = { ok: true, summary: data.project.lastSummary, changedFiles: data.changedFiles, packagesAwaitingApproval: data.packagesAwaitingApproval };
       await refreshProjects();
     } else if (call.name === 'remember_preference') {
-      const data = await api('/api/memories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-      output = { ok: true, memory: data.memory.text };
+      const data = await api('/api/planning/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'remember_personal_fact', args }) });
+      output = { ok: true, ...data };
       await refreshSecretary();
     } else if (call.name === 'prepare_action') {
       const data = await api('/api/approvals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
@@ -828,26 +829,12 @@ async function handleVoiceTool(channel, call) {
       output = await api('/api/smart-home/hue/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
     } else if (call.name === 'activate_hue_scene') {
       output = await api('/api/smart-home/hue/scene', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'get_meal_profile' || call.name === 'list_meal_plans') {
-      const result = await api('/api/meals');
-      output = call.name === 'get_meal_profile' ? { profile: result.profile } : { plans: result.plans };
-    } else if (call.name === 'update_meal_profile') {
-      const result = await api('/api/meals');
-      output = await api('/api/meals/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...result.profile, ...args }) });
-    } else if (call.name === 'remember_personal_fact') {
-      output = await api('/api/memories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'create_meal_plan') {
-      output = await api('/api/meals/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'list_google_calendar_events') {
-      output = await api(`/api/google/calendar/events?days=${encodeURIComponent(args.days || 7)}`);
-    } else if (call.name === 'search_nemlig_products') {
-      output = await api('/api/nemlig/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'get_nemlig_basket') {
-      output = await api('/api/nemlig/basket');
-    } else if (call.name === 'propose_nemlig_basket') {
-      output = await api('/api/nemlig/proposals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-      output.note = 'Kun forberedt. Skal godkendes i Mad & indkøb; ingen bestilling kan udføres.';
-    } else output = { error: 'Ukendt funktion.' };
+    } else {
+      // The authenticated server, not a model-chosen URL, dispatches the fixed
+      // planning allowlist. Approval/checkout names are never permitted here.
+      output = await api('/api/planning/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: call.name, args }) });
+    }
   } catch (error) { output = { error: error.message }; }
   if (channel.readyState !== 'open') return;
   channel.send(JSON.stringify({

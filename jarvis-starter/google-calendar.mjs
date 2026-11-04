@@ -88,15 +88,31 @@ export class GoogleCalendarReadOnly {
     const url = new URL(EVENTS_HOST);
     for (const [key, value] of Object.entries({ timeMin: from.toISOString(), timeMax: until.toISOString(),
       maxResults: '100', singleEvents: 'true', orderBy: 'startTime', showDeleted: 'false', timeZone: 'Europe/Copenhagen' })) url.searchParams.set(key, value);
-    const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${await this.token()}` }, signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) throw new Error(`Google Kalender svarede med HTTP ${response.status}.`);
-    const data = await response.json();
-    return (Array.isArray(data.items) ? data.items : []).filter(x => x.status !== 'cancelled').slice(0, 100)
+    const events = [];
+    const accessToken = await this.token();
+    let nextPageToken = '';
+    const seenPages = new Set();
+    const signal = AbortSignal.timeout(20_000);
+    do {
+      if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);
+      const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal });
+      if (!response.ok) throw new Error(`Google Kalender svarede med HTTP ${response.status}.`);
+      const data = await response.json();
+      if (data.items !== undefined && !Array.isArray(data.items)) throw new Error('Google Kalender returnerede et ukendt dataformat.');
+      events.push(...(data.items || []));
+      nextPageToken = typeof data.nextPageToken === 'string' ? data.nextPageToken : '';
+      if (events.length > 500 || (nextPageToken && (seenPages.has(nextPageToken) || seenPages.size >= 4))) {
+        throw new Error('Kalenderperioden kunne ikke læses fuldstændigt. Vælg en kortere periode.');
+      }
+      if (nextPageToken) seenPages.add(nextPageToken);
+    } while (nextPageToken);
+    return events.filter(x => x.status !== 'cancelled')
       .map(event => ({ id: String(event.id || '').slice(0, 120),
         title: String(event.summary || 'Optaget').slice(0, 160),
         start: event.start?.dateTime || event.start?.date || '',
         end: event.end?.dateTime || event.end?.date || '',
         allDay: Boolean(event.start?.date),
+        ...(event.transparency === 'transparent' ? { transparency: 'transparent' } : {}),
       })); // No description, locations, attendee details or conference links.
   }
 

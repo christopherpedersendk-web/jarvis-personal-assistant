@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { buildPlanningSuggestions } from './planning-advisor.mjs';
+export { buildPlanningSuggestions } from './planning-advisor.mjs';
 
 export const DEFAULT_PROACTIVE_SETTINGS = Object.freeze({
   dailyEnabled: true,
@@ -44,7 +46,8 @@ export function withinQuietHours(clock, settings) {
 }
 
 function item(priority, title, detail, source, tab, date = null) {
-  return { priority, title: String(title).slice(0, 160), detail: String(detail).slice(0, 320), source, tab, date };
+  return { priority, title: String(title).slice(0, 160), detail: String(detail).slice(0, 320),
+    reason: String(detail).slice(0, 320), source, sourceRefs: [source], tab, date };
 }
 
 export function buildPersonalAgenda({ state, organizer, now = new Date() }) {
@@ -78,6 +81,8 @@ export function buildPersonalAgenda({ state, organizer, now = new Date() }) {
     insights.push(item('high', `Projekt med fejlet test: ${project.title}`, 'Kontrollér testresultatet, før du videreudvikler.',
       { kind: 'project', id: project.id }, 'projects'));
   }
+  insights.push(...buildPlanningSuggestions({ state, now }));
+  insights.sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high'));
   return { generatedAt: now.toISOString(), today: today.slice(0, 8), week: week.slice(0, 12), insights: insights.slice(0, 8),
     evidenceCount: today.length + week.length + insights.length };
 }
