@@ -1,8 +1,8 @@
 import http from 'node:http';
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { timingSafeEqual, createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { TaskEngine } from './task-engine.mjs';
 import { notificationConfig, notificationsEnabled, sendPushover, taskNotification } from './notifications.mjs';
@@ -18,6 +18,13 @@ import { HueBridge, validBridgeIp } from './hue-bridge.mjs';
 import { systemHealth } from './system-health.mjs';
 import { UpdateManager } from './update-manager.mjs';
 import { PersonalKnowledge } from './personal-knowledge.mjs';
+import { PersonalClaims } from './personal-claims.mjs';
+import { FollowUpCases } from './follow-up-cases.mjs';
+import { PersonalTasks } from './personal-tasks.mjs';
+import { planPersonalTasks } from './capacity-planner.mjs';
+import { STATE_SCHEMA_VERSION, loadVersionedState, atomicStateWrite } from './state-schema.mjs';
+import { reviewMonitorAnswer } from './monitor-observation.mjs';
+import { BoundedJobQueue } from './bounded-queue.mjs';
 import { loadBundledSkills } from './skills-registry.mjs';
 import { ProactivePlanner } from './proactive-planner.mjs';
 import { integrationCatalog } from './integration-catalog.mjs';
@@ -55,7 +62,7 @@ let hueConfig = { bridgeIp: '', applicationKey: '', certificateFingerprint: '' }
 let googleConfig = { refreshToken: '' };
 try {
   const savedPrivate = JSON.parse(await readFile(privateSettingsPath, 'utf8'));
-  pushConfig = { ...pushConfig, ...savedPrivate };
+  pushConfig = { ...pushConfig, ...Object.fromEntries(['url', 'token', 'user'].filter(key => savedPrivate[key] !== undefined).map(key => [key, savedPrivate[key]])) };
   discordConfig = { ...discordConfig, ...(savedPrivate.discord || {}) };
   homeConfig = { ...homeConfig, ...(savedPrivate.smartHome || {}) };
   hueConfig = { ...hueConfig, ...(savedPrivate.hue || {}) };
@@ -68,10 +75,13 @@ if (accessToken.length < 24) {
   process.exit(1);
 }
 
-let state = { preferences: '', history: [], tasks: [], usage: { day: '', started: 0 }, codeProposals: [], projects: [], memories: [], inbox: [], approvals: [], settings: {}, organizer: [] };
+let state = { schemaVersion: STATE_SCHEMA_VERSION, preferences: '', history: [], tasks: [], usage: { day: '', started: 0 }, codeProposals: [], projects: [], memories: [], inbox: [], approvals: [], settings: {}, organizer: [], actionJournal: [], personalClaims: [], followUpCases: [], personalTasks: [] };
 try {
-  const saved = JSON.parse(await readFile(dataPath, 'utf8'));
+  const saved = await loadVersionedState(dataPath);
+  if (saved) {
   state = {
+    ...saved, // Preserve unknown legacy fields rather than deleting user data.
+    schemaVersion: STATE_SCHEMA_VERSION,
     preferences: typeof saved.preferences === 'string' ? saved.preferences : '',
     history: Array.isArray(saved.history) ? saved.history.slice(-200) : [],
     tasks: Array.isArray(saved.tasks) ? saved.tasks : [],
@@ -92,24 +102,58 @@ try {
     mealPlans: Array.isArray(saved.mealPlans) ? saved.mealPlans.slice(0, 12) : [],
     nemligProposals: Array.isArray(saved.nemligProposals) ? saved.nemligProposals.slice(0, 20) : [],
     mealHousehold: saved.mealHousehold && typeof saved.mealHousehold === 'object' ? saved.mealHousehold : undefined,
+    mealInventory: saved.mealInventory && typeof saved.mealInventory === 'object' ? saved.mealInventory : undefined,
     recipes: Array.isArray(saved.recipes) ? saved.recipes : [],
+    personalClaims: Array.isArray(saved.personalClaims) ? saved.personalClaims : [],
+    followUpCases: Array.isArray(saved.followUpCases) ? saved.followUpCases : [],
+    personalTasks: Array.isArray(saved.personalTasks) ? saved.personalTasks : [],
     shoppingDrafts: Array.isArray(saved.shoppingDrafts) ? saved.shoppingDrafts.slice(0, 12) : [],
+    actionJournal: Array.isArray(saved.actionJournal) ? saved.actionJournal.slice(-200).map(entry =>
+      entry?.status === 'running' ? { ...entry, status: 'unknown', note: 'Forbindelsen blev afbrudt, før udfaldet blev registreret.' } : entry) : [],
   };
+  }
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
 
 const tokenDigest = createHash('sha256').update(accessToken).digest();
 let saveQueue = Promise.resolve();
-let chatQueue = Promise.resolve();
+let privateSettingsQueue = Promise.resolve();
+const chatWorkQueue = new BoundedJobQueue({ concurrency: 1, maxWaiting: 4 });
 const recentEventIds = new Set();
 
-async function persistPrivateSettings(nextPush = pushConfig, nextDiscord = discordConfig) {
-  await mkdir(dirname(privateSettingsPath), { recursive: true, mode: 0o700 });
-  const tmp = `${privateSettingsPath}.tmp`;
-  await writeFile(tmp, JSON.stringify({ ...nextPush, discord: nextDiscord, smartHome: homeConfig, hue: hueConfig,
-    googleCalendar: googleConfig }), { mode: 0o600 });
-  await rename(tmp, privateSettingsPath);
+// All private settings updates are one serialized read-modify-write transaction.
+// Never publish a new in-memory credential or configuration before rename succeeds.
+let privateSettings = {
+  push: { ...pushConfig }, discord: { ...discordConfig }, smartHome: { ...homeConfig },
+  hue: { ...hueConfig }, googleCalendar: { ...googleConfig },
+};
+function publishPrivateSettings(next) {
+  privateSettings = next;
+  pushConfig = next.push;
+  discordConfig = next.discord;
+  homeConfig = next.smartHome;
+  hueConfig = next.hue;
+  googleConfig = next.googleCalendar;
+}
+function persistPrivateSettings(change = () => {}) {
+  const operation = privateSettingsQueue.then(async () => {
+    const next = structuredClone(privateSettings);
+    change(next);
+    await mkdir(dirname(privateSettingsPath), { recursive: true, mode: 0o700 });
+    const tmp = `${privateSettingsPath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tmp, JSON.stringify({ ...next.push, discord: next.discord, smartHome: next.smartHome,
+        hue: next.hue, googleCalendar: next.googleCalendar }), { flag: 'wx', mode: 0o600 });
+      await rename(tmp, privateSettingsPath);
+    } catch (error) {
+      await unlink(tmp).catch(() => {});
+      throw error;
+    }
+    publishPrivateSettings(next);
+  });
+  privateSettingsQueue = operation.catch(() => {});
+  return operation;
 }
 
 function authenticated(req) {
@@ -153,19 +197,40 @@ async function bodyJson(req, limit = 12_000) {
 
 function save() {
   state.history = state.history.slice(-200);
+  if (Array.isArray(state.actionJournal)) state.actionJournal = state.actionJournal.slice(-200);
+  state.schemaVersion = STATE_SCHEMA_VERSION;
   const snapshot = JSON.stringify(state, null, 2);
-  saveQueue = saveQueue.then(async () => {
-    await mkdir(dirname(dataPath), { recursive: true, mode: 0o700 });
-    const temporary = `${dataPath}.tmp`;
-    await writeFile(temporary, snapshot, { mode: 0o600 });
-    await rename(temporary, dataPath);
+  const operation = saveQueue.then(async () => {
+    await atomicStateWrite(dataPath, snapshot);
   });
-  return saveQueue;
+  // The original caller still receives its error. Only the internal tail
+  // recovers, allowing subsequent saves to run without a process restart.
+  saveQueue = operation.catch(() => {});
+  return operation;
+}
+
+// New v5 domains share a serialized mutation boundary. A failed disk write
+// restores the original in-memory collections before the next v5 mutation.
+let v5MutationQueue = Promise.resolve();
+function mutateV5(keys, action) {
+  const operation = v5MutationQueue.then(async () => {
+    const before = keys.map(key => [key, structuredClone(state[key])]);
+    try { return await action(); }
+    catch (error) {
+      for (const [key, value] of before) state[key] = value;
+      throw error;
+    }
+  });
+  v5MutationQueue = operation.catch(() => {});
+  return operation;
 }
 
 const secretary = new SecretaryCore({ state, save });
 const organizer = new OrganizerCore({ state, save });
 const knowledge = new PersonalKnowledge({ state });
+const claims = new PersonalClaims({ state, save });
+const followUps = new FollowUpCases({ state, save });
+const personalTasks = new PersonalTasks({ state, save });
 const recipes = new RecipeMemory({ state, save, dataDirectory: dirname(dataPath),
   extractor: validApiKey ? input => extractRecipeDraft(input, {
     model: process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol',
@@ -174,10 +239,17 @@ const recipes = new RecipeMemory({ state, save, dataDirectory: dirname(dataPath)
 });
 const meals = new MealPlanner({ state, save, recipes: () => recipes.usable() });
 const nemlig = new NemligShopping({ state, save, validateSourcePlan: plan => meals.assertRecipeSources(plan.dishes) });
+// One-use intention minted within the owner's reviewed transfer-button handler.
+// It is tied to the current proposal revision, expires, and never authorizes a
+// checkout. An HTTP server cannot establish physical presence cryptographically;
+// the UI click remains the required product boundary.
+const nemligClickIntents = new Map();
 const shopping = new ShoppingPlanner({ state, meals, nemlig, save });
 const googleCalendar = new GoogleCalendarReadOnly({
   refreshToken: googleConfig.refreshToken || '',
-  saveRefreshToken: async refreshToken => { googleConfig.refreshToken = refreshToken; await persistPrivateSettings(); },
+  calendarId: googleConfig.calendarId || 'primary',
+  saveRefreshToken: async refreshToken => persistPrivateSettings(next => { next.googleCalendar.refreshToken = refreshToken; }),
+  saveCalendarId: async calendarId => persistPrivateSettings(next => { next.googleCalendar.calendarId = calendarId; }),
 });
 async function createMealPlan(input = {}) {
   let calendarBusyDates = [];
@@ -251,7 +323,7 @@ async function backgroundResearch(task, saveResponseId) {
           'Du arbejder på en afgrænset RESEARCH-OPGAVE. Læs gerne opdaterede webkilder.',
           'Du må kun undersøge, analysere og skrive et udkast. Du må IKKE booke, betale, kontakte personer, udføre kode eller ændre eksterne data.',
           task.category === 'briefing' ? 'Dette er en MORGENRAPPORT. Giv et overskueligt nyhedsoverblik med betydning for brugeren, kildedatoer og links.' : '',
-          task.category === 'monitor' ? 'Dette er en OVERVÅGNING. Sammenlign konkrete data med sidste observation. Start svaret med CHANGE eller NO_CHANGE. Angiv verificerbar pris, variant, dato og kildelink. Hvis data mangler, vær ærlig.' : '',
+          task.category === 'monitor' ? 'Dette er en OVERVÅGNING. Besvar KUN med et JSON-objekt: {"summary":"kort dansk forklaring","observation":{"subject":"præcist emne","variant":"variant","value":"observeret værdi eller pris","unit":"DKK eller anden enhed","source":"https://... præcis verificerbar kilde"}}. Sæt value til null hvis kilden ikke er læst sikkert. Gæt ikke ændringsstatus; deterministisk kode sammenligner med tidligere observation.' : '',
           'Skriv et kort, brugbart dansk resultat med konkrete kildelinks og eventuelle forbehold. Maks. ca. 500 ord.'
         ].join('\n\n'),
         input: `${task.prompt}\n\nSeneste afsluttede observation (kan være tom):\n${previous.slice(0, 6000) || '(Ingen tidligere observation)'}`,
@@ -271,7 +343,8 @@ async function backgroundResearch(task, saveResponseId) {
     if (result.status === 'completed') {
       const answer = outputText(result);
       if (!answer) throw new Error('Opgaven blev færdig uden et læsbart resultat.');
-      return answer;
+      return task.category === 'monitor' ? reviewMonitorAnswer(answer,
+        task.runs?.find(run => run.observation?.value !== null && /^https:\/\//.test(run.observation?.source || ''))?.observation) : answer;
     }
     if (['failed', 'cancelled', 'incomplete'].includes(result.status)) {
       throw new Error(`API-opgaven sluttede med status ${result.status}: ${result.error?.message || 'ingen yderligere forklaring'}`);
@@ -283,15 +356,15 @@ async function backgroundResearch(task, saveResponseId) {
 }
 
 const taskEngine = new TaskEngine({
-  state, save, runTask: backgroundResearch,
+  state, save, runTask: backgroundResearch, skillsRegistry: skills,
   notify: async (task, status) => {
     const latest = task.runs?.[0]?.result || '';
-    if (task.category === 'monitor' && status === 'completed' && /^NO_CHANGE\b/i.test(latest)) return;
-    await secretary.addInbox({ title: `${task.title}: ${status === 'completed' ? 'færdig' : 'fejl'}`,
-      text: status === 'completed' ? latest.slice(0, 1800) : 'Opgaven fejlede. Åbn opgaven for detaljer.',
+    const outcomeLabel = status === 'completed' ? 'færdig' : status === 'unknown' ? 'ukendt udfald' : 'fejl';
+    await secretary.addInbox({ title: `${task.title}: ${outcomeLabel}`,
+      text: ['completed','unknown'].includes(status) ? latest.slice(0, 1800) : 'Opgaven fejlede. Åbn opgaven for detaljer.',
       kind: task.category || 'research', taskId: task.id });
-    await notifyDiscord(`JARVIS · ${task.title}: ${status === 'completed' ? 'færdig' : 'fejl'}`,
-      status === 'completed' ? latest.slice(0, 1400) : 'Åbn opgaven i Command Center for detaljer.');
+    await notifyDiscord(`JARVIS · ${task.title}: ${outcomeLabel}`,
+      ['completed','unknown'].includes(status) ? latest.slice(0, 1400) : 'Åbn opgaven i Command Center for detaljer.');
     if (notificationsEnabled(pushConfig)) await sendPushover(pushConfig, taskNotification(task, status));
   },
   maxRunsPerDay: state.settings.maxRunsPerDay || process.env.JARVIS_MAX_RUNS_PER_DAY || 10,
@@ -417,6 +490,51 @@ async function handleOrganizerTool(name, args) {
   }
 }
 
+const mutatingTools = new Set([
+  'set_hue_light', 'activate_hue_scene',
+  'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item',
+  'remember_personal_fact', 'update_meal_profile', 'create_meal_plan', 'propose_nemlig_basket',
+  'update_household_defaults', 'update_household_day', 'save_recipe', 'edit_meal_plan',
+  'build_meal_shopping_list', 'edit_meal_shopping_list', 'create_shopping_draft',
+  'edit_shopping_draft', 'propose_shopping_draft',
+]);
+
+async function invokeToolWithJournal(call, args, handler, channel) {
+  if (!mutatingTools.has(call.name)) return handler(call.name, args, { channel });
+  const entry = { id: randomUUID(), tool: call.name, channel, status: 'running',
+    at: new Date().toISOString(), callId: String(call.call_id || '').slice(0, 100) };
+  state.actionJournal ||= [];
+  state.actionJournal.push(entry);
+  // Write ahead: a tool must never be executed without a durable record.
+  try { await save(); }
+  catch (error) {
+    state.actionJournal = state.actionJournal.filter(item => item.id !== entry.id);
+    throw error;
+  }
+  try {
+    const outcome = await handler(call.name, args, { channel });
+    entry.status = 'completed';
+    entry.finishedAt = new Date().toISOString();
+    try { await save(); }
+    catch (error) {
+      // The handler already ran. Earlier durable records still say running,
+      // which is interpreted as an unknown result after a restart.
+      entry.status = 'unknown';
+      entry.note = 'Handlingen blev udført, men slutstatus kunne ikke gemmes.';
+      throw new Error('Handlingen kan være udført. Kontrollér resultatet, før du prøver igen.', { cause: error });
+    }
+    return outcome;
+  } catch (error) {
+    if (entry.status !== 'unknown') {
+      entry.status = 'unknown'; // The mutation might have happened before the error.
+      entry.note = 'Resultatet kræver kontrol, før handlingen gentages.';
+      entry.finishedAt = new Date().toISOString();
+      await save().catch(() => {});
+    }
+    throw error;
+  }
+}
+
 async function textReply(message, channel = 'text') {
   const history = state.history.slice(-24).map(({ role, text }) => ({ role, content: text }));
   const input = [...history, { role: 'user', content: message }];
@@ -445,7 +563,7 @@ async function textReply(message, channel = 'text') {
         const args = JSON.parse(call.arguments || '{}');
         const handler = homeTools.some(t => t.name === call.name) ? handleHomeTool
           : planningTools.some(t => t.name === call.name) ? handlePlanningTool : handleOrganizerTool;
-        output = { ok: true, ...(await handler(call.name, args, { channel })) };
+        output = { ok: true, ...(await invokeToolWithJournal(call, args, handler, channel)) };
       }
       catch (error) { output = { ok: false, error: error.message }; }
       input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(output) });
@@ -456,14 +574,12 @@ async function textReply(message, channel = 'text') {
 
 function processTextMessage(message, channel = 'text') {
   if (!validApiKey) throw new Error('OpenAI API-nøglen er ikke konfigureret.');
-  const operation = chatQueue.then(async () => {
+  return chatWorkQueue.enqueue(`Assistent · ${channel}`, async () => {
     const answer = await textReply(message, channel);
     await addMessage('user', message, channel);
     await addMessage('assistant', answer, channel);
     return answer;
-  });
-  chatQueue = operation.catch(() => {});
-  return operation;
+  }).promise;
 }
 
 const discord = new DiscordGateway({ onMessage: async (message, metadata = {}) => {
@@ -480,7 +596,7 @@ discord.start(discordConfig);
 
 async function route(req, res) {
   const path = new URL(req.url, 'http://localhost').pathname;
-  if (path === '/health') return json(res, 200, { ok: true });
+  if (path === '/health') return json(res, 200, { ok: true, version: packageVersion });
   // OAuth redirects cannot carry JARVIS' bearer token. One-time PKCE and
   // state validation are handled by GoogleCalendarReadOnly.exchange().
   if (req.method === 'GET' && path === '/api/google/calendar/callback') {
@@ -498,7 +614,35 @@ async function route(req, res) {
 
   if (path.startsWith('/api/')) {
     if (!authenticated(req)) return json(res, 401, { error: 'Forkert adgangskode.' });
-    if (req.method === 'GET' && path === '/api/meals') return json(res, 200, { profile: meals.profile(), plans: meals.plans(), household: meals.household(), recipes: meals.recipes() });
+    if (req.method === 'GET' && path === '/api/actions')
+      return json(res, 200, { actions: (state.actionJournal || []).slice(-100).reverse() });
+    if (req.method === 'GET' && path === '/api/jobs')
+      return json(res, 200, { jobs: chatWorkQueue.snapshot() });
+    const cancelJob = path.match(/^\/api\/jobs\/([0-9a-f-]{36})\/cancel$/);
+    if (cancelJob && req.method === 'POST') {
+      try { return json(res, 200, { job: chatWorkQueue.cancel(cancelJob[1]) }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    if (req.method === 'GET' && path === '/api/overview') {
+      const currentTasks = taskEngine.list();
+      const latest = currentTasks.flatMap(task => (task.runs || []).map(run => ({ title: task.title, ...run })))
+        .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+      return json(res, 200, { summary: {
+        inboxCount: (state.inbox || []).filter(item => !item.read).length,
+        approvalCount: (state.approvals || []).filter(item => item.status === 'pending').length,
+        runningCount: currentTasks.filter(item => item.status === 'running').length,
+        scheduledCount: currentTasks.filter(item => item.status === 'scheduled').length,
+        projectCount: projectAgent.list().length,
+        latestTask: latest ? { title: latest.title, status: latest.status, at: latest.at } : null,
+      } });
+    }
+    if (req.method === 'GET' && path === '/api/meals') return json(res, 200,
+      { profile: meals.profile(), plans: meals.plans(), household: meals.household(), recipes: meals.recipes(), inventory: meals.inventory() });
+    if (req.method === 'GET' && path === '/api/meals/inventory') return json(res, 200, { inventory: meals.inventory() });
+    if (req.method === 'PUT' && path === '/api/meals/inventory') {
+      try { return json(res, 200, { inventory: await meals.setInventory(await bodyJson(req)) }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
     if (req.method === 'PUT' && path === '/api/meals/profile') {
       try { return json(res, 200, { profile: await meals.setProfile(await bodyJson(req)) }); }
       catch (error) { return json(res, 400, { error: error.message }); }
@@ -524,6 +668,16 @@ async function route(req, res) {
     if (mealPlan && ['GET', 'PUT'].includes(req.method)) {
       try { return json(res, 200, { plan: req.method === 'GET' ? meals.getPlan(mealPlan[1])
         : await meals.updatePlan(mealPlan[1], await bodyJson(req, 128_000)) }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    const regeneratePlan = path.match(/^\/api\/meals\/plans\/([0-9a-f-]{36})\/regenerate$/);
+    if (regeneratePlan && req.method === 'POST') {
+      try { return json(res, 200, { plan: await meals.regenerateUnlocked(regeneratePlan[1], await bodyJson(req)) }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    const swapPlan = path.match(/^\/api\/meals\/plans\/([0-9a-f-]{36})\/swap$/);
+    if (swapPlan && req.method === 'POST') {
+      try { return json(res, 200, { plan: await meals.swapDishes(swapPlan[1], await bodyJson(req)) }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
     const planList = path.match(/^\/api\/meals\/plans\/([0-9a-f-]{36})\/shopping-list$/);
@@ -556,6 +710,17 @@ async function route(req, res) {
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     const recipeItem = path.match(/^\/api\/recipes\/([0-9a-f-]{36})$/);
+    if (recipeItem && req.method === 'GET') {
+      try { const recipe = recipes.list().find(item => item.id === recipeItem[1]);
+        if (!recipe) throw new Error('Opskriften findes ikke.');
+        return json(res, 200, { recipe }); }
+      catch (error) { return json(res, 404, { error: error.message }); }
+    }
+    const recipeInstructions = path.match(/^\/api\/recipes\/([0-9a-f-]{36})\/instructions$/);
+    if (recipeInstructions && req.method === 'GET') {
+      try { return json(res, 200, { instructions: recipes.instructions(recipeInstructions[1]) }); }
+      catch (error) { return json(res, 404, { error: error.message }); }
+    }
     if (recipeItem && req.method === 'PUT') {
       try { const recipe = await recipes.update(recipeItem[1], await bodyJson(req, 64_000));
         await meals.invalidateRecipe(recipeItem[1]); return json(res, 200, { recipe }); }
@@ -576,10 +741,16 @@ async function route(req, res) {
     if (path === '/api/planning/tool' && req.method === 'POST') {
       try { const input = await bodyJson(req, 128_000);
         if (!planningTools.some(tool => tool.name === input.name)) throw new Error('Planlægningsværktøjet er ikke tilladt.');
-        return json(res, 200, await handlePlanningTool(input.name, input.args || {}, { channel: 'voice' })); }
+        return json(res, 200, await invokeToolWithJournal({ name: input.name, call_id: randomUUID() },
+          input.args || {}, handlePlanningTool, 'voice')); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/google/calendar/status') return json(res, 200, googleCalendar.status());
+    if (req.method === 'POST' && path === '/api/google/calendar/select') {
+      try { const input = await bodyJson(req);
+        return json(res, 200, await googleCalendar.selectCalendar(input.calendarId)); }
+      catch (error) { return json(res, 400, { error: error.message }); }
+    }
     if (req.method === 'POST' && path === '/api/google/calendar/connect') {
       try { return json(res, 200, { url: googleCalendar.begin() }); }
       catch (error) { return json(res, 409, { error: error.message }); }
@@ -610,12 +781,35 @@ async function route(req, res) {
       try { return json(res, 200, { proposal: await nemlig.revise(basketRevision[1], await bodyJson(req)) }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
+    const basketIntent = path.match(/^\/api\/nemlig\/proposals\/([0-9a-f-]{36})\/transfer-intent$/);
+    if (basketIntent && req.method === 'POST') {
+      try {
+        const input = await bodyJson(req);
+        const proposal = nemlig.pending(basketIntent[1], input.expectedRevision);
+        // Bound retained only in process memory; restart invalidates it.
+        const intentToken = randomUUID();
+        nemligClickIntents.set(intentToken, { id: proposal.id, revision: proposal.revision || 1,
+          contentHash: createHash('sha256').update(JSON.stringify(proposal.additions)).digest('hex'),
+          expires: Date.now() + 60_000 });
+        if (nemligClickIntents.size > 100) nemligClickIntents.clear();
+        return json(res, 200, { intentToken, proposalId: proposal.id, revision: proposal.revision || 1 });
+      } catch (error) { return json(res, 409, { error: error.message }); }
+    }
     const basketApproval = path.match(/^\/api\/nemlig\/proposals\/([0-9a-f-]{36})\/(approve|decline)$/);
     if (req.method === 'POST' && basketApproval) {
       try {
         const input = basketApproval[2] === 'approve' ? await bodyJson(req) : {};
+        if (basketApproval[2] === 'approve') {
+          const intent = nemligClickIntents.get(input.intentToken);
+          nemligClickIntents.delete(input.intentToken); // Consume even if validation/write fails.
+          const proposal = nemlig.pending(basketApproval[1], input.expectedRevision);
+          const actualHash = createHash('sha256').update(JSON.stringify(proposal.additions)).digest('hex');
+          if (!intent || intent.id !== proposal.id || intent.revision !== (proposal.revision || 1) ||
+              intent.contentHash !== actualHash || intent.expires <= Date.now() || input.approved !== true)
+            throw new Error('Overførsel kræver et aktuelt ejerklik på netop dette gennemgåede kurvforslag.');
+        }
         const result = basketApproval[2] === 'approve'
-          ? await nemlig.approve(basketApproval[1], input.approved, input.expectedRevision)
+          ? await nemlig.approve(basketApproval[1], true, input.expectedRevision)
           : await nemlig.decline(basketApproval[1]);
         return json(res, 200, { proposal: result });
       } catch (error) { return json(res, 409, { error: error.message }); }
@@ -626,17 +820,23 @@ async function route(req, res) {
       try {
         const input = await bodyJson(req);
         if (!validBridgeIp(input.bridgeIp)) throw new Error('Angiv en privat IPv4-adresse til Hue Bridge.');
-        if (hueConfig.bridgeIp !== input.bridgeIp) hueConfig = { bridgeIp: input.bridgeIp, applicationKey: '', certificateFingerprint: '' };
-        await persistPrivateSettings();
+        await persistPrivateSettings(next => {
+          if (next.hue.bridgeIp !== input.bridgeIp) next.hue = { bridgeIp: input.bridgeIp, applicationKey: '', certificateFingerprint: '' };
+        });
         return json(res, 200, { ok: true, paired: Boolean(hueConfig.applicationKey) });
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'POST' && path === '/api/smart-home/hue/pair') {
       try {
         if (!validBridgeIp(hueConfig.bridgeIp)) throw new Error('Gem først Hue Bridges lokale IP-adresse.');
-        const paired = await hue.pair(hueConfig.bridgeIp, hueConfig.certificateFingerprint);
-        hueConfig = paired;
-        await persistPrivateSettings();
+        const requested = { ...hueConfig };
+        const paired = await hue.pair(requested.bridgeIp, requested.certificateFingerprint);
+        await persistPrivateSettings(next => {
+          if (next.hue.bridgeIp !== requested.bridgeIp ||
+              next.hue.certificateFingerprint !== requested.certificateFingerprint)
+            throw new Error('Hue Bridge-indstillingerne blev ændret under parringen. Prøv igen.');
+          next.hue = paired;
+        });
         return json(res, 200, { ok: true, paired: true });
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
@@ -668,20 +868,86 @@ async function route(req, res) {
         const input = await bodyJson(req);
         if (input.sonosToken && (typeof input.sonosToken !== 'string' || input.sonosToken.length > 4096)) throw new Error('Ugyldigt token.');
         if (input.sonosHouseholdId !== undefined && (typeof input.sonosHouseholdId !== 'string' || !/^[A-Za-z0-9_-]{0,120}$/.test(input.sonosHouseholdId))) throw new Error('Ugyldigt household-ID.');
-        homeConfig = { sonosToken: input.clearSonosToken ? '' : input.sonosToken?.trim() || homeConfig.sonosToken, sonosHouseholdId: input.sonosHouseholdId ?? homeConfig.sonosHouseholdId };
-        await persistPrivateSettings();
+        await persistPrivateSettings(next => {
+          next.smartHome = { sonosToken: input.clearSonosToken ? '' : input.sonosToken?.trim() || next.smartHome.sonosToken,
+            sonosHouseholdId: input.sonosHouseholdId ?? next.smartHome.sonosHouseholdId };
+        });
         return json(res, 200, { ok: true, hasSonosToken: Boolean(homeConfig.sonosToken) });
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/dashboard') return json(res, 200, {
       ...buildCommandCenter({ state, organizer }), agenda: proactive.preview(), recentDigests: proactive.history().slice(0, 4) });
     if (req.method === 'POST' && path === '/api/knowledge/search') {
-      try { return json(res, 200, { matches: knowledge.search((await bodyJson(req)).query, { limit: 12 }), mode: 'local-lexical' }); }
+      try { return json(res, 200, { matches: await knowledge.searchHybrid((await bodyJson(req)).query, { limit: 12 }), mode: 'local-lexical' }); }
+      catch (error) { return json(res, 400, { error: error.message }); }
+    }
+    if (req.method === 'GET' && path === '/api/personal-claims')
+      return json(res, 200, { claims: claims.list(), conflicts: claims.conflicts() });
+    if (req.method === 'POST' && path === '/api/personal-claims') {
+      try { const input = await bodyJson(req);
+        const claim = await mutateV5(['personalClaims'], () => claims.propose({ ...input, source: { kind: 'user', channel: 'manual' } }));
+        return json(res, 201, { claim }); }
+      catch (error) { return json(res, 400, { error: error.message }); }
+    }
+    const claimDecision = path.match(/^\/api\/personal-claims\/([0-9a-f-]{36})\/(confirm|archive)$/);
+    if (claimDecision && req.method === 'POST') {
+      try { const input = await bodyJson(req);
+        const claim = await mutateV5(['personalClaims'], () =>
+          claims.decision(claimDecision[1], input.expectedRevision, claimDecision[2], { supersedesId: input.supersedesId }));
+        return json(res, 200, { claim, conflicts: claims.conflicts() }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    if (req.method === 'GET' && path === '/api/follow-ups')
+      return json(res, 200, { cases: followUps.list({ includeClosed: true }), due: followUps.due() });
+    if (req.method === 'POST' && path === '/api/follow-ups') {
+      try { const input = await bodyJson(req);
+        const record = await mutateV5(['followUpCases'], () => followUps.create(input));
+        return json(res, 201, { case: record }); }
+      catch (error) { return json(res, 400, { error: error.message }); }
+    }
+    const followUpItem = path.match(/^\/api\/follow-ups\/([0-9a-f-]{36})$/);
+    if (followUpItem && req.method === 'PATCH') {
+      try { const input = await bodyJson(req);
+        const record = await mutateV5(['followUpCases'], () =>
+          followUps.update(followUpItem[1], input.expectedRevision, input.action, input));
+        return json(res, 200, { case: record }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    if (req.method === 'GET' && path === '/api/personal-tasks')
+      return json(res, 200, { tasks: personalTasks.list({ includeArchived: true }) });
+    if (req.method === 'POST' && path === '/api/personal-tasks') {
+      try { const input = await bodyJson(req);
+        const task = await mutateV5(['personalTasks'], () => personalTasks.create(input));
+        return json(res, 201, { task }); }
+      catch (error) { return json(res, 400, { error: error.message }); }
+    }
+    const personalTask = path.match(/^\/api\/personal-tasks\/([0-9a-f-]{36})$/);
+    if (personalTask && req.method === 'PATCH') {
+      try { const input = await bodyJson(req);
+        const task = await mutateV5(['personalTasks'], () => personalTasks.update(personalTask[1], input));
+        return json(res, 200, { task }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    const personalTaskAction = path.match(/^\/api\/personal-tasks\/([0-9a-f-]{36})\/(complete|archive)$/);
+    if (personalTaskAction && req.method === 'POST') {
+      try { const input = await bodyJson(req);
+        const task = await mutateV5(['personalTasks'], () => personalTasks[personalTaskAction[2]](personalTaskAction[1], input.expectedRevision));
+        return json(res, 200, { task }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    if (req.method === 'POST' && path === '/api/planning/simulate') {
+      try { const input = await bodyJson(req, 128_000);
+        const plan = planPersonalTasks({ ...input, tasks: personalTasks.toPlanningTasks() });
+        const taskValidation = personalTasks.validateProposals(plan.proposals);
+        if (!taskValidation.valid) { plan.feasible = false; plan.conflicts.push(...taskValidation.conflicts); }
+        return json(res, 200, { plan,
+        basis: 'Brugerens eksplicit angivne kalendervindue og tilgængelighed; ingen Google-kalenderændring' }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/skills') return json(res, 200, { skills: skills.catalog() });
     if (req.method === 'GET' && path === '/api/integrations') return json(res, 200, { integrations: integrationCatalog({
       discordStatus: discord.snapshot().status, discordConfigured: Boolean(discordConfig.enabled && discordConfig.token),
+      discordSnapshot: discord.snapshot(), googleCalendarStatus: googleCalendar.status(),
       huePaired: Boolean(hueConfig.applicationKey && hueConfig.certificateFingerprint), sonosConfigured: Boolean(homeConfig.sonosToken),
       googleCalendarConnected: googleCalendar.status().connected, googleCalendarConfigured: googleCalendar.configured(), nemligConfigured: nemlig.enabled() }) });
     if (req.method === 'GET' && path === '/api/proactive') return json(res, 200,
@@ -756,11 +1022,11 @@ async function route(req, res) {
         if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Daglig grænse skal være mellem 1 og 100.');
         if (typeof input.httpsUrl !== 'string' || input.httpsUrl.length > 500 || (input.httpsUrl && !/^https:\/\/[^\s]+$/i.test(input.httpsUrl))) throw new Error('HTTPS-adressen skal starte med https://');
         if ((input.pushToken && (typeof input.pushToken !== 'string' || input.pushToken.length > 200)) || (input.pushUser && (typeof input.pushUser !== 'string' || input.pushUser.length > 200))) throw new Error('Ugyldige push-nøgler.');
-        const nextPush = { ...pushConfig, url: input.httpsUrl.trim(),
-          token: input.pushToken?.trim() || pushConfig.token,
-          user: input.pushUser?.trim() || pushConfig.user };
-        await persistPrivateSettings(nextPush);
-        pushConfig = nextPush;
+        await persistPrivateSettings(next => {
+          next.push = { ...next.push, url: input.httpsUrl.trim(),
+            token: input.pushToken?.trim() || next.push.token,
+            user: input.pushUser?.trim() || next.push.user };
+        });
         state.settings.maxRunsPerDay = limit;
         taskEngine.maxRunsPerDay = limit;
         if (typeof input.remindersEnabled === 'boolean') state.settings.remindersEnabled = input.remindersEnabled;
@@ -780,11 +1046,12 @@ async function route(req, res) {
         if (typeof input.enabled !== 'boolean') throw new Error('Ugyldig tilstand for Discord.');
         if (input.token !== undefined && (typeof input.token !== 'string' || input.token.length > 300)) throw new Error('Ugyldigt Discord Bot Token.');
         const ids = validateDiscordConfig(input);
-        const nextDiscord = { enabled: input.enabled,
-          token: input.token?.trim() || discordConfig.token, ...ids };
-        if (nextDiscord.enabled && (!nextDiscord.token || !nextDiscord.userId)) throw new Error('Bot Token og dit eget Discord User ID kræves før aktivering.');
-        await persistPrivateSettings(pushConfig, nextDiscord);
-        discordConfig = nextDiscord;
+        await persistPrivateSettings(next => {
+          const configured = { enabled: input.enabled, token: input.token?.trim() || next.discord.token, ...ids };
+          if (configured.enabled && (!configured.token || !configured.userId))
+            throw new Error('Bot Token og dit eget Discord User ID kræves før aktivering.');
+          next.discord = configured;
+        });
         discord.start(discordConfig);
         return json(res, 200, { ok: true, ...discord.snapshot() });
       } catch (error) { return json(res, 400, { error: error.message }); }
@@ -878,7 +1145,10 @@ async function route(req, res) {
     }
     const projectInstall = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/install$/);
     if (req.method === 'POST' && projectInstall) {
-      try { return json(res, 200, { project: await projectAgent.install(projectInstall[1], (await bodyJson(req)).packages) }); }
+      try {
+        const input = await bodyJson(req);
+        return json(res, 200, { project: await projectAgent.install(projectInstall[1], input.packages, input.expectedRevision) });
+      }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     const projectRollback = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/rollback$/);
@@ -933,8 +1203,13 @@ async function route(req, res) {
     if (req.method === 'POST' && path === '/api/preferences') {
       const input = await bodyJson(req);
       if (typeof input.text !== 'string' || input.text.length > 10000) return json(res, 400, { error: 'Noterne skal være tekst på højst 10.000 tegn.' });
+      const previous = state.preferences;
       state.preferences = input.text;
-      await save();
+      try { await save(); }
+      catch (error) {
+        state.preferences = previous;
+        throw error;
+      }
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/message') {

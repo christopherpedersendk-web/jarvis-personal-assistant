@@ -1,5 +1,6 @@
 ---
 name: daily-briefing
+version: 1.0.0
 description: Lav et nyttigt dansk dags- eller ugeoverblik med dokumenteret personlig kontekst.
 triggers: morgen, morgenrapport, briefing, overblik, plan for dagen, ugeplan, denne uge
 ---

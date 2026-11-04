@@ -20,6 +20,8 @@ export function validatedApproval(state) {
   const candidate = state?.approved;
   if (!candidate || !VERSION.test(candidate.version || '') || !SHA.test(candidate.sha || '') ||
       candidate.version !== state.staged?.version || candidate.sha !== state.staged?.sha ||
+      candidate.packageVersion !== candidate.version.slice(1) ||
+      candidate.testedSha !== candidate.sha || state.staged?.testedSha !== candidate.sha ||
       !candidate.testedAt || !candidate.approvedAt) return null;
   return { version: candidate.version, sha: candidate.sha };
 }
@@ -29,11 +31,15 @@ export function unprivilegedGitCommand(args) {
     '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args]];
 }
 
-async function healthCheck(url, { fetcher = fetch, attempts = 12, intervalMs = 2000 } = {}) {
+export async function healthCheck(url, { fetcher = fetch, attempts = 12, intervalMs = 2000, expectedVersion = null } = {}) {
   for (let i = 0; i < attempts; i++) {
     try {
       const response = await fetcher(url, { signal: AbortSignal.timeout(1500) });
-      if (response.ok) return true;
+      if (response.ok) {
+        const result = await response.json();
+        if (result.ok === true && typeof result.version === 'string' &&
+            (!expectedVersion || result.version === expectedVersion.slice(1))) return true;
+      }
     } catch { /* Wait until server is ready. */ }
     if (i + 1 < attempts) await delay(intervalMs);
   }
@@ -98,7 +104,7 @@ export async function deployRelease(config, dependencies = {}) {
     await atomicLink(destination, current, fs);
     switched = true;
     await run('/usr/bin/systemctl', ['restart', 'jarvis.service'], { timeout: 30000 });
-    if (!await checkHealth('http://127.0.0.1:8787/health', { fetcher, intervalMs: 2000 }))
+    if (!await checkHealth('http://127.0.0.1:8787/health', { fetcher, intervalMs: 2000, expectedVersion: approval.version }))
       throw new Error('Ny release bestod ikke healthcheck.');
     await fs.mkdir(dirname(audit), { recursive: true, mode: 0o700 });
     await fs.writeFile(audit, JSON.stringify({ ...approval, status: 'installed', at: new Date().toISOString() }), { mode: 0o600 });
@@ -106,6 +112,22 @@ export async function deployRelease(config, dependencies = {}) {
     return { status: 'installed', version: approval.version };
   } catch (error) {
     if (switched) {
+      // A v4 process cannot understand the new data contract. After an in-place
+      // schema migration, reverting code automatically risks destroying edits.
+      let currentSchema = 0;
+      try { currentSchema = JSON.parse(await fs.readFile(join(data, 'state.json'), 'utf8')).schemaVersion || 0; }
+      catch (readError) { if (readError.code !== 'ENOENT') throw readError; }
+      let priorVersion = '0.0.0';
+      try { priorVersion = JSON.parse(await fs.readFile(join(oldTarget, 'jarvis-starter', 'package.json'), 'utf8')).version; }
+      catch { /* Unknown older code is not assumed compatible with newer data. */ }
+      if (currentSchema > 0 && (!/^\d+\.\d+\.\d+$/.test(priorVersion) || Number(priorVersion.split('.')[0]) < 5)) {
+        const result = { ...approval, status: 'rollback-blocked', at: new Date().toISOString(),
+          reason: 'Nyere dataskema kan ikke sikkert åbnes af den tidligere release. Manuel genopretning kræves.' };
+        await fs.mkdir(dirname(audit), { recursive: true, mode: 0o700 });
+        await fs.writeFile(audit, JSON.stringify(result), { mode: 0o600 });
+        await writeResult(fs, data, result);
+        return { status: 'rollback-blocked', version: approval.version };
+      }
       await atomicLink(oldTarget, current, fs);
       await run('/usr/bin/systemctl', ['restart', 'jarvis.service'], { timeout: 30000 });
       if (!await checkHealth('http://127.0.0.1:8787/health', { fetcher, intervalMs: 2000 }))

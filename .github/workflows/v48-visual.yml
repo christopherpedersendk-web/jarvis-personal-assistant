@@ -1,4 +1,4 @@
-name: JARVIS v4.9 browser and safety smoke
+name: JARVIS v5 candidate regression and browser smoke
 
 on:
   pull_request:
@@ -22,23 +22,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Offline unit and basket-approval tests
+      - name: Offline full regression and basket-approval tests
         working-directory: jarvis-starter
         run: npm test
       - name: Install browser test dependency in ephemeral CI only
         working-directory: jarvis-starter
         run: npm install --no-save --no-package-lock playwright
-      - name: Install Chromium in CI only
+      - name: Install Chromium and WebKit in CI only
         working-directory: jarvis-starter
-        run: npx playwright install --with-deps chromium
-      - name: Test desktop and mobile UI with synthetic data only
+        run: npx playwright install --with-deps chromium webkit
+      - name: Test desktop and mobile UI with synthetic data only (both engines)
         working-directory: jarvis-starter
-        run: node scripts/visual-smoke.mjs
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          JARVIS_V5_ARTIFACT_DIR: artifacts/v5-ui
+        run: node scripts/v5-visual-smoke.mjs
       - name: Preserve synthetic screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-v49-ui-screenshots
-          path: jarvis-starter/artifacts/v49-*
+          name: jarvis-v5-ui-screenshots
+          path: jarvis-starter/artifacts/v5-ui/*.png
           retention-days: 14
           if-no-files-found: warn

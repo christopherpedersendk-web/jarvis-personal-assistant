@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { foodWords, ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
 
 const normal = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase('da-DK');
 const idOf = product => String(product?.Id ?? '');
@@ -25,10 +26,11 @@ const FOOD_GROUPS = [
   { names: ['nødder', 'nuts'], term: /^(?:nød(?:der|de\p{L}*)|nuts?|hasselnød\p{L}*|valnød\p{L}*|cashew\p{L}*|mandel\p{L}*|mandler|almond\p{L}*|pistacie\p{L}*|pecan\p{L}*)$/u },
   { names: ['peanut', 'peanuts', 'jordnød', 'jordnødder'], term: /^(?:peanut\p{L}*|jordnød\p{L}*)$/u },
 ];
-const evidenceKeys = ['Name', 'Unit', 'Description', 'Ingredients', 'Allergens'];
+const evidenceKeys = ['Name', 'Unit', 'Description', 'Ingredients', 'Allergens', 'Price', 'ItemPrice', 'IsAvailable', 'Availability'];
 
 function fieldText(value, depth = 0) {
   if (typeof value === 'string') return value.slice(0, 8000);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (depth >= 3 || !value || typeof value !== 'object') return '';
   return (Array.isArray(value) ? value : Object.values(value)).slice(0, 40)
     .map(item => fieldText(item, depth + 1)).join(' ').slice(0, 8000);
@@ -53,8 +55,8 @@ function includesAvoid(text, term) {
   if (!wanted.length) return false;
   const group = FOOD_GROUPS.find(item => item.names.includes(normal(term)));
   if (group) return words.some(word => group.term.test(word));
-  // Exact word/phrase boundaries avoid e.g. "ost" matching "kostfibre".
-  return words.some((_, index) => wanted.every((word, offset) => words[index + offset] === word));
+  // Shared exact word/phrase rules; "ris" must not occur inside "frisk".
+  return ingredientMatchesAvoid(text, term);
 }
 
 function constraintsFor(meals, state, plan, ingredient) {
@@ -118,9 +120,10 @@ function available(product) {
 function matchScore(ingredient, product) {
   const query = normal(ingredient);
   const name = normal(product.Name);
+  if (ingredientIdentity(query) === ingredientIdentity(name)) return 100;
   if (name === query) return 100;
-  const words = query.match(/[\p{L}\p{N}]+/gu) || [];
-  return words.length && words.every(w => (name.match(/[\p{L}\p{N}]+/gu) || []).includes(w)) ? 80 : 0;
+  const words = foodWords(query);
+  return words.length && words.every(w => foodWords(name).includes(w)) ? 80 : 0;
 }
 
 export class ShoppingPlanner {
@@ -161,7 +164,7 @@ export class ShoppingPlanner {
     const used = new Set();
     const draft = { id: randomUUID(), ...source, basketFingerprint: basketHash(basket), revision: 1, status: 'draft', createdAt: this.now().toISOString(),
       items: [], warnings: ['Varematch er forslag. Kontroller variant, mærkning, pakningsstørrelse og antal før overførsel.'],
-      budgetTargetDkk: plan.budgetTargetDkk ?? null, estimatedProductsDkk: null };
+      budgetTargetDkk: plan.budgetTargetDkk ?? null, estimatedProductsDkk: null, priceCheckedAt: null };
     // Two read-only lookups at a time; never start dozens of MCP subprocesses.
     for (let i = 0; i < items.length; i += 2) {
       const found = await Promise.all(items.slice(i, i + 2).map(async ingredient => {
@@ -198,6 +201,7 @@ export class ShoppingPlanner {
     }
     this.current(draft); // Plan may have been edited while lookups were running.
     this.estimate(draft);
+    draft.priceCheckedAt = this.now().toISOString();
     this.state.shoppingDrafts.unshift(draft);
     this.state.shoppingDrafts = this.state.shoppingDrafts.slice(0, 12);
     await this.save();
@@ -284,6 +288,7 @@ export class ShoppingPlanner {
           }
         }
       }
+      draft.priceCheckedAt = this.now().toISOString();
       this.current(draft);
       if (draft.revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
       if (refreshed) {

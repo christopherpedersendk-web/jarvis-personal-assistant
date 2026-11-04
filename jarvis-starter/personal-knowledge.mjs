@@ -1,6 +1,7 @@
 // Lokal, kildebevidst retrieval over JARVIS' allerede gemte personlige data.
 // Ingen embeddings, netværkskald eller lagring af et sekundært indeks som standard.
 import { activePersonalMemory } from './secretary-core.mjs';
+import { currentClaim, claimConflicts } from './personal-claims.mjs';
 
 const STOP = new Set('jeg mig min mine mit du din dine dit det den der de er var har havde kan skal vil hvad hvem hvor hvornår hvordan og eller af fra for med som til på om i at en et også lige noget nogle hos'.split(' '));
 
@@ -26,14 +27,55 @@ function childSummary(children) {
 
 function checkedTypes(types) {
   if (types === undefined) return null;
-  if (!Array.isArray(types) || types.length > 10 || types.some(x => !['memory', 'organizer', 'task', 'project', 'meal-profile', 'meal-plan', 'household', 'recipe'].includes(x))) {
+  if (!Array.isArray(types) || types.length > 12 || types.some(x => !['memory', 'organizer', 'task', 'personal-task', 'follow-up', 'project', 'meal-profile', 'meal-plan', 'household', 'recipe'].includes(x))) {
     throw new Error('Ugyldige personlige kildetyper.');
   }
   return types;
 }
 
+function checkedDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Dato skal være ÅÅÅÅ-MM-DD.');
+  const date = new Date(`${value}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error('Ugyldig dato.');
+  return value;
+}
+
+/** Structured records are authoritative for dates; text retrieval is not an attendance lookup. */
+export function getRecordedHouseholdDay(state, date) {
+  const key = checkedDate(date);
+  const household = state.mealHousehold;
+  const day = household?.days?.[key];
+  if (!day || !Number.isInteger(day.adults) || !Array.isArray(day.children)) {
+    return { date: key, recorded: false, source: null,
+      note: 'Fremmøde er ikke registreret for denne dato. Husstandens standard er ikke bevis for dagens fremmøde.' };
+  }
+  return { date: key, recorded: true, adults: day.adults, children: structuredClone(day.children),
+    skip: Boolean(day.skip), theme: day.theme || 'everyday',
+    source: { kind: 'household-day', date: key, revision: household.revision || 1 } };
+}
+
+function relevantHouseholdDates(days, now, max = 90) {
+  const current = Date.parse(`${new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Copenhagen' }).format(now)}T12:00:00Z`);
+  return Object.entries(days || {}).filter(([date]) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    // Favor nearby dates, particularly upcoming dates. A long future calendar
+    // cannot push today/tomorrow out of the bounded model context.
+    .sort(([a], [b]) => {
+      const diffA = Math.abs(Date.parse(`${a}T12:00:00Z`) - current);
+      const diffB = Math.abs(Date.parse(`${b}T12:00:00Z`) - current);
+      return diffA - diffB || a.localeCompare(b);
+    }).slice(0, max);
+}
+
 export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
   const documents = [];
+  const conflicting = new Set(claimConflicts(state, now).map(item => item.subject));
+  for (const claim of (state.personalClaims || []).filter(item => currentClaim(item, now) && !conflicting.has(item.subject)).slice(0, 200)) {
+    if (!claim.id || typeof claim.value !== 'string') continue;
+    documents.push({ ...makeDocument(`claim:${claim.id}`, 'memory', 'Bekræftet oplysning',
+      `${claim.subject}: ${claim.value}`, { kind: 'claim', id: claim.id, revision: claim.revision,
+        category: claim.category, provenance: claim.source }, claim.updatedAt),
+      confirmation: 'user-confirmed', expiresAt: claim.expiresAt || null });
+  }
   for (const memory of (state.memories || []).filter(item => activePersonalMemory(item, now)).slice(0, 200)) {
     if (!memory.id || typeof memory.text !== 'string') continue;
     documents.push({ ...makeDocument(`memory:${memory.id}`, 'memory', 'Hukommelse', memory.text,
@@ -55,6 +97,18 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
       `${task.title} · Status: ${task.status || 'ukendt'} · ${task.prompt || ''}`,
       { kind: 'task', id: task.id }, task.updatedAt || task.createdAt));
   }
+  for (const task of (state.personalTasks || []).filter(item => item.status !== 'archived').slice(0, 200)) {
+    if (!task.id || !task.title) continue;
+    documents.push(makeDocument(`personal-task:${task.id}`, 'personal-task', 'Personlig opgave',
+      `${task.title} · Formål: ${task.purpose || ''} · Status: ${task.status} · Varighed: ${task.durationMinutes} minutter · Frist: ${task.deadline || 'ikke angivet'}`,
+      { kind: 'personal-task', id: task.id, revision: task.revision, provenance: task.source }, task.updatedAt));
+  }
+  for (const follow of (state.followUpCases || []).filter(item => item.status === 'open').slice(0, 200)) {
+    if (!follow.id || !follow.awaiting) continue;
+    documents.push(makeDocument(`follow-up:${follow.id}`, 'follow-up', 'Åben opfølgning',
+      `${follow.awaiting} · Næste kontrol: ${follow.nextCheckAt || 'ikke planlagt'} · Stopbetingelse: ${follow.stopCondition}`,
+      { kind: 'follow-up', id: follow.id, revision: follow.revision, provenance: follow.source }, follow.updatedAt));
+  }
   for (const project of (state.projects || []).filter(item => !item.archived).slice(0, 100)) {
     if (!project.id || !project.title) continue;
     documents.push(makeDocument(`project:${project.id}`, 'project', 'Projekt',
@@ -73,7 +127,7 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
       `${household.adults} voksne · ${childSummary(household.children)}. Dette er brugerens standard; konkrete datoer kan have andet fremmøde. Børneportioner er redigerbare planlægningsskøn.`,
       { kind: 'household', revision: household.revision || 1 }, household.updatedAt), confirmation: 'user-confirmed' });
   }
-  for (const [date, day] of Object.entries(household?.days || {}).sort(([a], [b]) => a.localeCompare(b)).slice(-90)) {
+  for (const [date, day] of relevantHouseholdDates(household?.days, now)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !day || !Number.isInteger(day.adults) || !Array.isArray(day.children)) continue;
     documents.push({ ...makeDocument(`household:${date}`, 'household', 'Husstand på dato',
       `${date}: ${day.adults} voksne · ${childSummary(day.children)} · Tema: ${day.theme || 'everyday'}${day.skip ? ' · Spiser ikke hjemme' : ''}. Registreret af brugeren, ikke udledt af kalenderaftaler.`,
@@ -143,6 +197,8 @@ export class PersonalKnowledge {
     return lexicalResults(query, documents).slice(0, boundedLimit);
   }
 
+  householdDay(date) { return getRecordedHouseholdDay(this.state, date); }
+
   // Et fremtidigt embeddings-adapter kan levere scores for de SAMME godkendte dokument-ID'er.
   // Adapteren må ikke tilføje dokumenter, og fraværet af adapter er aldrig en fejl.
   async searchHybrid(query, options = {}) {
@@ -151,7 +207,19 @@ export class PersonalKnowledge {
     const documents = indexPersonalKnowledge(this.state, { now: this.now() }).filter(doc => !allowedTypes || allowedTypes.includes(doc.type));
     const lexical = lexicalResults(query, documents);
     if (!this.semanticScorer) return lexical.slice(0, boundedLimit);
-    const semantic = await this.semanticScorer(query, documents.map(({ id, text }) => ({ id, text })));
+    let semantic;
+    const timeoutMs = Math.max(50, Math.min(10_000, Number(options.semanticTimeoutMs) || 1500));
+    let timeout;
+    try {
+      semantic = await Promise.race([
+        Promise.resolve().then(() => this.semanticScorer(query, documents.map(({ id, text, source, updatedAt }) =>
+          ({ id, text, revision: source?.revision || 0, updatedAt })))),
+        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Semantisk søgning fik timeout.')), timeoutMs); }),
+      ]);
+    } catch {
+      // An unavailable embedding provider never blocks valid local results.
+      return lexical.slice(0, boundedLimit);
+    } finally { clearTimeout(timeout); }
     if (!semantic || typeof semantic !== 'object') return lexical.slice(0, boundedLimit);
     const byId = new Map(lexical.map(doc => [doc.id, doc.score]));
     const best = documents.map(doc => {

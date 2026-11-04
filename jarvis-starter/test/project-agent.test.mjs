@@ -44,8 +44,8 @@ test('records npm package requests but never installs without approval', async (
   const project = await agent.create({ title: 'Projekt test', description: 'En React app' });
   await agent.develop(project.id, 'Byg appen');
   assert.equal(installed, 0);
-  await assert.rejects(agent.install(project.id, ['other']), /Godkend præcis/);
-  await agent.install(project.id, ['react@19.0.0']);
+  await assert.rejects(agent.install(project.id, ['other'], project.revision), /Godkend præcis/);
+  await agent.install(project.id, ['react@19.0.0'], project.revision);
   assert.equal(installed, 1);
   assert.deepEqual(project.pendingPackages, []);
 });

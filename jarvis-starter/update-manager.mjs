@@ -17,13 +17,25 @@ export function compareVersions(a, b) {
   return 0;
 }
 
+export function validateReleasePackage(content, expectedVersion) {
+  if (!VERSION.test(expectedVersion)) throw new Error('Ugyldigt release-tag.');
+  let metadata;
+  try { metadata = JSON.parse(content); }
+  catch { throw new Error('Releasens package.json er ugyldig.'); }
+  const requiredVersion = expectedVersion.slice(1);
+  if (!metadata || metadata.version !== requiredVersion)
+    throw new Error(`Releasens package.json matcher ikke ${expectedVersion}.`);
+  return requiredVersion;
+}
+
 export class UpdateManager {
-  constructor({ dataDirectory, stagingDirectory, repository, currentVersion = 'v4.6.0', command = exec }) {
+  constructor({ dataDirectory, stagingDirectory, repository, currentVersion = 'v4.6.0', command = exec, readPackage = readFile }) {
     this.stateFile = join(dataDirectory, 'update-state.json');
     this.stagingDirectory = resolve(stagingDirectory);
     this.repository = repository;
     this.currentVersion = currentVersion;
     this.command = command;
+    this.readPackage = readPackage;
     this.state = { available: null, staged: null, approved: null, lastCheck: null, error: '' };
   }
 
@@ -74,6 +86,10 @@ export class UpdateManager {
       await this.command('git', ['clone', '--depth', '1', '--branch', release.version, '--single-branch', this.repository, folder], { timeout: 90_000 });
       const { stdout } = await this.command('git', ['rev-parse', 'HEAD'], { cwd: folder, timeout: 5000 });
       if (stdout.trim() !== release.sha) throw new Error('Tag og forventet commit matcher ikke.');
+      const candidateVersion = validateReleasePackage(
+        await this.readPackage(join(folder, 'jarvis-starter', 'package.json'), 'utf8'), release.version);
+      const unmodified = await this.command('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: folder, timeout: 5000 });
+      if (unmodified.stdout.trim()) throw new Error('Releasekandidaten er ændret efter checkout.');
       // Untrusted release tests must never run directly as the JARVIS host user.
       await this.command('docker', ['image', 'inspect', 'node:22-alpine'], { timeout: 10_000 });
       await this.command('docker', [
@@ -83,7 +99,12 @@ export class UpdateManager {
         '--mount', `type=bind,source=${join(folder, 'jarvis-starter')},target=/workspace,readonly`,
         '--workdir', '/workspace', 'node:22-alpine', 'node', '--test',
       ], { timeout: 180_000, maxBuffer: 1024 * 1024 });
-      this.state.staged = { ...release, testedAt: new Date().toISOString() };
+      const afterTest = await this.command('git', ['rev-parse', 'HEAD'], { cwd: folder, timeout: 5000 });
+      const afterStatus = await this.command('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: folder, timeout: 5000 });
+      if (afterTest.stdout.trim() !== release.sha || afterStatus.stdout.trim())
+        throw new Error('Releasekandidaten blev ændret under test.');
+      this.state.staged = { ...release, packageVersion: candidateVersion, testedSha: release.sha,
+        testedAt: new Date().toISOString() };
       this.state.approved = null;
       this.state.error = '';
       await this.persist();
@@ -96,7 +117,12 @@ export class UpdateManager {
   }
 
   async approve(version) {
-    if (!this.state.staged || this.state.staged.version !== version) throw new Error('Kun en testet version kan godkendes.');
+    if (!this.state.staged || this.state.staged.version !== version ||
+        this.state.staged.packageVersion !== version.slice(1) ||
+        this.state.staged.testedSha !== this.state.staged.sha ||
+        this.state.available?.sha !== this.state.staged.sha ||
+        this.state.available?.version !== this.state.staged.version)
+      throw new Error('Kun den præcise, verificerede og testede revision kan godkendes.');
     this.state.approved = { ...this.state.staged, approvedAt: new Date().toISOString() };
     await this.persist();
     return this.snapshot();

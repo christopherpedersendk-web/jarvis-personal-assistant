@@ -1,9 +1,9 @@
 {
   "name": "jarvis-personal-assistant-starter",
-  "version": "4.9.1",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
-  "description": "A personal assistant with reviewed memory, household-aware meal drafts, recipe intake and approval-gated shopping",
+  "description": "A personal assistant with reviewed memory, personal planning, household meals and owner-gated shopping",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "start": "node --env-file-if-exists=.env server.mjs",

@@ -10,6 +10,26 @@ const MAX_FILES = 12;
 const MAX_FILE_SIZE = 45_000;
 const MAX_PROJECT_FILES = 50;
 
+function canonicalPackage(spec) {
+  if (typeof spec !== 'string' || !packagePattern.test(spec)) throw new Error('Ugyldig npm-pakke.');
+  // Package names are case-insensitive; preserve the exact requested version.
+  const versionSeparator = spec.lastIndexOf('@');
+  if (versionSeparator > 0) return `${spec.slice(0, versionSeparator).toLowerCase()}${spec.slice(versionSeparator)}`;
+  return spec.toLowerCase();
+}
+
+export function exactlyApprovedPackages(pending, approved) {
+  if (!Array.isArray(pending) || !Array.isArray(approved) ||
+      pending.length === 0 || pending.length !== approved.length) return false;
+  try {
+    const required = pending.map(canonicalPackage);
+    const requested = approved.map(canonicalPackage);
+    if (new Set(required).size !== required.length || new Set(requested).size !== requested.length) return false;
+    const expected = new Set(required);
+    return requested.every(spec => expected.has(spec));
+  } catch { return false; }
+}
+
 function allowedPath(path) {
   if (typeof path !== 'string' || path.length > 140 || !/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/.test(path)) return false;
   const segments = path.split('/');
@@ -54,7 +74,7 @@ export class ProjectAgent {
     this.busy = false;
   }
 
-  list() { return this.state.projects.map(({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, lastRollbackableRevision, lastTest }) => ({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, lastRollbackableRevision, lastTest })); }
+  list() { return this.state.projects.map(({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, packageInstallAttempt, lastRollbackableRevision, lastTest }) => ({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, packageInstallAttempt, lastRollbackableRevision, lastTest })); }
 
   archived() { return (this.state.archivedProjects || []).map(({ id, title, slug, archivedAt }) => ({ id, title, slug, archivedAt })); }
 
@@ -236,16 +256,39 @@ export class ProjectAgent {
     } finally { this.busy = false; }
   }
 
-  async install(id, approved) {
+  async install(id, approved, expectedRevision) {
     const project = this.get(id);
     if (!this.installer) throw new Error('Installation er ikke tilgængelig.');
     if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
     const pending = project.pendingPackages || [];
-    if (!pending.length || !Array.isArray(approved) || approved.length !== pending.length || !approved.every(x => pending.includes(x))) throw new Error('Godkend præcis de viste npm-pakker.');
-    if ((await lstat(this.root)).isSymbolicLink() || (await lstat(join(this.root, project.slug))).isSymbolicLink()) throw new Error('Projektmapper må ikke være symbolske links.');
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision !== project.revision)
+      throw new Error('Projektet er ændret efter godkendelsesvisningen. Opdater og gennemgå pakkerne igen.');
+    if (!exactlyApprovedPackages(pending, approved)) throw new Error('Godkend præcis de viste npm-pakker.');
+    if (project.packageInstallAttempt?.revision === expectedRevision)
+      throw new Error('En tidligere pakkeinstallation har allerede haft effekt eller ukendt udfald. Kontrollér projektet før ny godkendelse.');
     this.busy = true;
     try {
-      await this.installer(join(this.root, project.slug), pending);
+      if ((await lstat(this.root)).isSymbolicLink() || (await lstat(join(this.root, project.slug))).isSymbolicLink())
+        throw new Error('Projektmapper må ikke være symbolske links.');
+      const attempt = { id: randomUUID(), revision: expectedRevision, packages: [...pending], status: 'running',
+        at: new Date().toISOString() };
+      project.packageInstallAttempt = attempt;
+      try { await this.save(); }
+      catch (error) {
+        delete project.packageInstallAttempt; // Installer was never called.
+        throw error;
+      }
+      try {
+        await this.installer(join(this.root, project.slug), pending);
+      } catch (error) {
+        attempt.status = 'unknown';
+        attempt.finishedAt = new Date().toISOString();
+        attempt.note = 'Pakkeinstallationen kan være delvist gennemført. Kontrollér projektet.';
+        await this.save().catch(() => {}); // The durable running record blocks unsafe retry.
+        throw error;
+      }
+      attempt.status = 'completed';
+      attempt.finishedAt = new Date().toISOString();
       project.pendingPackages = [];
       project.updatedAt = new Date().toISOString();
       await this.save();

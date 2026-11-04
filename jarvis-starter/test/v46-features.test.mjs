@@ -20,6 +20,7 @@ test('updater only stages a pinned GitHub tag and requires explicit approval', a
   const manager = await new UpdateManager({
     dataDirectory: directory, stagingDirectory: join(directory, 'stage'),
     repository: 'git@github.com:example/jarvis.git', currentVersion: 'v4.6.0',
+    readPackage: async () => JSON.stringify({ version: '4.7.0' }),
     command: async (program, args) => {
       calls.push([program, ...args]);
       if (args[0] === 'ls-remote') return { stdout: `${commit}\trefs/tags/v4.7.0\n` };

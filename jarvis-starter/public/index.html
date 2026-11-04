@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/intelligence.css" />
   <link rel="stylesheet" href="/meals.css" />
   <link rel="stylesheet" href="/memory-v49.css" />
+  <link rel="stylesheet" href="/v5.css" />
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
@@ -25,6 +26,7 @@
   <script src="/intelligence.js" defer></script>
   <script src="/meals.js" defer></script>
   <script src="/memory-v49.js" defer></script>
+  <script src="/v5-plan.js" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -47,16 +49,19 @@
 
     <section id="workspace" class="workspace hidden" aria-label="JARVIS arbejdsområde">
       <nav class="tab-nav" aria-label="Hovednavigation">
-        <button type="button" class="tab-button active" data-tab="home">⌂ Overblik</button>
-        <button type="button" class="tab-button" data-tab="tasks">◷ Opgaver</button>
-        <button type="button" class="tab-button" data-tab="projects">⌘ Projekter</button>
-        <button type="button" class="tab-button" data-tab="secretary">✦ Sekretær</button>
-        <button type="button" class="tab-button" data-tab="knowledge">◎ Viden &amp; skills</button>
-        <button type="button" class="tab-button" data-tab="organizer">▤ Noter &amp; lister</button>
-        <button type="button" class="tab-button" data-tab="meals">♧ Mad &amp; indkøb</button>
-        <button type="button" class="tab-button" data-tab="smart-home">⌂ Smart Home</button>
-        <button type="button" class="tab-button" data-tab="system">♡ System Health</button>
-        <button type="button" class="tab-button" data-tab="settings">⚙ Indstillinger</button>
+        <a class="tab-button active" href="?view=home" data-tab="home"><span aria-hidden="true">⌂</span> I dag</a>
+        <a class="tab-button" href="?view=plan" data-tab="plan"><span aria-hidden="true">◷</span> Plan</a>
+        <a class="tab-button" href="?view=meals" data-tab="meals"><span aria-hidden="true">♧</span> Mad</a>
+        <a class="tab-button" href="?view=knowledge" data-tab="knowledge"><span aria-hidden="true">◎</span> Viden</a>
+        <a class="tab-button desktop-extra" href="?view=smart-home" data-tab="smart-home"><span aria-hidden="true">⌂</span> Hjem</a>
+        <a class="tab-button desktop-extra" href="?view=projects" data-tab="projects"><span aria-hidden="true">⌘</span> Projekter</a>
+        <a class="tab-button desktop-extra" href="?view=settings" data-tab="settings"><span aria-hidden="true">⚙</span> Indstillinger</a>
+        <button class="tab-button mobile-more" type="button" id="more-toggle" aria-expanded="false" aria-controls="more-menu">☰ Mere</button>
+        <div id="more-menu" class="more-menu hidden">
+          <a href="?view=smart-home" data-tab="smart-home">⌂ Hjem</a>
+          <a href="?view=projects" data-tab="projects">⌘ Projekter</a>
+          <a href="?view=settings" data-tab="settings">⚙ Indstillinger</a>
+        </div>
       </nav>
       <div id="tab-home" class="tab-view active-view" role="region" aria-label="Samtale og overblik">
         <div id="home-overview" class="overview-cards" aria-live="polite"></div>
@@ -65,9 +70,45 @@
         <section id="home-system-health" class="panel system-health-summary" aria-live="polite"><h2>System Health</h2><p class="muted">Henter systemstatus …</p></section>
         <div id="home-feed" class="command-center" aria-live="polite"></div>
       </div>
-      <div id="tab-tasks" class="tab-view hidden" role="region" aria-label="Opgaver"></div>
+      <div id="tab-plan" class="tab-view hidden" role="region" aria-label="Plan og opfølgning">
+        <header class="view-intro"><span class="tiny-label">KAPACITET · OPGAVER · OPFØLGNING</span><h1>Din plan</h1><p class="muted">Kalenderaftaler, dine egne opgaver og JARVIS-job har hver sin betydning og status.</p></header>
+        <section class="panel v5-work-panel">
+          <div class="section-heading"><h2>Mine opgaver</h2><span class="tiny-label">PERSONLIGE · REVIDERBARE</span></div>
+          <form id="personal-task-form" class="v5-fields">
+            <label for="personal-task-title">Hvad vil du nå?</label><input id="personal-task-title" maxlength="160" required placeholder="Fx gennemgå forsikringer" />
+            <label for="personal-task-purpose">Hvorfor er det vigtigt?</label><textarea id="personal-task-purpose" maxlength="1200" required placeholder="Et konkret formål og resultat"></textarea>
+            <label for="personal-task-duration">Forventet varighed (minutter)</label><input id="personal-task-duration" type="number" min="5" max="1440" value="30" required />
+            <label for="personal-task-deadline">Deadline (valgfri)</label><input id="personal-task-deadline" type="datetime-local" />
+            <button type="submit" class="primary">Opret personlig opgave</button>
+          </form>
+          <p id="personal-task-status" class="muted" role="status" aria-live="polite"></p>
+          <div id="personal-task-list" class="v5-record-list"></div>
+        </section>
+        <section class="panel v5-work-panel">
+          <div class="section-heading"><h2>Kapacitetsplan</h2><span class="tiny-label">FORELØBIGT FORSLAG</span></div>
+          <p class="muted small-text">Angiv de tidsrum, der må planlægges i, og bekræft kalenderens dækning. Ukendt kalenderdækning giver ingen påstand om ledig tid. Forslaget skriver aldrig til Google Kalender.</p>
+          <form id="capacity-form" class="v5-fields">
+            <label for="capacity-start">Ledig fra</label><input id="capacity-start" type="datetime-local" required />
+            <label for="capacity-end">Ledig til</label><input id="capacity-end" type="datetime-local" required />
+            <label class="inline-check" for="capacity-reviewed"><input id="capacity-reviewed" type="checkbox" /> Jeg har kontrolleret, at kalenderoplysningerne dækker hele tidsrummet</label>
+            <button type="submit" class="secondary">Beregn forslag</button>
+          </form>
+          <p id="capacity-status" class="muted" role="status" aria-live="polite"></p>
+          <div id="capacity-results" class="v5-record-list"></div>
+        </section>
+        <section class="panel v5-work-panel">
+          <div class="section-heading"><h2>Sager jeg følger op på</h2><span class="tiny-label">OBSERVATION · NÆSTE TJEK · STOP</span></div>
+          <form id="follow-up-form" class="v5-fields">
+            <label for="follow-up-awaiting">Hvad afventer du?</label><input id="follow-up-awaiting" maxlength="500" required />
+            <label for="follow-up-check">Næste kontrol</label><input id="follow-up-check" type="datetime-local" required />
+            <label for="follow-up-stop">Hvornår stopper opfølgningen?</label><input id="follow-up-stop" maxlength="300" placeholder="Fx når svar er modtaget" required />
+            <button type="submit" class="secondary">Opret opfølgning</button>
+          </form>
+          <p id="follow-up-status" class="muted" role="status" aria-live="polite"></p>
+          <div id="follow-up-list" class="v5-record-list"></div>
+        </section>
+      </div>
       <div id="tab-projects" class="tab-view hidden" role="region" aria-label="Projekter"></div>
-      <div id="tab-secretary" class="tab-view hidden" role="region" aria-label="Sekretær"></div>
       <div id="tab-knowledge" class="tab-view hidden" role="region" aria-label="Personlig viden og færdigheder">
         <section class="panel intelligence-panel">
           <div class="section-heading"><h2>Personlig viden</h2><span class="tiny-label">LOKAL RAG · KILDER</span></div>
@@ -79,6 +120,7 @@
           </form>
           <p id="knowledge-search-status" class="muted micro" aria-live="polite"></p>
           <div id="knowledge-results" class="knowledge-results" aria-live="polite"></div>
+          <p id="source-open-status" class="source-open-status hidden" role="status" aria-live="polite"></p>
           <p class="muted micro">Søgningen er lokal og kildebaseret. Kun aktive, bekræftede oplysninger bruges som personlig hukommelse. En ekstern embeddings-tjeneste er ikke aktiveret.</p>
         </section>
         <section id="memory-workbench" class="panel intelligence-panel">
@@ -87,17 +129,23 @@
           <div id="memory-workbench-content"></div>
         </section>
         <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>Bekræftede oplysninger</h2><span class="tiny-label">KILDE · GYLDIGHED · KONFLIKTER</span></div>
+          <p class="muted small-text">Nye oplysninger begynder som forslag. Gennemgå og bekræft dem selv. Historiske, forældede og modstridende oplysninger vises særskilt.</p>
+          <form id="personal-claim-form" class="v5-fields">
+            <label for="claim-subject">Emne eller nøgle</label><input id="claim-subject" maxlength="100" required placeholder="fx foedselsdag_mor" />
+            <label for="claim-value">Oplysning</label><textarea id="claim-value" maxlength="1200" required></textarea>
+            <label for="claim-category">Type</label><select id="claim-category"><option value="fact">Faktum</option><option value="preference">Præference</option><option value="temporary">Midlertidigt</option><option value="planned">Planlagt</option><option value="completed">Afsluttet</option></select>
+            <button type="submit" class="secondary">Opret forslag</button>
+          </form>
+          <p id="claim-status" class="muted" role="status" aria-live="polite"></p>
+          <div id="claim-list" class="v5-record-list"></div>
+        </section>
+        <section class="panel intelligence-panel">
           <div class="section-heading"><h2>JARVIS' arbejdsprocedurer</h2><span class="tiny-label">SKILL.md</span></div>
           <p class="muted small-text">Versionsstyrede skills er metoder til gentagelige opgaver – ikke ny personlig hukommelse og ikke eksekverbar kode.</p>
           <div id="skills-catalog" class="catalog-grid"></div>
         </section>
-        <section class="panel intelligence-panel">
-          <div class="section-heading"><h2>Integrationer</h2><span class="tiny-label">RETTIGHEDER FØRST</span></div>
-          <p class="muted small-text">Her ses faktiske forbindelser og planlagte adaptere. Planlagte funktioner er ikke aktiveret. Eksisterende Hue/Sonos-styring kræver en udtrykkelig anmodning, og fremtidige integrationsændringer skal godkendes særskilt.</p>
-          <div id="integrations-catalog" class="catalog-grid"></div>
-        </section>
-      </div>
-      <div id="tab-organizer" class="tab-view hidden" role="region" aria-label="Noter og lister">
+        <section id="tab-organizer" class="organizer-workbench" aria-label="Noter og lister">
         <section class="panel organizer-panel">
           <div class="section-heading"><h2>Mine noter og lister</h2><span class="tiny-label">DELT MED JARVIS</span></div>
           <p class="muted small-text">Vigtige datoer, fødselsdage, gaveidéer, indkøbslister og frie noter. Du kan opdatere dem her eller bede JARVIS om det med stemmen.</p>
@@ -122,6 +170,7 @@
           </form>
         </section>
         <div id="collection-list" class="collection-list"></div>
+        </section>
       </div>
       <div id="tab-meals" class="tab-view hidden" role="region" aria-label="Madplaner og indkøb">
         <section class="panel meals-panel">
@@ -177,6 +226,12 @@
           <div class="section-heading"><h2>Google Kalender</h2><span class="tiny-label">KUN LÆSEADGANG</span></div>
           <p class="muted small-text">Du kan forbinde din primære Google Kalender med OAuth. JARVIS kan derefter foreslå madplaner med kendskab til kommende aftaler, men kan ikke oprette eller ændre kalenderaftaler.</p>
           <p id="meal-google-status" class="muted micro" aria-live="polite"></p>
+          <form id="meal-google-calendar-form" class="meal-form">
+            <label for="meal-google-calendar-id">Valgt kalender-ID (kun læsning)</label>
+            <input id="meal-google-calendar-id" maxlength="200" value="primary" autocomplete="off" />
+            <p class="muted micro">Skriv <code>primary</code> eller et konkret kalender-ID, du selv har valgt. Et skift sletter ikke dine lokale planer.</p>
+            <button type="submit" class="secondary">Gem kalendervalg</button>
+          </form>
           <div class="meal-actions"><button id="meal-google-connect" type="button" class="secondary">Forbind Google Kalender</button>
             <button id="meal-google-load" type="button" class="secondary">Vis kommende 7 dage</button>
             <button id="meal-google-disconnect" type="button" class="secondary">Afbryd forbindelsen</button></div>
@@ -216,7 +271,13 @@
           <div id="smart-home-events" class="home-events"></div>
         </section>
       </div>
-      <div id="tab-system" class="tab-view hidden" role="region" aria-label="System Health og opdateringer">
+      <div id="tab-settings" class="tab-view hidden" role="region" aria-label="Indstillinger">
+        <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>Integrationer og rettigheder</h2><span class="tiny-label">VERIFICERET STATUS</span></div>
+          <p class="muted small-text">Forbindelser vises med deres faktiske tilstand. Planlagte funktioner er endnu ikke aktiveret.</p>
+          <div id="integrations-catalog" class="catalog-grid"></div>
+        </section>
+      <div id="tab-system" class="system-settings-group" role="region" aria-label="System Health og opdateringer">
         <section class="panel">
           <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.9</span></div>
           <p class="muted small-text">Faktiske målinger fra cloud-serveren. Status opdateres, mens du har Command Center åbent.</p>
@@ -234,7 +295,6 @@
           </div>
         </section>
       </div>
-      <div id="tab-settings" class="tab-view hidden" role="region" aria-label="Indstillinger">
         <section class="panel intelligence-panel">
           <div class="section-heading"><h2>Proaktiv JARVIS</h2><span class="tiny-label">DAGLIGT · UGENTLIGT</span></div>
           <p class="muted small-text">Faktabaserede lokale dags- og ugeoverblik i indbakken. Discord er et separat tilvalg. Notifikationer om tomme oversigter sendes ikke.</p>
@@ -341,6 +401,7 @@
               <summary>Skills-dokument – sekretærens instruktioner</summary>
               <label for="playbook">Ret den faste instruktionssamling</label>
               <textarea id="playbook" rows="10" maxlength="15000"></textarea>
+              <p id="playbook-draft-status" class="draft-status micro" role="status" aria-live="polite"></p>
               <div class="secretary-actions"><button id="import-playbook" type="button" class="secondary">Importér .md</button><button id="export-playbook" type="button" class="secondary">Eksportér .md</button></div>
               <input id="playbook-file" class="hidden" type="file" accept=".md,text/markdown,text/plain" />
               <button id="save-playbook" type="button" class="secondary full">Gem skills-dokument</button>
@@ -424,6 +485,7 @@
             <p class="muted small-text">Skriv dine varige præferencer. De bruges i både tekst- og stemmesamtaler.</p>
             <label class="sr-only" for="preferences">Hukommelsesnoter</label>
             <textarea id="preferences" rows="7" maxlength="10000" placeholder="Fx: Jeg foretrækker restauranter i København i mellemprisklassen …"></textarea>
+            <p id="preferences-draft-status" class="draft-status micro" role="status" aria-live="polite"></p>
             <button id="save-preferences" class="secondary full" type="button">Gem noter</button>
           </section>
           <section class="panel capabilities">
@@ -440,7 +502,7 @@
     </section>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-    <footer>JARVIS v4.9 · Command Center · Discord, tale og tekst med fælles hukommelse · Stemmen aktiveres kun, når du trykker Start</footer>
+    <footer>JARVIS v5.0.0 · Udviklingskandidat · Stemme aktiveres kun efter dit klik</footer>
   </main>
 </body>
 </html>

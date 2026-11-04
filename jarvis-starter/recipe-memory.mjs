@@ -206,6 +206,7 @@ export class RecipeMemory {
       title: plain(text.split('\n').find(line => line.trim() && !/^https:\/\//i.test(line.trim())) || (links[0] ? `Opskrift fra ${new URL(links[0]).hostname}` : 'Opskrift fra billede')).slice(0, 120),
       text: plain(text), instructions: '', diet: 'unknown', minutes: null, servings: null, themes: [], ingredients: [], ingredientLines: [],
       links: [], media: [], source: origin, extraction: { status: 'saved-only', messages: [] },
+      processingStatus: 'received', feedback: { favorite: false, doNotSuggest: false },
       createdAt: timestamp, updatedAt: timestamp, reviewedAt: null, captureKey };
     for (const url of links) {
       try {
@@ -264,6 +265,7 @@ export class RecipeMemory {
     }
     if (recipe.ingredientLines.length > recipe.ingredients.length) recipe.extraction.messages.push('Ikke alle ingrediensmængder kunne aflæses. Gennemgå samtlige linjer før bekræftelse.');
     recipe.extraction.messages.push('Opskriften er et uverificeret udkast og bruges først i madplaner, når du har gennemgået og bekræftet den.');
+    recipe.processingStatus = 'review_required';
     this.state.recipes.unshift(recipe);
     await this.save();
     return publicRecipe(recipe);
@@ -275,18 +277,26 @@ export class RecipeMemory {
       if (!recipe) throw new Error('Opskriften findes ikke.');
       if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== recipe.revision) throw new Error('Opskriften er ændret. Genindlæs før du gemmer.');
       if (input.confirmed !== undefined && typeof input.confirmed !== 'boolean') throw new Error('Bekræftelse skal være sand eller falsk.');
-      const allowed = ['expectedRevision', 'title', 'text', 'instructions', 'diet', 'minutes', 'servings', 'themes', 'ingredients', 'confirmed'];
+      const allowed = ['expectedRevision', 'title', 'text', 'instructions', 'diet', 'minutes', 'servings', 'themes', 'ingredients', 'confirmed', 'favorite', 'doNotSuggest'];
       if (Object.keys(input).some(key => !allowed.includes(key))) throw new Error('Ukendt opskriftsfelt.');
+      for (const key of ['favorite', 'doNotSuggest']) {
+        if (Object.hasOwn(input, key) && typeof input[key] !== 'boolean') throw new Error('Favorit og fravalg skal være sand eller falsk.');
+      }
       const fields = recipeFields(input, { partial: true });
       const next = { ...recipe, ...fields };
+      const remainsConfirmed = input.confirmed === true ||
+        (input.confirmed === undefined && Object.keys(fields).length === 0 && recipe.confirmed === true);
       if (input.confirmed === true) {
         if (next.diet === 'unknown' || !next.minutes || !next.servings || !next.ingredients.length) throw new Error('Gennemgå kosttype, tid, grundportioner og ingredienser før bekræftelse.');
         ingredientList(next.ingredients);
         if (next.ingredientLines.length > next.ingredients.length && !Object.hasOwn(input, 'ingredients')) throw new Error('Gennemgå alle importerede ingredienslinjer og angiv en komplet ingrediensliste.');
       }
-      Object.assign(recipe, fields, { revision: recipe.revision + 1, confirmed: input.confirmed === true,
-        status: input.confirmed === true ? 'confirmed' : 'inbox', updatedAt: this.now().toISOString(),
-        reviewedAt: input.confirmed === true ? this.now().toISOString() : null });
+      Object.assign(recipe, fields, { revision: recipe.revision + 1, confirmed: remainsConfirmed,
+        status: remainsConfirmed ? 'confirmed' : 'inbox', updatedAt: this.now().toISOString(),
+        reviewedAt: remainsConfirmed ? (recipe.reviewedAt || this.now().toISOString()) : null,
+        processingStatus: remainsConfirmed ? 'ready' : 'review_required',
+        feedback: { favorite: input.favorite ?? recipe.feedback?.favorite ?? false,
+          doNotSuggest: input.doNotSuggest ?? recipe.feedback?.doNotSuggest ?? false } });
       await this.save(); return publicRecipe(recipe);
     });
   }
@@ -296,6 +306,7 @@ export class RecipeMemory {
       const recipe = this.state.recipes.find(item => item.id === id && !item.archived);
       if (!recipe) throw new Error('Opskriften findes ikke.');
       recipe.archived = true; recipe.status = 'archived'; recipe.confirmed = false;
+      recipe.processingStatus = 'archived';
       recipe.revision++; recipe.updatedAt = this.now().toISOString();
       await this.save(); return publicRecipe(recipe);
     });
@@ -308,9 +319,20 @@ export class RecipeMemory {
           const fields = recipeFields(recipe);
           if (fields.diet === 'unknown' || !fields.minutes || !fields.servings || !fields.ingredients.length) return [];
           return [{ id: recipe.id, title: fields.title, diet: fields.diet, minutes: fields.minutes, servings: fields.servings,
-            themes: fields.themes, ingredients: fields.ingredients, sourceRef: { kind: 'recipe', id: recipe.id, revision: recipe.revision } }];
+            themes: fields.themes, ingredients: fields.ingredients,
+            instructions: fields.instructions, favorite: Boolean(recipe.feedback?.favorite),
+            doNotSuggest: Boolean(recipe.feedback?.doNotSuggest),
+            sourceRef: { kind: 'recipe', id: recipe.id, revision: recipe.revision } }];
         } catch { return []; }
       });
+  }
+
+  instructions(id) {
+    const recipe = this.get(id);
+    if (!recipe.confirmed || recipe.status !== 'confirmed') throw new Error('Opskriften skal gennemgås og bekræftes før instruktioner bruges.');
+    if (!recipe.instructions?.trim()) throw new Error('Opskriften har endnu ingen gemte tilberedningstrin.');
+    return { id: recipe.id, title: recipe.title, revision: recipe.revision, instructions: recipe.instructions,
+      source: recipe.source };
   }
 
   async media(id, mediaId) {

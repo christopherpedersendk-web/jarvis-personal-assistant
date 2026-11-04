@@ -159,6 +159,7 @@ async function organizerMutation(path, options) {
 
 function renderCollection(collection) {
   const card = make('section', '', 'panel collection-card');
+  card.dataset.collectionId = String(collection.id);
   const head = make('div', '', 'collection-heading');
   const heading = make('h2', collection.title);
   const type = make('span', collectionNames[collection.type] || collection.type, 'tiny-label');
@@ -183,6 +184,7 @@ function renderCollection(collection) {
   if (!collection.items.length) entries.append(make('p', 'Ingen punkter endnu.', 'muted small-text'));
   for (const item of collection.items) {
     const row = make('div', '', `collection-item ${item.done ? 'is-done' : ''}`);
+    row.dataset.organizerItemId = `${collection.id}:${item.id}`;
     const line = make('div', '', 'collection-item-main');
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(item.done); checkbox.title = 'Markér som færdig';
     checkbox.addEventListener('change', async () => {

@@ -3,7 +3,13 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const AUTH_HOST = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_HOST = 'https://oauth2.googleapis.com/token';
-const EVENTS_HOST = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const EVENTS_ROOT = 'https://www.googleapis.com/calendar/v3/calendars/';
+
+function checkedCalendarId(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9._@%+#-]{1,200}$/.test(value))
+    throw new Error('Kalender-ID indeholder ugyldige tegn.');
+  return value;
+}
 
 function secureEqual(left, right) {
   const a = Buffer.from(String(left || '')), b = Buffer.from(String(right || ''));
@@ -13,9 +19,12 @@ function secureEqual(left, right) {
 export class GoogleCalendarReadOnly {
   constructor({ clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || '', clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
     redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || '', refreshToken = '', saveRefreshToken = async () => {},
+    calendarId = 'primary', saveCalendarId = async () => {},
     fetcher = fetch, now = () => Date.now() } = {}) {
     this.clientId = clientId; this.clientSecret = clientSecret; this.redirectUri = redirectUri;
     this.refreshToken = refreshToken; this.saveRefreshToken = saveRefreshToken; this.fetcher = fetcher; this.now = now;
+    this.calendarId = checkedCalendarId(calendarId); this.saveCalendarId = saveCalendarId;
+    this.lastReadAt = null; this.lastReadError = ''; this.coverage = null; this.loginExpired = false;
     this.pending = null; this.accessToken = ''; this.accessUntil = 0;
   }
 
@@ -26,7 +35,21 @@ export class GoogleCalendarReadOnly {
     } catch { return false; }
   }
 
-  status() { return { configured: this.configured(), connected: Boolean(this.refreshToken), scope: 'calendar.readonly', canEdit: false }; }
+  status() { return { configured: this.configured(), connected: Boolean(this.refreshToken), scope: 'calendar.readonly', canEdit: false,
+    calendarId: this.calendarId, connectionState: !this.configured() ? 'not_configured' : !this.refreshToken ? 'not_connected'
+      : this.loginExpired ? 'expired_login' : this.lastReadError ? 'unavailable' : this.lastReadAt ? 'connected' : 'not_verified',
+    lastReadAt: this.lastReadAt, lastReadError: this.lastReadError, coverage: this.coverage }; }
+
+  async selectCalendar(calendarId) {
+    const selected = checkedCalendarId(calendarId);
+    if (selected === this.calendarId) return this.status();
+    await this.saveCalendarId(selected);
+    this.calendarId = selected;
+    this.coverage = null;
+    this.lastReadAt = null;
+    this.lastReadError = '';
+    return this.status();
+  }
 
   begin() {
     if (!this.configured()) throw new Error('Google Kalender kræver OAuth-klient og HTTPS-redirect i serverens miljø.');
@@ -51,6 +74,7 @@ export class GoogleCalendarReadOnly {
     // Do not accept a broader scope than the one JARVIS explicitly requested.
     if (tokens.scope && tokens.scope.split(' ').some(scope => scope !== SCOPE)) throw new Error('Google returnerede uventede rettigheder.');
     this.refreshToken = tokens.refresh_token;
+    this.loginExpired = false; this.lastReadError = '';
     this.accessToken = tokens.access_token || '';
     this.accessUntil = this.now() + Math.max(0, Number(tokens.expires_in || 0) - 60) * 1000;
     await this.saveRefreshToken(this.refreshToken);
@@ -63,7 +87,11 @@ export class GoogleCalendarReadOnly {
       body: new URLSearchParams({ client_id: this.clientId, client_secret: this.clientSecret, ...payload }),
       signal: AbortSignal.timeout(20_000),
     });
-    if (!response.ok) throw new Error(`Google OAuth fejlede (HTTP ${response.status}).`);
+    if (!response.ok) {
+      if (response.status === 400 || response.status === 401) this.loginExpired = true;
+      this.lastReadError = `Google OAuth fejlede (HTTP ${response.status}).`;
+      throw new Error(this.lastReadError);
+    }
     return response.json();
   }
 
@@ -85,7 +113,7 @@ export class GoogleCalendarReadOnly {
     if (!Number.isInteger(days) || days < 1 || days > 14) throw new Error('Kalenderperioden skal være 1–14 dage.');
     const from = new Date(this.now());
     const until = new Date(this.now() + days * 24 * 60 * 60_000);
-    const url = new URL(EVENTS_HOST);
+    const url = new URL(`${EVENTS_ROOT}${encodeURIComponent(this.calendarId)}/events`);
     for (const [key, value] of Object.entries({ timeMin: from.toISOString(), timeMax: until.toISOString(),
       maxResults: '100', singleEvents: 'true', orderBy: 'startTime', showDeleted: 'false', timeZone: 'Europe/Copenhagen' })) url.searchParams.set(key, value);
     const events = [];
@@ -96,7 +124,10 @@ export class GoogleCalendarReadOnly {
     do {
       if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);
       const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal });
-      if (!response.ok) throw new Error(`Google Kalender svarede med HTTP ${response.status}.`);
+      if (!response.ok) {
+        this.lastReadError = `Google Kalender svarede med HTTP ${response.status}.`;
+        throw new Error(this.lastReadError);
+      }
       const data = await response.json();
       if (data.items !== undefined && !Array.isArray(data.items)) throw new Error('Google Kalender returnerede et ukendt dataformat.');
       events.push(...(data.items || []));
@@ -106,6 +137,10 @@ export class GoogleCalendarReadOnly {
       }
       if (nextPageToken) seenPages.add(nextPageToken);
     } while (nextPageToken);
+    this.lastReadAt = new Date(this.now()).toISOString();
+    this.lastReadError = '';
+    this.coverage = { start: from.toISOString(), end: until.toISOString(), calendarId: this.calendarId,
+      fetchedAt: this.lastReadAt, complete: true };
     return events.filter(x => x.status !== 'cancelled')
       .map(event => ({ id: String(event.id || '').slice(0, 120),
         title: String(event.summary || 'Optaget').slice(0, 160),
@@ -119,6 +154,7 @@ export class GoogleCalendarReadOnly {
   async disconnect() {
     this.refreshToken = ''; this.accessToken = ''; this.accessUntil = 0;
     await this.saveRefreshToken('');
+    this.lastReadAt = null; this.coverage = null; this.lastReadError = ''; this.loginExpired = false;
     return this.status();
   }
 }

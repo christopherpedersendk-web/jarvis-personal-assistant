@@ -13,6 +13,13 @@ const mealThemes = [
   ['vegetarian', 'Vegetarisk'], ['date', 'Date'], ['party', 'Fest'], ['quick', 'Hurtig'],
 ];
 const mealDiets = [['omnivore', 'Almindelig'], ['vegetarian', 'Vegetarisk'], ['vegan', 'Vegansk']];
+const mealUnits = ['g', 'kg', 'ml', 'l', 'dl', 'cl', 'stk', 'fed', 'tsk', 'spsk', 'pakke'];
+const mealWeekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
+let mealPantryEditor = null;
+let mealHouseholdChildrenEditor = null;
+let mealRhythmEditor = null;
+let mealInventoryEditor = null;
+let mealInventory = { configured: false, revision: 1, items: [] };
 
 function mealNode(tag, value = '', className = '') {
   const node = document.createElement(tag);
@@ -109,6 +116,12 @@ function mealAddDays(value, count) {
   return date.toISOString().slice(0, 10);
 }
 
+function mealMonday(value = mealLocalDate()) {
+  const date = new Date(value + 'T12:00:00Z');
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
 function mealDayLabel(value) {
   const date = new Date(String(value) + 'T12:00:00Z');
   return Number.isFinite(date.getTime())
@@ -118,6 +131,14 @@ function mealDayLabel(value) {
 
 function mealChildrenText(children) {
   return (children || []).map(child => String(child.age) + (child.portion == null ? '' : ':' + child.portion)).join(', ');
+}
+
+function mealPortionsText(adults, children = []) {
+  if (!Number.isInteger(adults)) return 'Ukendt portionsgrundlag';
+  const parts = children.map(child => Number(child.portion ?? (child.age <= 5 ? 0.5 : child.age <= 12 ? 0.75 : 1)));
+  const total = adults + parts.reduce((sum, part) => sum + part, 0);
+  const format = number => number.toLocaleString('da-DK', { maximumFractionDigits: 2 });
+  return `${format(total)} portioner (${adults} voksne à 1${parts.length ? ' + ' + parts.length + ' børn à ' + parts.map(format).join(', ') : ''})`;
 }
 
 function mealReadChildren(value) {
@@ -167,6 +188,242 @@ function mealReadIngredients(value) {
   });
 }
 
+function mealStructuredGroup(title, editor) {
+  const group = mealNode('fieldset', '', 'meal-structured-group');
+  group.append(mealNode('legend', title), editor.element);
+  return group;
+}
+
+function mealIngredientEditor(initial = [], onChange = () => {},
+  { maxRows = 60, maxName = 100, maxQuantity = 1_000_000, allowZero = false } = {}) {
+  const element = mealNode('div', '', 'meal-ingredient-editor');
+  const rows = mealNode('div', '', 'meal-structured-rows');
+  const controls = [];
+  const add = mealNode('button', '+ Tilføj vare', 'secondary meal-add-row'); add.type = 'button';
+  function appendRow(item = {}) {
+    if (controls.length >= maxRows) return;
+    const row = mealNode('div', '', 'meal-structured-row');
+    const name = mealInput(item.name || '', 'text', { placeholder: 'Ingrediens', maxlength: maxName, 'aria-label': 'Ingrediens' });
+    const quantity = mealInput(item.quantity ?? '', 'number', { min: allowZero ? 0 : 0.001, max: maxQuantity, step: 'any', 'aria-label': 'Mængde' });
+    const unit = mealSelect(mealUnits.map(value => [value, value]), item.unit || 'g'); unit.setAttribute('aria-label', 'Enhed');
+    const remove = mealNode('button', 'Fjern', 'secondary'); remove.type = 'button'; remove.setAttribute('aria-label', 'Fjern ingrediens');
+    const entry = { row, name, quantity, unit };
+    remove.addEventListener('click', () => { controls.splice(controls.indexOf(entry), 1); row.remove(); onChange(); });
+    for (const control of [name, quantity, unit]) control.addEventListener('input', onChange);
+    row.append(name, quantity, unit, remove); rows.append(row); controls.push(entry);
+  }
+  add.addEventListener('click', () => { appendRow(); controls.at(-1)?.name.focus(); onChange(); });
+  function setItems(items = []) {
+    rows.replaceChildren(); controls.length = 0;
+    for (const item of items) appendRow(item);
+  }
+  function read() {
+    return controls.map(({ name, quantity, unit }) => {
+      const amount = Number(quantity.value);
+      if (!name.value.trim() || name.value.trim().length > maxName || !quantity.value || !Number.isFinite(amount) ||
+          amount < (allowZero ? 0 : Number.EPSILON) || amount > maxQuantity || !mealUnits.includes(unit.value)) {
+        throw new Error('Udfyld ingrediens, gyldig mængde og enhed for hver vare.');
+      }
+      return { name: name.value.trim(), quantity: amount, unit: unit.value };
+    });
+  }
+  element.append(rows, add); setItems(initial);
+  return { element, setItems, read };
+}
+
+function mealChildrenEditor(initial = [], onChange = () => {}) {
+  const element = mealNode('div', '', 'meal-children-editor');
+  const rows = mealNode('div', '', 'meal-structured-rows');
+  const controls = [];
+  const add = mealNode('button', '+ Tilføj barn', 'secondary meal-add-row'); add.type = 'button';
+  function appendRow(child = {}) {
+    if (controls.length >= 24) return;
+    const row = mealNode('div', '', 'meal-child-row');
+    const age = mealInput(child.age ?? '', 'number', { min: 0, max: 17, step: 1, 'aria-label': 'Barnets alder' });
+    const portion = mealInput(child.portion ?? '', 'number', { min: 0.25, max: 3, step: 0.05, placeholder: 'Automatisk', 'aria-label': 'Portionsfaktor' });
+    const remove = mealNode('button', 'Fjern', 'secondary'); remove.type = 'button'; remove.setAttribute('aria-label', 'Fjern barn');
+    const entry = { row, age, portion };
+    remove.addEventListener('click', () => { controls.splice(controls.indexOf(entry), 1); row.remove(); onChange(); });
+    for (const control of [age, portion]) control.addEventListener('input', onChange);
+    row.append(age, portion, remove); rows.append(row); controls.push(entry);
+  }
+  add.addEventListener('click', () => { appendRow(); controls.at(-1)?.age.focus(); onChange(); });
+  function setItems(items = []) { rows.replaceChildren(); controls.length = 0; for (const item of items) appendRow(item); }
+  function read() {
+    return controls.map(({ age, portion }) => {
+      const years = Number(age.value);
+      if (!age.value || !Number.isInteger(years) || years < 0 || years > 17) throw new Error('Angiv barnets alder mellem 0 og 17.');
+      if (!portion.value.trim()) return { age: years };
+      const factor = Number(portion.value);
+      if (!Number.isFinite(factor) || factor < 0.25 || factor > 3) throw new Error('Portionsfaktor skal være mellem 0,25 og 3.');
+      return { age: years, portion: factor };
+    });
+  }
+  element.append(rows, add); setItems(initial);
+  return { element, setItems, read };
+}
+
+function mealBuildRhythmEditor(initial = null, onChange = () => {}) {
+  const element = mealNode('section', '', 'meal-v5-panel');
+  const heading = mealNode('h3', 'Gentagende familierytme');
+  const enabled = mealCheck('Brug ugentlig eller flerugers rytme', Boolean(initial));
+  const anchor = mealInput(initial?.anchorMonday || mealMonday(), 'date', { 'aria-label': 'Mandag hvor rytmen begynder' });
+  const weeksRoot = mealNode('div', '', 'meal-rhythm-weeks');
+  const addWeek = mealNode('button', '+ Tilføj uge', 'secondary'); addWeek.type = 'button';
+  const removeWeek = mealNode('button', 'Fjern sidste uge', 'secondary'); removeWeek.type = 'button';
+  const weekControls = [];
+  const actionRow = mealNode('div', '', 'meal-actions'); actionRow.append(addWeek, removeWeek);
+  const editor = mealNode('div', '', 'meal-rhythm-editor');
+  editor.append(mealField('Startmandag for rytmen', anchor), weeksRoot, actionRow);
+  enabled.control.addEventListener('change', () => { editor.hidden = !enabled.control.checked; onChange(); });
+  anchor.addEventListener('input', onChange);
+  function addWeekBlock(days = {}) {
+    if (weekControls.length >= 4) return;
+    const week = mealNode('details', '', 'meal-rhythm-week');
+    week.append(mealNode('summary', 'Uge ' + (weekControls.length + 1)));
+    const dayControls = [];
+    for (let index = 0; index < 7; index++) {
+      const data = days[String(index + 1)] || null;
+      const row = mealNode('div', '', 'meal-rhythm-day');
+      const active = mealCheck(mealWeekdays[index] + ' – brug særlig husstand', Boolean(data));
+      const fields = mealNode('div', '', 'meal-rhythm-day-fields');
+      const adults = mealInput(data?.adults ?? 0, 'number', { min: 0, max: 24 });
+      const children = mealChildrenEditor(data?.children || [], onChange);
+      const theme = mealSelect(mealThemes, data?.theme || 'everyday');
+      const skip = mealCheck('Ingen aftensmad hjemme', data?.skip);
+      fields.append(mealField('Voksne', adults), mealStructuredGroup('Børn og portioner', children),
+        mealField('Tema', theme), skip.wrapper);
+      fields.hidden = !active.control.checked;
+      active.control.addEventListener('change', () => { fields.hidden = !active.control.checked; onChange(); });
+      for (const field of [adults, theme, skip.control]) field.addEventListener('input', onChange);
+      row.append(active.wrapper, fields); week.append(row);
+      dayControls.push({ active: active.control, adults, children, theme, skip: skip.control });
+    }
+    weeksRoot.append(week); weekControls.push({ week, dayControls });
+    removeWeek.disabled = weekControls.length <= 1; addWeek.disabled = weekControls.length >= 4;
+  }
+  function set(value) {
+    enabled.control.checked = Boolean(value); anchor.value = value?.anchorMonday || mealMonday();
+    weeksRoot.replaceChildren(); weekControls.length = 0;
+    for (const week of value?.weeks?.length ? value.weeks : [{}]) addWeekBlock(week);
+    editor.hidden = !enabled.control.checked;
+  }
+  function read() {
+    if (!enabled.control.checked) return null;
+    const date = new Date(anchor.value + 'T12:00:00Z');
+    if (!anchor.value || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== anchor.value || date.getUTCDay() !== 1)
+      throw new Error('Familierytmen skal starte på en gyldig mandag.');
+    return { anchorMonday: anchor.value, weeks: weekControls.map(({ dayControls }) => Object.fromEntries(dayControls.flatMap((day, index) => {
+      if (!day.active.checked) return [];
+      return [[String(index + 1), { adults: mealReadAdults(day.adults), children: day.children.read(),
+        theme: day.theme.value, skip: day.skip.checked }]];
+    }))) };
+  }
+  addWeek.addEventListener('click', () => { addWeekBlock(); onChange(); });
+  removeWeek.addEventListener('click', () => { if (weekControls.length <= 1) return;
+    weekControls.pop().week.remove(); removeWeek.disabled = weekControls.length <= 1; addWeek.disabled = false; onChange(); });
+  element.append(heading, enabled.wrapper, editor); set(initial);
+  return { element, set, read };
+}
+
+function mealEffectiveDay(household, date) {
+  const override = household.days?.[date];
+  let repeating = null;
+  const rhythm = household.rhythm;
+  if (!override && rhythm?.weeks?.length && rhythm.anchorMonday) {
+    const days = Math.round((new Date(date + 'T12:00:00Z') - new Date(rhythm.anchorMonday + 'T12:00:00Z')) / 86400000);
+    const index = ((Math.floor(days / 7) % rhythm.weeks.length) + rhythm.weeks.length) % rhythm.weeks.length;
+    const weekday = String(new Date(date + 'T12:00:00Z').getUTCDay() || 7);
+    repeating = rhythm.weeks[index]?.[weekday] || null;
+  }
+  return { id: date, adults: household.adults, children: household.children || [], theme: 'everyday', skip: false,
+    ...(repeating || {}), ...(override || {}), override: Boolean(override), repeating: Boolean(repeating),
+    configured: household.configured || Boolean(override || repeating) };
+}
+
+function mealEnhanceStaticUI() {
+  const familyForm = mealEl('meal-family-form');
+  const legacyChildren = mealEl('meal-children');
+  legacyChildren.hidden = true;
+  familyForm.querySelector('label[for="meal-children"]')?.remove();
+  familyForm.querySelector('p code')?.closest('p')?.remove();
+  mealHouseholdChildrenEditor = mealChildrenEditor([], () => {
+    mealDirty.add('household'); mealEl('meal-family-status').textContent = 'Husstanden har ugemte ændringer.';
+  });
+  familyForm.insertBefore(mealStructuredGroup('Børn – alder og portionsfaktor', mealHouseholdChildrenEditor), mealEl('meal-family-status'));
+  mealRhythmEditor = mealBuildRhythmEditor(null, () => {
+    mealDirty.add('household'); mealEl('meal-family-status').textContent = 'Familierytmen har ugemte ændringer.';
+  });
+  mealRhythmEditor.element.append(mealNode('p',
+    'Brug dagstilpasninger ved ferie, gæster eller fravær. En bestemt dato går altid forud for familierytmen, som går forud for standardhusstanden.',
+    'muted micro'));
+  familyForm.after(mealRhythmEditor.element);
+
+  const profileForm = mealEl('meal-profile-form');
+  const legacyPantry = mealEl('meal-pantry');
+  legacyPantry.hidden = true;
+  profileForm.querySelector('label[for="meal-pantry"]')?.remove();
+  mealPantryEditor = mealIngredientEditor([], () => { mealDirty.add('profile'); }, { allowZero: true });
+  profileForm.insertBefore(mealStructuredGroup('Tidligere oplyst lager – ingrediens, antal og enhed', mealPantryEditor), mealEl('meal-profile-status'));
+
+  const stock = mealNode('section', '', 'meal-v5-panel'); stock.id = 'meal-inventory-panel';
+  stock.append(mealNode('h3', 'Bekræftet lager og reserverede varer'),
+    mealNode('p', 'Registrér kun varer, du faktisk har hjemme. Planer reserverer mængder, men registrerer ikke forbrug, køb eller levering.', 'muted micro'));
+  const status = mealNode('p', '', 'muted micro'); status.id = 'meal-inventory-status'; status.setAttribute('aria-live', 'polite');
+  mealInventoryEditor = mealBuildInventoryEditor([], () => {
+    mealDirty.add('inventory'); status.textContent = 'Lagerændringer er ikke gemt.';
+  });
+  const save = mealAction('Gem bekræftet lager', async () => {
+    const items = mealInventoryEditor.read();
+    const unlock = mealLockControls(stock);
+    try {
+      const result = await mealApi('/api/meals/inventory', 'PUT', { expectedRevision: mealInventory.revision || 1, items });
+      mealDirty.delete('inventory'); mealInventory = result.inventory || result;
+      await refreshMeals(); toast('Lageret er gemt. Berørte indkøbslister skal gennemgås.');
+    } finally { unlock(); }
+  }, status, true);
+  save.id = 'meal-inventory-save';
+  stock.append(mealInventoryEditor.element, status, save);
+  profileForm.after(stock);
+}
+
+function mealBuildInventoryEditor(initial = [], onChange = () => {}) {
+  const element = mealNode('div', '', 'meal-inventory-editor');
+  const rows = mealNode('div', '', 'meal-structured-rows');
+  const controls = [];
+  const add = mealNode('button', '+ Registrér lagervare', 'secondary meal-add-row'); add.type = 'button';
+  function appendRow(item = {}) {
+    if (controls.length >= 100) return;
+    const row = mealNode('div', '', 'meal-inventory-row');
+    const name = mealInput(item.name || '', 'text', { placeholder: 'Vare', maxlength: 100, 'aria-label': 'Lagervare' });
+    const quantity = mealInput(item.quantity ?? '', 'number', { min: 0, max: 1000000, step: 'any', 'aria-label': 'Registreret mængde' });
+    const unit = mealSelect(mealUnits.map(value => [value, value]), item.unit || 'g'); unit.setAttribute('aria-label', 'Enhed');
+    const expiry = mealInput(item.expiresAt || '', 'date', { 'aria-label': 'Sidste holdbarhedsdato' });
+    const remove = mealNode('button', 'Fjern', 'secondary'); remove.type = 'button';
+    const entry = { row, name, quantity, unit, expiry, original: item };
+    remove.addEventListener('click', () => { controls.splice(controls.indexOf(entry), 1); row.remove(); onChange(); });
+    for (const field of [name, quantity, unit, expiry]) field.addEventListener('input', onChange);
+    row.append(name, quantity, unit, expiry, remove);
+    if (item.lastConfirmedAt) row.append(mealNode('span', 'Bekræftet: ' + item.lastConfirmedAt.slice(0, 10) +
+      ' · Reserveret: ' + (item.reservedQuantity ?? 0) + ' · Ledigt: ' + (item.availableQuantity ?? item.quantity) +
+      (item.expired ? ' · Udløbet' : ''), 'muted micro meal-inventory-meta'));
+    rows.append(row); controls.push(entry);
+  }
+  add.addEventListener('click', () => { appendRow(); controls.at(-1)?.name.focus(); onChange(); });
+  function set(items = []) { rows.replaceChildren(); controls.length = 0; for (const item of items) appendRow(item); }
+  function read() {
+    return controls.map(({ name, quantity, unit, expiry, original }) => {
+      const amount = Number(quantity.value);
+      if (!name.value.trim() || quantity.value === '' || !Number.isFinite(amount) || amount < 0) throw new Error('Registrér navn og en gyldig lagermængde.');
+      const unchanged = original.name === name.value.trim() && Number(original.quantity) === amount && original.unit === unit.value;
+      return { name: name.value.trim(), quantity: amount, unit: unit.value, expiresAt: expiry.value || null,
+        ...(unchanged && original.lastConfirmedAt ? { lastConfirmedAt: original.lastConfirmedAt } : {}) };
+    });
+  }
+  element.append(rows, add); set(initial);
+  return { element, set, read };
+}
+
 // Preserve unsaved fields even when another section or Discord refreshes data.
 function mealSyncCards(root, records, prefix, render, emptyText) {
   const previous = new Map([...root.children].filter(node => node.dataset.recordKey).map(node => [node.dataset.recordKey, node]));
@@ -175,7 +432,12 @@ function mealSyncCards(root, records, prefix, render, emptyText) {
   for (const record of records) {
     const key = prefix + ':' + record.id;
     let card = previous.get(key);
-    if (!card || !mealDirty.has(key)) {
+    // A background refresh must not replace the input currently holding focus,
+    // even before its first change event. Buttons are intentionally excluded so
+    // a successful save can replace the completed editor with fresh server data.
+    const focusedEditor = card?.contains(document.activeElement) &&
+      document.activeElement?.matches('input, textarea, select, [contenteditable="true"]');
+    if (!card || (!mealDirty.has(key) && !focusedEditor)) {
       card = render(record, key);
       card.dataset.recordKey = key;
       card.dataset.revision = String(record.revision || 1);
@@ -197,59 +459,75 @@ function mealSyncCards(root, records, prefix, render, emptyText) {
 }
 
 function showMealProfile(profile) {
-  if (mealDirty.has('profile')) return;
+  if (mealDirty.has('profile') || (mealEl('meal-profile-form').contains(document.activeElement) &&
+    document.activeElement?.matches('input, textarea, select'))) return;
   mealEl('meal-household').value = profile.householdSize;
   mealEl('meal-diet').value = profile.diet;
   mealEl('meal-budget').value = profile.budgetDkk ?? '';
   mealEl('meal-avoid').value = (profile.avoid || []).join(', ');
   mealEl('meal-pantry').value = mealIngredientText(profile.pantry);
+  mealPantryEditor?.setItems(profile.pantry || []);
   mealEl('meal-profile-status').textContent = profile.source === 'user-entered'
     ? 'Dine senest gemte præferencer er indlæst.' : 'Standardindstillinger. Angiv dine faktiske præferencer.';
 }
 
+function showMealInventory(inventory = {}) {
+  const status = mealEl('meal-inventory-status');
+  const focused = mealInventoryEditor?.element.contains(document.activeElement) &&
+    document.activeElement?.matches('input, textarea, select');
+  if (mealDirty.has('inventory') || focused) {
+    if (mealInventory.revision !== inventory.revision) status.textContent = 'Lageret er ændret et andet sted. Dine felter er bevaret; genindlæs før du gemmer.';
+    return;
+  }
+  mealInventory = inventory;
+  mealInventoryEditor?.set(inventory.items || []);
+  status.textContent = inventory.configured
+    ? 'Senest bekræftede lagerrevision: ' + (inventory.revision || 1) + '. Reserveret og ledigt vises ved hver vare.'
+    : 'Intet særskilt lager er bekræftet. Oplyst lager under madpræferencer bruges indtil da.';
+}
+
 function showHousehold(household = {}) {
-  if (!mealDirty.has('household')) {
+  const focused = mealEl('meal-family-form').contains(document.activeElement) ||
+    mealRhythmEditor.element.contains(document.activeElement);
+  if (!mealDirty.has('household') && !(focused && document.activeElement?.matches('input, textarea, select'))) {
     mealEl('meal-adults').value = household.configured ? household.adults : '';
     mealEl('meal-children').value = mealChildrenText(household.children);
+    mealHouseholdChildrenEditor?.setItems(household.children || []);
+    mealRhythmEditor?.set(household.rhythm || null);
     mealEl('meal-family-status').textContent = household.configured
-      ? 'Normal husstand er gemt. Dagstilpasninger nedenfor har forrang.'
+      ? 'Husstanden er gemt. Dagsundtagelser har forrang over rytme og standard.'
       : 'Husstanden er ikke udfyldt. Ingen voksnes eller børns tilstedeværelse er bekræftet.';
   }
   const start = mealEl('meal-family-start').value || mealLocalDate();
-  const records = Array.from({ length: 7 }, (_, index) => {
-    const date = mealAddDays(start, index);
-    const override = household.days?.[date];
-    return { id: date, adults: household.adults, children: household.children || [], theme: 'everyday', skip: false,
-      ...override, override: Boolean(override), configured: household.configured || Boolean(override) };
-  });
+  const records = Array.from({ length: 7 }, (_, index) => mealEffectiveDay(household, mealAddDays(start, index)));
   mealSyncCards(mealEl('meal-family-days'), records, 'family-day', (day, key) => {
     const card = mealNode('article', '', 'meal-family-day');
-    card.append(mealNode('h3', mealDayLabel(day.id)), mealNode('span', day.override ? 'Tilpasset dag' : day.configured ? 'Normal husstand' : 'Ikke udfyldt', 'meal-status'));
+    card.append(mealNode('h3', mealDayLabel(day.id)), mealNode('span', day.override ? 'Dagsundtagelse' : day.repeating ? 'Familierytme' : day.configured ? 'Standardhusstand' : 'Ikke udfyldt', 'meal-status'));
     card.append(mealNode('p', day.skip ? 'Ingen aftensmad hjemme' : day.configured
       ? day.adults + ' voksne · ' + (day.children || []).length + ' børn · ' + (mealThemes.find(([id]) => id === day.theme)?.[1] || 'Hverdag')
       : 'Antal spisende er ikke bekræftet.', 'muted micro'));
+    if (day.configured && !day.skip) card.append(mealNode('p', mealPortionsText(day.adults, day.children), 'muted micro'));
     const editor = document.createElement('details'); editor.className = 'meal-details meal-family-editor';
     editor.append(mealNode('summary', 'Tilpas dagen'));
     const adults = mealInput(day.configured ? day.adults : '', 'number', { min: 0, max: 24 });
-    const children = mealInput(mealChildrenText(day.children), 'text', { maxlength: 200, placeholder: 'Fx 4, 10' });
+    const status = mealNode('p', '', 'muted micro'); status.dataset.editStatus = '';
+    const markDirty = () => { mealDirty.add(key); status.textContent = 'Ændringer er ikke gemt endnu.'; };
+    const children = mealChildrenEditor(day.children, markDirty);
     const theme = mealSelect(mealThemes, day.theme || 'everyday');
     const skip = mealCheck('Ingen aftensmad hjemme', day.skip);
-    editor.append(mealField('Voksne', adults), mealField('Børns aldre / portionsfaktorer', children), mealField('Dagens tema', theme), skip.wrapper);
-    const status = mealNode('p', '', 'muted micro'); status.dataset.editStatus = '';
+    editor.append(mealField('Voksne', adults), mealStructuredGroup('Børn – alder og portioner', children), mealField('Dagens tema', theme), skip.wrapper);
     const actions = mealNode('div', '', 'meal-actions');
     actions.append(mealAction('Gem dag', async () => {
       await mealApi('/api/meals/household/days/' + day.id, 'PUT', {
-        adults: mealReadAdults(adults), children: mealReadChildren(children.value), theme: theme.value, skip: skip.control.checked,
+        adults: mealReadAdults(adults), children: children.read(), theme: theme.value, skip: skip.control.checked,
       });
       mealDirty.delete(key); await refreshMeals(); toast('Dagen er gemt. Berørte madplaner skal gennemgås igen.');
     }, status, true));
-    actions.append(mealAction(day.override ? 'Brug normal husstand' : 'Nulstil felter', async () => {
+    actions.append(mealAction(day.override ? 'Fjern dagsundtagelsen' : 'Nulstil felter', async () => {
       if (day.override) await mealApi('/api/meals/household/days/' + day.id, 'DELETE');
       mealDirty.delete(key); await refreshMeals();
     }, status));
-    for (const field of [adults, children, theme, skip.control]) field.addEventListener('input', () => {
-      mealDirty.add(key); status.textContent = 'Ændringer er ikke gemt endnu.';
-    });
+    for (const field of [adults, theme, skip.control]) field.addEventListener('input', markDirty);
     editor.append(status, actions); card.append(editor); return card;
   }, 'Vælg en dato for at se familiens uge.');
 }
@@ -271,36 +549,38 @@ function mealDishEditor(dish, markDirty) {
   const servings = mealInput(dish.servings ?? 0, 'number', { min: 0, max: 72, step: 0.25 });
   const theme = mealSelect(mealThemes, dish.theme || 'everyday');
   const skip = mealCheck('Spring denne dag over', dish.skip);
-  main.append(mealField('Ret', recipe), mealField('Portioner', servings), mealField('Tema', theme), skip.wrapper);
+  const locked = mealCheck('Lås denne ret ved nye forslag', Boolean(dish.locked));
+  main.append(mealField('Ret', recipe), mealField('Portioner', servings), mealField('Tema', theme), skip.wrapper, locked.wrapper);
   fieldset.append(main);
   const details = document.createElement('details'); details.className = 'meal-details';
   details.append(mealNode('summary', 'Ret titel, tid og ingredienser'));
   const title = mealInput(dish.title || '', 'text', { maxlength: 160 });
   const minutes = mealInput(dish.minutes ?? '', 'number', { min: 1, max: 720 });
   const diet = mealSelect(mealDiets, dish.diet || 'omnivore');
-  const ingredients = mealTextArea(mealIngredientText(dish.ingredients), 4);
-  details.append(mealField('Titel', title), mealField('Minutter', minutes), mealField('Rettens kosttype (kontrollér ved ændringer)', diet),
-    mealField('Ingredienser til de viste portioner: navn | antal | enhed', ingredients));
-  fieldset.append(details);
-  const reasons = Array.isArray(dish.reasons) ? dish.reasons : [];
-  if (reasons.length) fieldset.append(mealNode('p', reasons.join(' · '), 'muted micro'));
   const changed = new Set();
   let previewBasis = dish.ingredients || [];
   let previewServings = Number(dish.servings) || 1;
+  const ingredients = mealIngredientEditor(dish.ingredients || [], () => {
+    changed.add('ingredients');
+    try { previewBasis = ingredients.read(); previewServings = Number(servings.value) || 1; }
+    catch { /* Incomplete input remains in the visible draft until save. */ }
+    markDirty();
+  });
+  details.append(mealField('Titel', title), mealField('Minutter', minutes), mealField('Rettens kosttype (kontrollér ved ændringer)', diet),
+    mealStructuredGroup('Ingredienser til de viste portioner', ingredients));
+  fieldset.append(details);
+  const reasons = Array.isArray(dish.reasons) ? dish.reasons : [];
+  if (reasons.length) fieldset.append(mealNode('p', reasons.join(' · '), 'muted micro'));
   function updateIngredientPreview() {
     const count = Number(servings.value);
     if (!servings.value || !Number.isFinite(count) || count <= 0) return;
-    ingredients.value = mealIngredientText(previewBasis.map(item => ({
+    ingredients.setItems(previewBasis.map(item => ({
       ...item, quantity: Math.round(item.quantity * count / previewServings * 100) / 100,
     })));
   }
-  for (const [name, field] of Object.entries({ title, minutes, diet, ingredients })) field.addEventListener('input', () => { changed.add(name); markDirty(); });
-  ingredients.addEventListener('input', () => {
-    try { previewBasis = mealReadIngredients(ingredients.value); previewServings = Number(servings.value) || 1; }
-    catch { /* Incomplete lines are validated when the user saves. */ }
-  });
+  for (const [name, field] of Object.entries({ title, minutes, diet })) field.addEventListener('input', () => { changed.add(name); markDirty(); });
   servings.addEventListener('input', updateIngredientPreview);
-  for (const field of [servings, theme, skip.control]) field.addEventListener('input', markDirty);
+  for (const field of [servings, theme, skip.control, locked.control]) field.addEventListener('input', markDirty);
   recipe.addEventListener('change', () => {
     const selected = (mealData.recipes || []).find(item => String(item.id) === recipe.value);
     if (selected) {
@@ -315,10 +595,15 @@ function mealDishEditor(dish, markDirty) {
   return {
     element: fieldset,
     collect() {
-      const value = { date: dish.date, recipeId: recipe.value || null, servings: Number(servings.value), theme: theme.value, skip: skip.control.checked };
+      const value = { date: dish.date, servings: Number(servings.value), theme: theme.value,
+        skip: skip.control.checked, locked: locked.control.checked };
+      // Existing owner-created meals have IDs such as custom:YYYY-MM-DD and
+      // are not catalogue entries. Only submit a recipe ID when the owner
+      // selects a different catalogue recipe; the server retains custom meals.
+      if (recipe.value !== String(dish.recipeId || '')) value.recipeId = recipe.value || null;
       if (changed.has('title')) value.title = title.value;
       if (changed.has('minutes')) value.minutes = Number(minutes.value);
-      if (changed.has('ingredients')) value.ingredients = mealReadIngredients(ingredients.value);
+      if (changed.has('ingredients')) value.ingredients = ingredients.read();
       if (changed.has('ingredients') || changed.has('diet')) value.diet = diet.value;
       return value;
     },
@@ -340,9 +625,13 @@ function showMealPlans(plans) {
     let dishDirty = false; let listDirty = false;
     const status = mealNode('p', '', 'muted micro'); status.dataset.editStatus = '';
     const actions = mealNode('div', '', 'meal-actions');
-    let savePlan, buildList, findProducts, saveList;
+    let savePlan, buildList, findProducts, saveList, regenerate, swap;
     const listFields = document.createElement('fieldset'); listFields.className = 'meal-list-editor';
-    const shoppingText = mealTextArea(mealIngredientText(plan.shoppingList), 4);
+    const shoppingEditor = mealIngredientEditor(plan.shoppingList || [], () => {
+      listDirty = true; mealDirty.add(key);
+      status.textContent = 'Listerettelser er ikke gemt. Gem eller genindlæs før du ændrer madplanen.';
+      flags();
+    });
     function flags() {
       savePlan.disabled = (!dishDirty && !plan.profileStale && !plan.recipeStale) || listDirty || Boolean(plan.householdStale);
       buildList.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
@@ -350,6 +639,8 @@ function showMealPlans(plans) {
       if (saveList) saveList.disabled = !listDirty || dishDirty;
       listFields.disabled = dishDirty;
       for (const editor of editors) editor.element.disabled = listDirty;
+      if (regenerate) regenerate.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
+      if (swap) swap.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
     }
     function dirtyDishes() {
       dishDirty = true; mealDirty.add(key);
@@ -367,6 +658,11 @@ function showMealPlans(plans) {
       await mealApi('/api/meals/plans/' + plan.id + '/shopping-list', 'POST', { expectedRevision: plan.revision || 1 });
       await refreshMeals(); toast('Indkøbslisten er oprettet. Nemlig-kurven er ikke ændret.');
     }, status);
+    regenerate = mealAction('Foreslå nye retter til ulåste dage', async () => {
+      if (mealDirty.has(key)) throw new Error('Gem eller kassér dine lokale ændringer før nye retter foreslås.');
+      await mealApi('/api/meals/plans/' + plan.id + '/regenerate', 'POST', { expectedRevision: plan.revision || 1 });
+      await refreshMeals(); toast('Ulåste dage er opdateret. Låste retter og manuelle ekstravarer er bevaret.');
+    }, status);
     findProducts = mealAction('Find varer på Nemlig', async () => {
       status.textContent = 'Finder konkrete varer og pakningsantal. Din Nemlig-kurv ændres ikke …';
       await mealApi('/api/meals/plans/' + plan.id + '/nemlig-draft', 'POST', { expectedRevision: plan.revision || 1 });
@@ -374,7 +670,19 @@ function showMealPlans(plans) {
       status.textContent = 'Indkøbsforslaget er klar til din gennemgang længere nede.';
       mealEl('meal-shopping-drafts').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, status);
-    actions.append(savePlan, buildList);
+    actions.append(savePlan, buildList, regenerate);
+    const swapDetails = mealNode('details', '', 'meal-details meal-swap');
+    swapDetails.append(mealNode('summary', 'Flyt eller byt to retter'));
+    const choices = (plan.dishes || []).map(dish => [dish.date, mealDayLabel(dish.date) + (dish.locked ? ' (låst)' : '')]);
+    const firstSwap = mealSelect(choices, choices[0]?.[0]);
+    const secondSwap = mealSelect(choices, choices[1]?.[0] || choices[0]?.[0]);
+    swap = mealAction('Byt retter mellem dagene', async () => {
+      if (mealDirty.has(key)) throw new Error('Gem eller kassér lokale ændringer før retter flyttes.');
+      await mealApi('/api/meals/plans/' + plan.id + '/swap', 'POST', {
+        expectedRevision: plan.revision || 1, firstDate: firstSwap.value, secondDate: secondSwap.value });
+      await refreshMeals(); toast('Retterne er byttet. Portioner følger stadig den enkelte dag.');
+    }, status);
+    swapDetails.append(mealField('Fra dag', firstSwap), mealField('Til dag', secondSwap), swap);
     if (plan.householdStale) actions.append(mealAction('Opdatér husstand og grundlag', async () => {
       if (mealDirty.has(key)) throw new Error('Gem eller genindlæs dine lokale ændringer først.');
       await mealApi('/api/meals/plans/' + plan.id, 'PUT', { expectedRevision: plan.revision || 1, refreshHousehold: true });
@@ -383,7 +691,7 @@ function showMealPlans(plans) {
     actions.append(mealAction('Genindlæs / kassér lokale rettelser', async () => {
       mealDirty.delete(key); await refreshMeals();
     }, status));
-    card.append(actions);
+    card.append(actions, swapDetails);
     if (ready) {
       const list = mealNode('ul', '', 'meal-shopping-list');
       for (const item of plan.shoppingList || []) list.append(mealNode('li', item.name + ' · ' + item.quantity + ' ' + item.unit));
@@ -392,17 +700,12 @@ function showMealPlans(plans) {
       card.append(list);
       const edit = document.createElement('details'); edit.className = 'meal-details';
       edit.append(mealNode('summary', 'Ret selve indkøbslisten'));
-      listFields.append(mealField('Vare | antal | enhed — én pr. linje', shoppingText));
+      listFields.append(mealStructuredGroup('Varer og antal', shoppingEditor));
       saveList = mealAction('Gem rettelser til listen', async () => {
-        await mealApi('/api/meals/plans/' + plan.id + '/shopping-list', 'PUT', { expectedRevision: plan.revision || 1, items: mealReadIngredients(shoppingText.value) });
+        await mealApi('/api/meals/plans/' + plan.id + '/shopping-list', 'PUT', { expectedRevision: plan.revision || 1, items: shoppingEditor.read() });
         mealDirty.delete(key); await refreshMeals(); toast('Listen er rettet. Tidligere kurvforslag fra listen skal laves igen.');
       }, status);
       listFields.append(saveList); edit.append(listFields); card.append(edit, findProducts);
-      shoppingText.addEventListener('input', () => {
-        listDirty = true; mealDirty.add(key);
-        status.textContent = 'Listerettelser er ikke gemt. Gem eller genindlæs, før du ændrer madplanen.';
-        flags();
-      });
     }
     card.append(mealNode('p', 'Budgetmål: ' + (plan.budgetTargetDkk ?? 'ikke fastsat') + ' kr. · Ikke en prisgaranti.', 'muted micro'), status);
     flags(); return card;
@@ -426,7 +729,10 @@ async function refreshRecipes() {
 function showRecipes(recipes) {
   mealSyncCards(mealEl('meal-recipes'), recipes.filter(recipe => recipe.status !== 'archived').slice(0, 30), 'recipe', (recipe, key) => {
     const card = mealNode('article', '', 'meal-card');
-    card.append(mealNode('h3', recipe.title || 'Ny opskrift'), mealNode('span', recipe.status === 'confirmed' ? 'Godkendt til madplaner' : 'Indbakke · gennemgå opskriften', 'meal-status'));
+    const recipeState = { received: 'Modtaget', processing: 'Behandles', review_required: 'Kræver gennemgang',
+      ready: 'Klar til brug', error: 'Behandling fejlede' };
+    card.append(mealNode('h3', recipe.title || 'Ny opskrift'), mealNode('span',
+      recipeState[recipe.processingStatus] || (recipe.status === 'confirmed' ? 'Godkendt til madplaner' : 'Indbakke · gennemgå opskriften'), 'meal-status'));
     const source = recipe.source || {};
     card.append(mealNode('p', 'Kilde: ' + (source.channel || 'ukendt') + ' · ' + String(recipe.createdAt || '').slice(0, 10), 'muted micro'));
     for (const message of recipe.extraction?.messages || []) card.append(mealNode('p', message, 'muted micro'));
@@ -449,14 +755,19 @@ function showRecipes(recipes) {
     }
     const details = document.createElement('details'); details.className = 'meal-details'; details.open = recipe.status !== 'confirmed';
     details.append(mealNode('summary', recipe.status === 'confirmed' ? 'Se og ret opskriften' : 'Gennemgå oplysninger'));
-    const title = mealInput(recipe.title || '', 'text', { maxlength: 160 });
+    const title = mealInput(recipe.title || '', 'text', { maxlength: 120 });
     const diet = mealSelect([['unknown', 'Ikke afklaret'], ...mealDiets], recipe.diet || 'unknown');
     const minutes = mealInput(recipe.minutes ?? '', 'number', { min: 1, max: 720 });
     const servings = mealInput(recipe.servings ?? '', 'number', { min: 0.25, max: 50, step: 0.25 });
-    const ingredients = mealTextArea(mealIngredientText(recipe.ingredients), 5);
+    const markDirty = () => { mealDirty.add(key); status.textContent = 'Opskriftsrettelser er ikke gemt.'; };
+    const ingredients = mealIngredientEditor(recipe.ingredients || [], markDirty, { maxRows: 50, maxName: 80, maxQuantity: 100000 });
+    const instructions = mealTextArea(recipe.instructions || '', 5);
+    const favorite = mealCheck('Favorit – prioriter i madplaner', Boolean(recipe.feedback?.favorite));
+    const doNotSuggest = mealCheck('Foreslå ikke automatisk igen', Boolean(recipe.feedback?.doNotSuggest));
     details.append(mealField('Titel', title), mealField('Kosttype — skal være kontrolleret', diet),
       mealField('Tilberedningstid i minutter', minutes), mealField('Opskriftens portioner', servings),
-      mealField('Ingredienser: navn | antal | enhed', ingredients));
+      mealStructuredGroup('Ingredienser og mængder', ingredients), mealField('Tilberedningstrin', instructions),
+      favorite.wrapper, doNotSuggest.wrapper);
     const themes = mealNode('fieldset', '', 'meal-theme-options'); themes.append(mealNode('legend', 'Passer til disse temaer'));
     const themeInputs = mealThemes.map(([value, label]) => {
       const check = mealCheck(label, (recipe.themes || []).includes(value)); check.control.value = value; themes.append(check.wrapper); return check.control;
@@ -472,7 +783,8 @@ function showRecipes(recipes) {
     }
     const collect = confirmed => ({ expectedRevision: recipe.revision || 1, title: title.value, diet: diet.value,
       minutes: minutes.value === '' ? null : Number(minutes.value), servings: servings.value === '' ? null : Number(servings.value),
-      themes: themeInputs.filter(input => input.checked).map(input => input.value), ingredients: mealReadIngredients(ingredients.value), confirmed });
+      themes: themeInputs.filter(input => input.checked).map(input => input.value), ingredients: ingredients.read(),
+      instructions: instructions.value, favorite: favorite.control.checked, doNotSuggest: doNotSuggest.control.checked, confirmed });
     const actions = mealNode('div', '', 'meal-actions');
     actions.append(mealAction('Gem som udkast', async () => {
       await mealApi('/api/recipes/' + recipe.id, 'PUT', collect(false));
@@ -489,7 +801,17 @@ function showRecipes(recipes) {
     actions.append(mealAction('Genindlæs / kassér lokale rettelser', async () => {
       mealDirty.delete(key); await refreshRecipes();
     }, status));
-    for (const field of [title, diet, minutes, servings, ingredients, ...themeInputs]) field.addEventListener('input', () => {
+    if (recipe.status === 'confirmed' && recipe.instructions) actions.append(mealAction('Vis bekræftede tilberedningstrin', async () => {
+      const data = await mealApi('/api/recipes/' + recipe.id + '/instructions');
+      const verified = data.instructions;
+      const steps = typeof verified === 'string' ? verified : verified?.instructions;
+      if (typeof steps !== 'string') throw new Error('Opskriftens tilberedningstrin kunne ikke indlæses.');
+      const text = mealNode('p', steps, 'meal-original-text');
+      const previous = card.querySelector('[data-recipe-steps]');
+      if (previous) previous.replaceWith(text); else details.append(text);
+      text.dataset.recipeSteps = '';
+    }, status));
+    for (const field of [title, diet, minutes, servings, instructions, favorite.control, doNotSuggest.control, ...themeInputs]) field.addEventListener('input', () => {
       mealDirty.add(key); status.textContent = 'Rettelserne er ikke gemt endnu. Kosttype og mængder skal gennemgås af dig.';
     });
     details.append(actions); card.append(details, status); return card;
@@ -659,8 +981,11 @@ function showNemligProposals(proposals) {
         if (dirty) throw new Error('Gem det rettede forslag først.');
         approve.dataset.keepDisabled = 'true';
         try {
+          const intent = await mealApi('/api/nemlig/proposals/' + proposal.id + '/transfer-intent', 'POST', {
+            expectedRevision: proposal.revision || 1,
+          });
           await mealApi('/api/nemlig/proposals/' + proposal.id + '/approve', 'POST', {
-            approved: true, expectedRevision: proposal.revision || 1,
+            approved: true, expectedRevision: proposal.revision || 1, intentToken: intent.intentToken,
           });
         } catch (error) {
           try { await refreshNemlig(); } catch { /* Keep the transfer button disabled until status can be checked. */ }
@@ -693,11 +1018,18 @@ async function refreshNemlig() {
   showNemligProposals(status.proposals || []);
 }
 
+let calendarSelectionDirty = false;
+mealEl('meal-google-calendar-id').addEventListener('input', () => { calendarSelectionDirty = true; });
 async function refreshGoogle() {
   const data = await mealApi('/api/google/calendar/status');
+  const calendarInput = mealEl('meal-google-calendar-id');
+  if (!calendarSelectionDirty && document.activeElement !== calendarInput) calendarInput.value = data.calendarId || 'primary';
   mealEl('meal-google-status').textContent = !data.configured
     ? 'OAuth er ikke konfigureret. Kalenderforbindelsen kræver Google OAuth-klient i serverens miljø.'
-    : data.connected ? 'Google Kalender er forbundet med read-only adgang.' : 'Klar til at forbinde med Google.';
+    : data.connectionState === 'expired_login' ? 'Google-login er udløbet. Forbind igen. Dine lokale planer er bevaret.'
+    : data.connectionState === 'unavailable' ? `Kalenderen er midlertidigt utilgængelig: ${data.lastReadError}`
+    : data.connectionState === 'not_verified' ? 'Login er gemt, men kalenderens dækning er endnu ikke kontrolleret.'
+    : data.connected ? `Google Kalender er forbundet med read-only adgang. Senest læst: ${data.lastReadAt || 'ikke læst'}.` : 'Klar til at forbinde med Google.';
   mealEl('meal-google-connect').disabled = !data.configured;
   mealEl('meal-google-load').disabled = !data.connected;
   mealEl('meal-google-disconnect').disabled = !data.connected;
@@ -712,6 +1044,9 @@ async function refreshMeals() {
       mealRefreshAgain = false;
       mealData = await mealApi('/api/meals');
       showMealProfile(mealData.profile); showHousehold(mealData.household); showMealPlans(mealData.plans);
+      try { const stockResponse = mealData.inventory || await mealApi('/api/meals/inventory');
+        showMealInventory(stockResponse?.inventory || stockResponse || {}); }
+      catch (error) { mealEl('meal-inventory-status').textContent = 'Lagerstatus kunne ikke hentes: ' + error.message; }
       await Promise.all([refreshNemlig(), refreshGoogle(), refreshRecipes(), refreshShoppingDrafts()]);
       mealLoaded = true;
     } while (mealRefreshAgain);
@@ -720,15 +1055,18 @@ async function refreshMeals() {
   finally { mealRefreshPromise = null; }
 }
 
+mealEnhanceStaticUI();
 mealEl('meal-family-form').addEventListener('input', () => { mealDirty.add('household'); mealEl('meal-family-status').textContent = 'Normal husstand har ugemte ændringer.'; });
 mealEl('meal-family-form').addEventListener('submit', async event => {
   event.preventDefault();
   const unlock = mealLockControls(event.currentTarget);
+  const unlockRhythm = mealLockControls(mealRhythmEditor.element);
   try {
-    await mealApi('/api/meals/household', 'PUT', { adults: mealReadAdults(mealEl('meal-adults')), children: mealReadChildren(mealEl('meal-children').value) });
+    await mealApi('/api/meals/household', 'PUT', { adults: mealReadAdults(mealEl('meal-adults')),
+      children: mealHouseholdChildrenEditor.read(), rhythm: mealRhythmEditor.read() });
     mealDirty.delete('household'); await refreshMeals(); toast('Husstanden er gemt. Tidligere madplaner skal gennemgås igen.');
   } catch (error) { mealEl('meal-family-status').textContent = error.message; }
-  finally { unlock(); }
+  finally { unlockRhythm(); unlock(); }
 });
 mealEl('meal-family-show').addEventListener('click', () => {
   if ([...mealDirty].some(key => key.startsWith('family-day:'))) return toast('Gem eller nulstil dine dagstilpasninger, før du skifter uge.');
@@ -744,7 +1082,7 @@ mealEl('meal-profile-form').addEventListener('submit', async event => {
       householdSize: Number(mealEl('meal-household').value), diet: mealEl('meal-diet').value,
       budgetDkk: mealEl('meal-budget').value || null,
       avoid: mealEl('meal-avoid').value.split(',').map(value => value.trim()).filter(Boolean),
-      pantry: mealReadIngredients(mealEl('meal-pantry').value),
+      pantry: mealPantryEditor.read(),
     });
     mealDirty.delete('profile'); await refreshMeals(); toast('Madpræferencer gemt.');
   } catch (error) { mealEl('meal-profile-status').textContent = error.message; }
@@ -753,7 +1091,8 @@ mealEl('meal-profile-form').addEventListener('submit', async event => {
 
 mealEl('meal-plan-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (mealDirty.has('profile') || mealDirty.has('household') || [...mealDirty].some(key => key.startsWith('family-day:'))) return toast('Gem dine præferencer og husstandsdage før et nyt forslag.');
+  if (mealDirty.has('profile') || mealDirty.has('household') || mealDirty.has('inventory') ||
+      [...mealDirty].some(key => key.startsWith('family-day:'))) return toast('Gem dine præferencer, lager og husstandsdage før et nyt forslag.');
   const unlock = mealLockControls(event.currentTarget);
   try {
     await mealApi('/api/meals/plans', 'POST', { startDate: mealEl('meal-start').value, days: Number(mealEl('meal-days').value), useCalendar: mealEl('meal-use-calendar').checked });
@@ -780,6 +1119,15 @@ mealEl('meal-recipes-refresh').addEventListener('click', () => refreshRecipes().
 mealEl('meal-google-connect').addEventListener('click', async () => {
   try { const { url } = await mealApi('/api/google/calendar/connect', 'POST'); window.location.assign(url); }
   catch (error) { toast(error.message); }
+});
+mealEl('meal-google-calendar-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    await mealApi('/api/google/calendar/select', 'POST', { calendarId: mealEl('meal-google-calendar-id').value.trim() });
+    calendarSelectionDirty = false;
+    await refreshGoogle();
+    mealEl('meal-google-events').replaceChildren();
+  } catch (error) { mealEl('meal-google-status').textContent = `Kalendervalget blev ikke gemt: ${error.message}`; }
 });
 mealEl('meal-google-load').addEventListener('click', async () => {
   const root = mealEl('meal-google-events'); root.replaceChildren();

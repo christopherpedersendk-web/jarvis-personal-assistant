@@ -63,7 +63,9 @@ export function buildPersonalAgenda({ state, organizer, now = new Date() }) {
     if (due.daysUntil <= 7) week.push(entry);
   }
   for (const task of (state.tasks || []).filter(x => !x.archived)) {
-    if (task.status === 'failed') insights.push(item('high', `Opgave fejlede: ${task.title}`, 'Se sidste kørselsresultat og beslut om et nyt forsøg.',
+    if (task.status === 'failed' || task.status === 'paused' && task.lastRunStatus === 'failed' || task.lastRunStatus === 'failed' && task.consecutiveFailures > 0) insights.push(item('high', `Opgave fejlede: ${task.title}`,
+      task.status === 'scheduled' && task.nextRunAt ? `Sidste kørsel fejlede. Næste kontrollerede forsøg: ${task.nextRunAt}.`
+        : 'Se sidste kørselsresultat og beslut om et nyt forsøg.',
       { kind: 'task', id: task.id }, 'tasks'));
     if (task.status === 'scheduled' && task.nextRunAt) {
       const hours = (Date.parse(task.nextRunAt) - now.getTime()) / 3_600_000;

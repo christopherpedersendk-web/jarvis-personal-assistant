@@ -1,5 +1,6 @@
 ---
 name: gift-planning
+version: 1.0.0
 description: Brug private gaveidéer, relationer, budgetter og datoer som inspiration med klart markerede mangler.
 triggers: gave, gaver, fødselsdag, jul, ønskeliste, gaveidé, shopping
 ---

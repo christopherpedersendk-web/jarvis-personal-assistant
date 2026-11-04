@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
 
 // Illustrative recipes, never retailer prices or claims about allergen safety.
 const RECIPES = Object.freeze([
@@ -49,7 +50,7 @@ function canonicalAmount(item) {
   return { name: normalize(item.name), quantity: round(item.quantity * factor), unit };
 }
 
-function ingredientKey(item) { const converted = canonicalAmount(item); return `${converted.name}|${converted.unit}`; }
+function ingredientKey(item) { const converted = canonicalAmount(item); return `${ingredientIdentity(converted.name)}|${converted.unit}`; }
 
 function sameIngredients(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
@@ -95,6 +96,54 @@ function validateDays(value) {
   const result = {};
   for (const [date, input] of Object.entries(value)) { parseDay(date); result[date] = validateDay(input); }
   return result;
+}
+
+// A rhythm contains 1–4 ordered weeks, keyed by ISO weekday (1=Monday).
+// A concrete date in `days` always takes precedence over the rhythm.
+function validateRhythm(value) {
+  if (value === null) return null;
+  if (!isObject(value) || !Array.isArray(value.weeks) || !value.weeks.length || value.weeks.length > 4) {
+    throw new Error('Familierytmen skal indeholde 1–4 uger.');
+  }
+  const anchorMonday = value.anchorMonday;
+  if (parseDay(anchorMonday).getUTCDay() !== 1) throw new Error('Familierytmens startdato skal være en mandag.');
+  const weeks = value.weeks.map(week => {
+    if (!isObject(week) || Object.keys(week).some(day => !/^[1-7]$/.test(day))) throw new Error('Brug ugedagene 1–7 i familierytmen.');
+    return Object.fromEntries(Object.entries(week).map(([weekday, attendance]) => [weekday, validateDay(attendance)]));
+  });
+  return { anchorMonday, weeks };
+}
+
+function rhythmDay(household, date) {
+  const rhythm = household.rhythm;
+  if (!rhythm?.weeks?.length) return null;
+  const diffDays = Math.round((parseDay(date).getTime() - parseDay(rhythm.anchorMonday).getTime()) / 86400000);
+  const week = ((Math.floor(diffDays / 7) % rhythm.weeks.length) + rhythm.weeks.length) % rhythm.weeks.length;
+  const weekday = String(parseDay(date).getUTCDay() || 7);
+  return rhythm.weeks[week][weekday] || null;
+}
+
+function sameValue(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+function attendanceMeaning(value) {
+  return { adults: value.adults, children: value.children, theme: value.theme, skip: value.skip,
+    servings: value.servings, householdConfirmed: value.householdConfirmed };
+}
+
+function validateInventoryItems(value, timestamp) {
+  if (!Array.isArray(value) || value.length > 100) throw new Error('Lageret må have højst 100 varer.');
+  const rows = value.map(item => {
+    const [ingredient] = validateIngredients([{ name: item?.name, quantity: item?.quantity, unit: item?.unit }], { allowZero: true });
+    const normalized = canonicalAmount(ingredient);
+    const lastConfirmedAt = item.lastConfirmedAt ?? timestamp;
+    if (typeof lastConfirmedAt !== 'string' || Number.isNaN(Date.parse(lastConfirmedAt))) throw new Error('Angiv en gyldig dato for senest bekræftet lager.');
+    const expiresAt = item.expiresAt ?? null;
+    if (expiresAt !== null) parseDay(expiresAt);
+    return { ...normalized, lastConfirmedAt, expiresAt };
+  });
+  const keys = rows.map(ingredientKey);
+  if (new Set(keys).size !== keys.length) throw new Error('Lageret kan kun have én registreret række pr. ingrediens og enhed.');
+  return rows;
 }
 
 export function validateMealProfile(input) {
@@ -167,8 +216,7 @@ function ingredientConflicts(ingredients, diet) {
   const meat = /(?:^|[^\p{L}])(?:kylling\p{L}*|oksekød|svinekød|bacon|skinke|pølse\p{L}*|laks|tun|torsk|rejer|hakket kød|chicken|beef|pork)(?:$|[^\p{L}])/iu;
   const animal = /(?:^|[^\p{L}])(?:æg\p{L}*|egg\p{L}*|smør|ost|parmesan|mozzarella|fløde|yoghurt|yogurt|honning|komælk|sødmælk|letmælk|skummetmælk|mælk)(?:$|[^\p{L}])/iu;
   return ingredients.some(item => {
-    const name = normalize(item.name);
-    if (/\b(?:vegansk|vegetabilsk|plantebaseret)\b/u.test(name)) return false;
+    const name = normalize(item.name).replace(/\b(?:vegansk|vegetabilsk|plantebaseret)\s+(?:ost|smør|fløde|yoghurt|kylling|kød)\b/gu, 'plantealternativ');
     return meat.test(name) || diet === 'vegan' && animal.test(name);
   });
 }
@@ -177,7 +225,7 @@ function compatible(recipe, profile, theme) {
   const diet = effectiveDiet(profile, theme);
   const allowed = diet === 'omnivore' || recipe.diet === 'vegan' || diet === 'vegetarian' && recipe.diet === 'vegetarian';
   return allowed && !ingredientConflicts(recipe.ingredients, diet) &&
-    !recipe.ingredients.some(item => profile.avoid.some(term => normalize(item.name).includes(term)));
+    !recipe.ingredients.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)));
 }
 
 function assertCompatible(dish, profile) {
@@ -196,7 +244,8 @@ function validRecipe(value) {
   const sourceRef = value.sourceRef && value.sourceRef.kind === 'recipe' && typeof value.sourceRef.id === 'string'
     ? { kind: 'recipe', id: value.sourceRef.id.slice(0, 120), ...(Number.isInteger(value.sourceRef.revision) ? { revision: value.sourceRef.revision } : {}) }
     : { kind: 'recipe-catalog', id: value.id };
-  return { id: value.id, title: value.title.trim(), diet: value.diet, minutes: value.minutes, servings: value.servings, ingredients, themes, sourceRef };
+  return { id: value.id, title: value.title.trim(), diet: value.diet, minutes: value.minutes, servings: value.servings,
+    ingredients, themes, sourceRef, favorite: value.favorite === true, doNotSuggest: value.doNotSuggest === true };
 }
 
 function checkRevision(plan, expected) {
@@ -216,7 +265,8 @@ export class MealPlanner {
     this.recipeSupplier = recipes;
     this.state.mealProfile ||= { ...baseProfile, avoid: [], pantry: [] };
     this.state.mealPlans ||= [];
-    this.state.mealHousehold ||= { configured: false, adults: null, children: [], days: {}, revision: 1 };
+    this.state.mealHousehold ||= { configured: false, adults: null, children: [], days: {}, rhythm: null, revision: 1 };
+    this.state.mealInventory ||= { configured: false, items: [], revision: 1 };
     // The old release generated a list at draft creation. Preserve it as history,
     // but require review before an old plan can produce a new cart proposal.
     for (const plan of this.state.mealPlans) {
@@ -240,6 +290,54 @@ export class MealPlanner {
   profile() { return clone(this.state.mealProfile); }
   plans() { return clone(this.state.mealPlans.slice(0, 12)); }
   household() { return clone(this.state.mealHousehold); }
+
+  // Stock remains user-confirmed data. Reservations are computed from currently
+  // reviewed plans; cart transfers, meal drafts and deliveries do not alter it.
+  inventory() {
+    const inventory = this.state.mealInventory;
+    const reservations = this.inventoryReservations();
+    return { ...clone(inventory), items: inventory.items.map(item => {
+      const reserved = reservations.get(ingredientKey(item)) || 0;
+      const expired = Boolean(item.expiresAt && item.expiresAt < localToday(this.now()));
+      return { ...clone(item), reservedQuantity: reserved,
+        availableQuantity: expired ? 0 : Math.max(0, round(item.quantity - reserved)), expired };
+    }) };
+  }
+
+  inventoryReservations(excludePlanId = null) {
+    const reserved = new Map();
+    if (!this.state.mealInventory.configured) return reserved;
+    const available = new Map(this.state.mealInventory.items.filter(item =>
+      !item.expiresAt || item.expiresAt >= localToday(this.now())).map(item => [ingredientKey(item), item.quantity]));
+    for (const plan of this.state.mealPlans.filter(item => item.id !== excludePlanId && item.status === 'shopping_ready' &&
+      !item.householdStale && !item.profileStale && !item.recipeStale).slice().reverse()) {
+      const required = ingredientsFor(plan.dishes, { ...this.profile(), pantry: [] });
+      for (const item of required) {
+        const key = ingredientKey(item);
+        const used = Math.min(item.quantity, Math.max(0, round((available.get(key) || 0) - (reserved.get(key) || 0))));
+        if (used > 0) reserved.set(key, round((reserved.get(key) || 0) + used));
+      }
+    }
+    return reserved;
+  }
+
+  pantryAvailableFor(planId = null) {
+    if (!this.state.mealInventory.configured) return this.profile().pantry;
+    const reserved = this.inventoryReservations(planId);
+    return this.state.mealInventory.items.filter(item => !item.expiresAt || item.expiresAt >= localToday(this.now()))
+      .map(item => ({ name: item.name, unit: item.unit, quantity: Math.max(0, round(item.quantity - (reserved.get(ingredientKey(item)) || 0))) }));
+  }
+
+  async setInventory({ expectedRevision, items } = {}) {
+    const current = this.state.mealInventory;
+    if (!Number.isInteger(expectedRevision) || expectedRevision !== current.revision) throw new Error('Lageret er ændret. Genindlæs før du gemmer.');
+    const checked = validateInventoryItems(items, this.now().toISOString());
+    if (current.configured && sameValue(checked, current.items)) return this.inventory();
+    this.state.mealInventory = { configured: true, items: checked, revision: current.revision + 1, updatedAt: this.now().toISOString() };
+    this.invalidatePlans('Det registrerede lager er ændret. Genberegn indkøb efter din nye beholdning.', { profile: true });
+    await this.save();
+    return this.inventory();
+  }
 
   recipes() {
     const builtins = RECIPES.map(recipe => ({ ...recipe, servings: 2,
@@ -278,7 +376,10 @@ export class MealPlanner {
   }
 
   async setProfile(input) {
-    this.state.mealProfile = { ...validateMealProfile(input), updatedAt: this.now().toISOString(), source: 'user-entered' };
+    const next = validateMealProfile(input);
+    const current = this.profile();
+    if (sameValue(next, Object.fromEntries(Object.keys(next).map(key => [key, current[key]])))) return current;
+    this.state.mealProfile = { ...next, updatedAt: this.now().toISOString(), source: 'user-entered' };
     this.invalidatePlans('Madpræferencer eller lager er ændret. Gennemgå madplanen igen.', { profile: true });
     await this.save();
     return this.profile();
@@ -292,11 +393,19 @@ export class MealPlanner {
   }
 
   async setHousehold(input) {
+    if (!isObject(input)) throw new Error('Ugyldige husstandsoplysninger.');
+    const previous = this.household();
     const attendance = validateAttendance(input);
-    const days = input.days === undefined ? this.household().days : validateDays(input.days);
-    this.state.mealHousehold = { configured: true, ...attendance, days,
+    const days = input.days === undefined ? previous.days : validateDays(input.days);
+    const rhythm = input.rhythm === undefined ? previous.rhythm || null : validateRhythm(input.rhythm);
+    if (previous.configured && sameValue({ ...attendance, days, rhythm },
+      { adults: previous.adults, children: previous.children, days: previous.days, rhythm: previous.rhythm || null })) return previous;
+    const dates = [...new Set(this.state.mealPlans.flatMap(plan => plan.dishes.map(dish => dish.date)))];
+    const before = new Map(dates.map(date => [date, attendanceMeaning(this.attendanceFor(date))]));
+    this.state.mealHousehold = { configured: true, ...attendance, days, rhythm,
       revision: (this.state.mealHousehold.revision || 0) + 1, updatedAt: this.now().toISOString() };
-    this.invalidatePlans('Husstanden er ændret. Opdatér portioner fra husstanden og gennemgå planen.', { household: true });
+    const changedDates = dates.filter(date => !sameValue(before.get(date), attendanceMeaning(this.attendanceFor(date))));
+    if (changedDates.length) this.invalidatePlans('Husstanden er ændret. Opdatér portioner fra husstanden og gennemgå planen.', { dates: changedDates, household: true });
     await this.save();
     return this.household();
   }
@@ -305,13 +414,16 @@ export class MealPlanner {
     parseDay(date);
     if (!isObject(input)) throw new Error('Ugyldigt dagsvalg.');
     const current = this.household();
-    const defaults = current.days[date] || (current.configured ? { adults: current.adults, children: current.children } : {});
+    const defaults = current.days[date] || (current.configured ? this.attendanceFor(date) : {});
     const day = validateDay({ ...defaults, ...input });
     if (!Object.hasOwn(current.days, date) && Object.keys(current.days).length >= 180) throw new Error('Husstandskalenderen kan have højst 180 dagsvalg.');
+    if (sameValue(current.days[date], day)) return current;
+    const before = attendanceMeaning(this.attendanceFor(date));
     this.state.mealHousehold.days[date] = day;
     this.state.mealHousehold.revision = (current.revision || 0) + 1;
     this.state.mealHousehold.updatedAt = this.now().toISOString();
-    this.invalidatePlans(`Husstanden eller temaet den ${date} er ændret. Opdatér portioner og gennemgå planen.`, { dates: [date], household: true });
+    if (!sameValue(before, attendanceMeaning(this.attendanceFor(date))))
+      this.invalidatePlans(`Husstanden eller temaet den ${date} er ændret. Opdatér portioner og gennemgå planen.`, { dates: [date], household: true });
     await this.save();
     return this.household();
   }
@@ -319,24 +431,28 @@ export class MealPlanner {
   async removeDay(date) {
     parseDay(date);
     if (Object.hasOwn(this.state.mealHousehold.days, date)) {
+      const before = attendanceMeaning(this.attendanceFor(date));
       delete this.state.mealHousehold.days[date];
       this.state.mealHousehold.revision = (this.state.mealHousehold.revision || 0) + 1;
       this.state.mealHousehold.updatedAt = this.now().toISOString();
-      this.invalidatePlans(`Dagsvalget den ${date} er fjernet. Gennemgå standardhusstanden.`, { dates: [date], household: true });
+      if (!sameValue(before, attendanceMeaning(this.attendanceFor(date))))
+        this.invalidatePlans(`Dagsvalget den ${date} er fjernet. Gennemgå standardhusstanden.`, { dates: [date], household: true });
       await this.save();
     }
     return this.household();
   }
 
   attendanceFor(date) {
+    parseDay(date);
     const household = this.household();
     const override = household.days[date];
-    if (override || household.configured) {
-      const attendance = override || { adults: household.adults, children: household.children, theme: 'everyday', skip: false };
+    const repeating = override ? null : rhythmDay(household, date);
+    if (override || repeating || household.configured) {
+      const attendance = override || repeating || { adults: household.adults, children: household.children, theme: 'everyday', skip: false };
       const servings = round(attendance.adults + attendance.children.reduce((sum, child) => sum + child.portion, 0));
       return { ...clone(attendance), servings: attendance.skip ? 0 : servings,
         skip: Boolean(attendance.skip) || servings === 0, householdConfirmed: true,
-        attendanceSource: override ? 'day-override' : 'household-defaults' };
+        attendanceSource: override ? 'day-override' : repeating ? 'recurring-rhythm' : 'household-defaults' };
     }
     return { adults: null, children: [], theme: 'everyday', skip: false, servings: this.profile().householdSize,
       householdConfirmed: false, attendanceSource: 'legacy-unconfirmed' };
@@ -361,7 +477,7 @@ export class MealPlanner {
     const busy = new Set(calendarBusyDates);
     const used = new Set();
     const recent = new Set(this.state.mealPlans.slice(0, 3).flatMap(plan => plan.dishes.map(dish => dish.recipeId)));
-    const pantryKeys = new Set(profile.pantry.filter(item => item.quantity > 0).map(ingredientKey));
+    const pantryKeys = new Set(this.pantryAvailableFor().filter(item => item.quantity > 0).map(ingredientKey));
     const dishes = Array.from({ length: days }, (_, index) => {
       const day = addDays(date, index);
       const shortEvening = busy.has(day);
@@ -369,11 +485,11 @@ export class MealPlanner {
       if (attendance.skip) return { date: day, recipeId: null, title: 'Ingen mad hjemme', minutes: 0,
         diet: profile.diet, ...attendance, busyDay: shortEvening, ingredients: [], ingredientBasis: [], baseServings: 1,
         reasons: ['Dagen er fravalgt eller ingen er registreret hjemme.'], sourceRefs: [{ kind: 'household-day', date: day }] };
-      const choices = catalog.filter(recipe => compatible(recipe, profile, attendance.theme));
+      const choices = catalog.filter(recipe => !recipe.doNotSuggest && compatible(recipe, profile, attendance.theme));
       if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${day}. Tilføj en gennemgået opskrift, som opfylder kostvalget og undgå-listen.`);
       const scored = choices.map((recipe, order) => ({ recipe, score:
         (used.has(recipe.id) ? -1000 : 0) + (recipe.themes.includes(attendance.theme) ? 8 : 0) +
-        (recipe.sourceRef.kind === 'recipe' ? 5 : 0) + (recent.has(recipe.id) ? -2 : 0) +
+        (recipe.sourceRef.kind === 'recipe' ? 5 : 0) + (recipe.favorite ? 8 : 0) + (recent.has(recipe.id) ? -2 : 0) +
         recipe.ingredients.filter(item => pantryKeys.has(ingredientKey(item))).length * 0.5 -
         (shortEvening || attendance.theme === 'quick' ? recipe.minutes * 2 : 0),
         tie: (order + date.getUTCDate() + index) % choices.length }));
@@ -390,9 +506,11 @@ export class MealPlanner {
       used.add(recipe.id);
       return {
         date: day, recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
+        locked: false,
         ...attendance, busyDay: shortEvening, ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
         ingredients: scaleIngredients(recipe.ingredients, recipe.servings, attendance.servings), reasons,
-        sourceRefs: [clone(recipe.sourceRef), { kind: attendance.attendanceSource === 'day-override' ? 'household-day' : 'household', date: day }, { kind: 'meal-profile' }],
+        sourceRefs: [clone(recipe.sourceRef), { kind: attendance.attendanceSource === 'day-override' ? 'household-day' :
+          attendance.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: day }, { kind: 'meal-profile' }],
       };
     });
     const plan = {
@@ -401,6 +519,7 @@ export class MealPlanner {
       priceStatus: 'unknown-until-retailer-lookup', calendarAware: busy.size > 0, dishes,
       needsReview: true, householdStale: false, profileStale: false, recipeStale: false, staleReason: null,
       shoppingList: [], shoppingGeneratedAt: null, shoppingRevision: null,
+      manualShoppingExtras: [],
     };
     this.state.mealPlans.unshift(plan);
     this.state.mealPlans = this.state.mealPlans.slice(0, 12);
@@ -426,6 +545,7 @@ export class MealPlanner {
         attendanceSource: previous.attendanceSource, servings: previous.servings, theme: previous.theme, skip: previous.skip,
       };
       const theme = validateTheme(patch.theme ?? attendance.theme);
+      if (patch.locked !== undefined && typeof patch.locked !== 'boolean') throw new Error('Låsning af en madplansdag skal være sand eller falsk.');
       if (patch.skip !== undefined && typeof patch.skip !== 'boolean') throw new Error('Spring dag over skal være sand eller falsk.');
       const servings = patch.servings ?? attendance.servings;
       if (typeof servings !== 'number' || !Number.isFinite(servings) || servings < 0 || servings > 72) throw new Error('Portioner skal være 0–72.');
@@ -457,13 +577,20 @@ export class MealPlanner {
         ingredientBasis = validateIngredients(patch.ingredients);
         baseServings = servings || 1;
       }
+      const manuallyReplacedRecipe = !changedRecipe && (patch.recipeId === undefined || patch.recipeId === previous.recipeId) && (
+        patch.title !== undefined && patch.title !== previous.title ||
+        patch.minutes !== undefined && patch.minutes !== previous.minutes ||
+        patch.diet !== undefined && patch.diet !== previous.diet ||
+        patch.ingredients !== undefined && !sameIngredients(patch.ingredients, previous.ingredients));
       if (!skip && (!ingredientBasis.length || !baseServings)) throw new Error('Tilføj konkrete ingredienser til retten, før der oprettes indkøbsliste.');
       const ingredients = skip ? [] : scaleIngredients(ingredientBasis, baseServings, servings);
       const manual = patch.servings !== undefined && servings !== attendance.servings;
-      const dish = { ...previous, ...attendance, theme, skip, servings: skip ? 0 : round(servings), title: title.trim(), minutes, diet,
-        recipeId: changedRecipe ? source.id : previous.recipeId || (!skip && patch.ingredients ? `custom:${previous.date}` : null),
+      const dish = { ...previous, ...attendance, theme, skip, locked: patch.locked ?? Boolean(previous.locked), servings: skip ? 0 : round(servings), title: title.trim(), minutes, diet,
+        recipeId: changedRecipe ? source.id : manuallyReplacedRecipe ? `custom:${previous.date}` : previous.recipeId || (!skip && patch.ingredients ? `custom:${previous.date}` : null),
         baseServings, ingredientBasis, ingredients,
-        sourceRefs: changedRecipe ? [clone(source.sourceRef), { kind: 'household', date: previous.date }, { kind: 'meal-profile' }] : clone(previous.sourceRefs || []),
+        sourceRefs: changedRecipe ? [clone(source.sourceRef), { kind: previous.attendanceSource === 'day-override' ? 'household-day' :
+          previous.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: previous.date }, { kind: 'meal-profile' }] :
+          manuallyReplacedRecipe ? [{ kind: 'owner-meal', date: previous.date }, { kind: 'household', date: previous.date }, { kind: 'meal-profile' }] : clone(previous.sourceRefs || []),
         reasons: [input.refreshHousehold ? 'Portioner og tema opdateret fra den aktuelle husstand.' : 'Forslaget er tilrettet af dig.',
           ...(manual ? ['Portionsantal er manuelt tilrettet i forhold til husstandsoplysningerne.'] : []),
           'Kostvalg og undgå-liste er kontrolleret; vareetiketter skal stadig gennemgås.'],
@@ -486,7 +613,15 @@ export class MealPlanner {
     if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Planens grundlag er ændret. Gennemgå og gem madplanen før indkøbslisten oprettes.');
     this.assertRecipeSources(plan.dishes);
     for (const dish of plan.dishes) assertCompatible(dish, this.profile());
-    plan.shoppingList = ingredientsFor(plan.dishes, this.profile());
+    const requirements = ingredientsFor(plan.dishes, { ...this.profile(), pantry: this.pantryAvailableFor(id) });
+    const keys = new Set(requirements.map(ingredientKey));
+    const extras = (plan.manualShoppingExtras || []).filter(extra => !keys.has(ingredientKey(extra)));
+    const profile = this.profile();
+    if (ingredientConflicts(extras, profile.diet) ||
+      extras.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)))) {
+      throw new Error('Manuelle ekstravarer er i konflikt med de aktuelle kostvalg. Ret indkøbslisten først.');
+    }
+    plan.shoppingList = [...requirements, ...clone(extras)].sort((a, b) => a.name.localeCompare(b.name, 'da'));
     plan.revision++; plan.shoppingRevision = plan.revision; plan.status = 'shopping_ready'; plan.needsReview = false;
     plan.shoppingGeneratedAt = this.now().toISOString(); plan.updatedAt = this.now().toISOString(); plan.staleReason = null;
     await this.save();
@@ -501,7 +636,9 @@ export class MealPlanner {
     const keys = checked.map(ingredientKey);
     if (new Set(keys).size !== keys.length) throw new Error('Samme vare og enhed må kun stå én gang på indkøbslisten.');
     const profile = this.profile();
-    if (ingredientConflicts(checked, profile.diet) || checked.some(item => profile.avoid.some(term => normalize(item.name).includes(term)))) throw new Error('Indkøbslisten er i konflikt med dine madpræferencer.');
+    if (ingredientConflicts(checked, profile.diet) || checked.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)))) throw new Error('Indkøbslisten er i konflikt med dine madpræferencer.');
+    const requiredKeys = new Set(ingredientsFor(plan.dishes, { ...profile, pantry: this.pantryAvailableFor(id) }).map(ingredientKey));
+    plan.manualShoppingExtras = checked.filter(item => !requiredKeys.has(ingredientKey(item))).map(canonicalAmount);
     plan.shoppingList = checked.map(item => ({ ...canonicalAmount(item), manuallyEdited: true }));
     plan.revision++; plan.shoppingRevision = plan.revision; plan.updatedAt = this.now().toISOString();
     await this.save();
@@ -511,6 +648,72 @@ export class MealPlanner {
   getPlan(id) {
     const plan = this.state.mealPlans.find(x => x.id === id);
     if (!plan) throw new Error('Madplanen findes ikke.');
+    return plan;
+  }
+
+  // Regenerate only days the owner has left unlocked, preserving existing
+  // household counts, manual portions, sources for locked dishes and extras.
+  async regenerateUnlocked(id, { expectedRevision } = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, expectedRevision);
+    if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Planens grundlag er ændret. Gennemgå den, før der foreslås nye retter.');
+    const profile = this.profile();
+    const catalog = this.recipes();
+    const selected = new Set(plan.dishes.filter(dish => dish.locked && !dish.skip).map(dish => dish.recipeId));
+    const dishes = plan.dishes.map(previous => {
+      if (previous.locked || previous.skip) return clone(previous);
+      const choices = catalog.filter(recipe => !recipe.doNotSuggest && compatible(recipe, profile, previous.theme));
+      if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${previous.date}.`);
+      const candidates = choices.map(recipe => ({ recipe, score: (selected.has(recipe.id) ? -100 : 0) +
+        (recipe.id === previous.recipeId ? -10 : 0) + (recipe.favorite ? 8 : 0) + (recipe.themes.includes(previous.theme) ? 5 : 0) -
+        (previous.busyDay || previous.theme === 'quick' ? recipe.minutes : 0) }));
+      candidates.sort((a, b) => b.score - a.score || a.recipe.id.localeCompare(b.recipe.id));
+      const recipe = candidates[0].recipe;
+      selected.add(recipe.id);
+      return { ...clone(previous), recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
+        ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
+        ingredients: scaleIngredients(recipe.ingredients, recipe.servings, previous.servings),
+        reasons: ['Nyt forslag til en ulåst dag ud fra din registrerede husstand, dagens tema og kostvalg.'],
+        sourceRefs: [clone(recipe.sourceRef), { kind: previous.attendanceSource === 'day-override' ? 'household-day' :
+          previous.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: previous.date }, { kind: 'meal-profile' }] };
+    });
+    this.assertRecipeSources(dishes);
+    plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
+    plan.status = 'draft'; plan.needsReview = true; plan.shoppingList = []; plan.shoppingGeneratedAt = null;
+    plan.shoppingRevision = null; plan.updatedAt = this.now().toISOString();
+    await this.save();
+    return plan;
+  }
+
+  // Swap two selected meals while retaining the attendance, portion estimate,
+  // theme and calendar context of each destination date.
+  async swapDishes(id, { expectedRevision, firstDate, secondDate } = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, expectedRevision);
+    if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Gennemgå det ændrede grundlag før retterne flyttes.');
+    parseDay(firstDate); parseDay(secondDate);
+    const first = plan.dishes.find(dish => dish.date === firstDate);
+    const second = plan.dishes.find(dish => dish.date === secondDate);
+    if (!first || !second || firstDate === secondDate) throw new Error('Vælg to forskellige datoer i madplanen.');
+    if (first.locked || second.locked) throw new Error('Lås dagene op, før retterne flyttes.');
+    if (first.skip || second.skip) throw new Error('Vælg to måltidsdage før retterne byttes.');
+    const move = (source, target) => ({ ...clone(target), recipeId: source.recipeId,
+      title: source.title, minutes: source.minutes, diet: source.diet,
+      ingredientBasis: clone(source.ingredientBasis), baseServings: source.baseServings,
+      ingredients: scaleIngredients(source.ingredientBasis, source.baseServings, target.servings),
+      reasons: ['Retten er flyttet manuelt fra en anden dag; portioner er tilpasset dagens registrerede husstand.'],
+      sourceRefs: (source.sourceRefs || []).filter(ref => !['household', 'household-day', 'household-rhythm', 'meal-profile'].includes(ref.kind))
+        .map(ref => ref.kind === 'owner-meal' ? { ...ref, date: target.date } : ref)
+        .concat([{ kind: 'household', date: target.date }, { kind: 'meal-profile' }]) });
+    const movedFirst = move(second, first);
+    const movedSecond = move(first, second);
+    assertCompatible(movedFirst, this.profile()); assertCompatible(movedSecond, this.profile());
+    this.assertRecipeSources([movedFirst, movedSecond]);
+    plan.dishes = plan.dishes.map(dish => dish.date === firstDate ? movedFirst : dish.date === secondDate ? movedSecond : dish);
+    plan.servings = planServings(plan.dishes); plan.revision++; plan.status = 'draft'; plan.needsReview = true;
+    plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+    plan.updatedAt = this.now().toISOString();
+    await this.save();
     return plan;
   }
 }

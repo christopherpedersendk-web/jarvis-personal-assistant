@@ -13,10 +13,15 @@ function parseSkill(text, expectedName) {
     if (!field || Object.hasOwn(meta, field[1])) throw new Error(`Ugyldige skill-metadata: ${expectedName}`);
     meta[field[1]] = field[2].trim();
   }
-  if (meta.name !== expectedName || !meta.description || !meta.triggers || !match[2].trim()) throw new Error(`Manglende skill-felter: ${expectedName}`);
+  if (meta.name !== expectedName || !meta.description || !meta.triggers || !match[2].trim() ||
+      !/^\d+\.\d+\.\d+$/.test(meta.version || '')) throw new Error(`Manglende skill-felter: ${expectedName}`);
   const triggers = meta.triggers.split(',').map(value => value.trim().toLocaleLowerCase('da-DK')).filter(Boolean);
   if (!triggers.length || triggers.length > 20 || meta.description.length > 250) throw new Error(`Ugyldige skill-felter: ${expectedName}`);
-  return { name: meta.name, description: meta.description, triggers, body: match[2].trim().slice(0, 8500) };
+  return { name: meta.name, version: meta.version, description: meta.description, triggers,
+    // Bundled procedures are descriptive guidance only; registry metadata
+    // cannot grant tool, network, data source or recipient permissions.
+    permissions: 'existing-authorized-tools-only',
+    body: match[2].trim().slice(0, 8500) };
 }
 
 export async function loadBundledSkills(root) {
@@ -32,7 +37,13 @@ export async function loadBundledSkills(root) {
 
 export class SkillsRegistry {
   constructor(skills = []) { this.skills = skills; }
-  catalog() { return this.skills.map(({ name, description, triggers }) => ({ name, description, triggers })); }
+  catalog() { return this.skills.map(({ name, version, description, triggers, permissions }) =>
+    ({ name, version, description, triggers, permissions })); }
+  resolve(id, version) {
+    const skill = this.skills.find(item => item.name === id && item.version === version);
+    if (!skill) throw new Error('Skill eller version findes ikke i det gennemgåede katalog.');
+    return skill;
+  }
   relevant(query, limit = 2) {
     const normalized = String(query || '').toLocaleLowerCase('da-DK');
     return this.skills.map(skill => ({ skill, score: skill.triggers.filter(trigger => normalized.includes(trigger)).length }))
