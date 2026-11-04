@@ -1,12 +1,14 @@
-# JARVIS v4.9 – Familie, redigerbar madplan, opskrifter og bedre hukommelse
+# JARVIS v4.9.1 – Familie, redigerbar madplan, opskrifter og bedre hukommelse
 
-**v4.9-udviklingsversion til review:** Mad & indkøb har nu voksne, børn, alder, portionsfaktor og tema pr. dag. Madplanen starter som et redigerbart forslag. Efter gennemgang oprettes indkøbslisten, der kan redigeres og matches med Nemligs faktiske varer til et redigerbart kurvforslag. Eksisterende pantry og de valgte varer i Nemlig-kurven indgår i mængdeberegningen.
+**Godkendt v4.9-funktionalitet, forberedt til frigivelse som v4.9.1:** Mad & indkøb har nu voksne, børn, alder, portionsfaktor og tema pr. dag. Madplanen starter som et redigerbart forslag. Efter gennemgang oprettes indkøbslisten, der kan redigeres og matches med Nemligs faktiske varer til et redigerbart kurvforslag. Eksisterende pantry og de valgte varer i Nemlig-kurven indgår i mængdeberegningen.
+
+**Brug ikke det eksisterende v4.9.0-tag.** Det peger på den tidligere v4.8.1-kode og forbliver urørt. v4.9.1 bevarer de gennemgåede v4.9-funktioner og retter kun versionsmetadata og dokumentation. Tag og GitHub-release skal publiceres og verificeres særskilt; denne README bekræfter ikke, at publiceringen er gennemført.
 
 Opskrifter kan gemmes som tekst, links eller Discord-billeder. Importer ligger i en privat indbakke og bruges først efter gennemgang. Personlig hukommelse har kilde, kategori, revision, rettelse, valgfrit udløb og arkivering; modeludledte forslag kræver brugerbekræftelse. Dags-/ugeoverblikket peger på dokumenterede mangler, ændringer og næste trin uden automatisk at ændre eksterne data. Se [V49_RELEASE.md](V49_RELEASE.md) for omfang, begrænsninger, test og opgraderingskontrol.
 
 Nemlig MCP fra [`kraenhansen/nemlig-mcp`](https://github.com/kraenhansen/nemlig-mcp) er fortsat valgfri og deaktiveret uden den eksisterende opsætning. JARVIS ændrer **kun** kurven efter brugerens klik på **Overfør til Nemlig** på det konkrete, aktuelle forslag. Ingen ekstra indtastet bekræftelse. JARVIS har **ingen** bestillings-, checkout- eller betalingsfunktion. Chat, Discord og stemme kan kun forberede forslag. Google Kalender er fortsat kun læsning; aftaler bruges aldrig til at gætte, hvem der er hjemme.
 
-Der er ingen nye runtime-npm-afhængigheder og ingen automatisk ændring af eksisterende credentials. Opskriftsudtræk kan bruge den allerede konfigurerede OpenAI-tekstmodel; uden API-nøgle kan opskrifter stadig gemmes og gennemgås manuelt. Produktion forbliver på den godkendte version, indtil v4.9 er reviewed, tagget, testet og særskilt godkendt via Auto-Update Manager.
+Der er ingen nye runtime-npm-afhængigheder og ingen automatisk ændring af eksisterende credentials. Opskriftsudtræk kan bruge den allerede konfigurerede OpenAI-tekstmodel; uden API-nøgle kan opskrifter stadig gemmes og gennemgås manuelt. Et publiceret v4.9.1-tag eller en GitHub-release installerer ikke noget på serveren. Produktion forbliver på den installerede version, indtil v4.9.1 er hentet, testet og særskilt godkendt af ejeren via Auto-Update Manager.
 
 ---
 
