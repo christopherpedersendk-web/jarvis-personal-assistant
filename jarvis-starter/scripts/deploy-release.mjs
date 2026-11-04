@@ -49,7 +49,9 @@ export async function deployRelease(config, dependencies = {}) {
       !releases.startsWith(root + '/') || current !== join(root, 'current') || !audit.startsWith('/var/lib/jarvis-deployer/'))
     throw new Error('Deployment-stier er ikke godkendt.');
 
-  const state = JSON.parse(await fs.readFile(join(data, 'update-state.json'), 'utf8'));
+  let state;
+  try { state = JSON.parse(await fs.readFile(join(data, 'update-state.json'), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return { status: 'no-approval' }; throw error; }
   const approval = validatedApproval(state);
   if (!approval) return { status: 'no-approval' };
   let prior = {};
