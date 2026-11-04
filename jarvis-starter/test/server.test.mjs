@@ -40,7 +40,7 @@ test('local server protects endpoints and persists preferences without a paid AP
   const page = await fetch(base);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /JARVIS/);
-  for (const asset of ['/organizer.js','/organizer.css','/dashboard.css']) {
+  for (const asset of ['/organizer.js','/organizer.css','/dashboard.css','/intelligence.js','/intelligence.css']) {
     const response = await fetch(`${base}${asset}`);
     assert.equal(response.status, 200, `${asset} must be served to both Windows and iPhone browsers`);
   }
@@ -48,6 +48,10 @@ test('local server protects endpoints and persists preferences without a paid AP
   const unauthorized = await fetch(`${base}/api/state`);
   assert.equal(unauthorized.status, 401);
   assert.equal((await fetch(`${base}/api/discord/settings`)).status, 401);
+  assert.equal((await fetch(`${base}/api/knowledge/search`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/api/proactive`)).status, 401);
+  assert.equal((await fetch(`${base}/api/skills`)).status, 401);
+  assert.equal((await fetch(`${base}/api/integrations`)).status, 401);
 
   const authorizedHeaders = { Authorization: `Bearer ${token}` };
   const discordInitial = await fetch(`${base}/api/discord/settings`, { headers: authorizedHeaders });
@@ -160,8 +164,30 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal((await found.json()).matches[0].id, item.id);
   const dashboardResponse = await fetch(`${base}/api/dashboard`, { headers: authorizedHeaders });
   assert.equal(dashboardResponse.status, 200);
-  assert.ok((await dashboardResponse.json()).upcoming.some(x => x.title === 'Min brors fødselsdag'));
+  const dashboard = await dashboardResponse.json();
+  assert.ok(dashboard.upcoming.some(x => x.title === 'Min brors fødselsdag'));
+  assert.ok(dashboard.agenda.week.some(x => x.title === 'Min brors fødselsdag'));
   assert.equal((await fetch(`${base}/api/organizer`)).status, 401);
+
+  const knowledgeResponse = await fetch(`${base}/api/knowledge/search`, { method: 'POST',
+    headers: { ...authorizedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'brors' }) });
+  assert.equal(knowledgeResponse.status, 200);
+  const knowledge = await knowledgeResponse.json();
+  assert.equal(knowledge.mode, 'local-lexical');
+  assert.ok(knowledge.matches.some(x => x.source.itemId === item.id));
+  const skillsResponse = await fetch(`${base}/api/skills`, { headers: authorizedHeaders });
+  assert.equal((await skillsResponse.json()).skills.length, 3);
+  const integrationsResponse = await fetch(`${base}/api/integrations`, { headers: authorizedHeaders });
+  const integrations = await integrationsResponse.json();
+  assert.equal(integrations.integrations.find(x => x.id === 'google-calendar').implementation, 'planned');
+  assert.doesNotMatch(JSON.stringify(integrations), /secret-bot/);
+  const proactiveSettings = await fetch(`${base}/api/proactive/settings`, { method: 'POST',
+    headers: { ...authorizedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyTime: '08:45', discordEnabled: false }) });
+  assert.equal(proactiveSettings.status, 200);
+  assert.equal((await proactiveSettings.json()).settings.dailyTime, '08:45');
+  const badProactiveSettings = await fetch(`${base}/api/proactive/settings`, { method: 'POST',
+    headers: { ...authorizedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyTime: '25:90' }) });
+  assert.equal(badProactiveSettings.status, 400);
 
   const chat = await fetch(`${base}/api/message`, {
     method: 'POST',

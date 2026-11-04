@@ -25,7 +25,7 @@ function initializeDashboard() {
   const hero = document.querySelector('#tab-home .hero-panel');
   if (hero) $('tab-home').prepend(hero);
   const chat = document.querySelector('#tab-home .chat-panel');
-  if (chat) $('tab-home').insertBefore(chat, $('home-feed'));
+  if (chat) $('tab-home').insertBefore(chat, $('home-overview'));
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => selectTab(button.dataset.tab)));
 }
 
@@ -817,6 +817,9 @@ async function handleVoiceTool(channel, call) {
       const data = await api('/api/approvals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
       output = { ok: true, status: data.action.status, note: 'Kun forberedt. Ingen booking, køb eller besked er gennemført.' };
       await refreshSecretary();
+    } else if (call.name === 'search_personal_knowledge') {
+      output = await api('/api/knowledge/search', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
     } else if (['list_collections', 'get_collection', 'search_collection_items', 'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item'].includes(call.name)) {
       output = await handleOrganizerVoice(call.name, args);
     } else if (call.name === 'list_hue_devices') {
