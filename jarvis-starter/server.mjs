@@ -15,11 +15,20 @@ import { ProactiveReminders } from './proactive-reminders.mjs';
 import { DiscordGateway, validateDiscordConfig } from './discord-gateway.mjs';
 import { SmartHome } from './smart-home.mjs';
 import { HueBridge, validBridgeIp } from './hue-bridge.mjs';
+import { systemHealth } from './system-health.mjs';
+import { UpdateManager } from './update-manager.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const publicRoot = join(root, 'public');
+const packageVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
 const dataPath = join(process.env.JARVIS_DATA_DIR || join(root, 'data'), 'state.json');
 const privateSettingsPath = join(dirname(dataPath), 'private-settings.json');
+const updates = await new UpdateManager({
+  dataDirectory: dirname(dataPath),
+  stagingDirectory: process.env.JARVIS_UPDATE_STAGING || join(root, '..', 'update-staging'),
+  repository: process.env.JARVIS_UPDATE_REPO || '',
+  currentVersion: `v${packageVersion}`,
+}).load();
 const port = Number(process.env.JARVIS_PORT || 8787);
 const host = process.env.JARVIS_HOST || '127.0.0.1';
 const accessToken = process.env.JARVIS_ACCESS_TOKEN || '';
@@ -135,7 +144,16 @@ const secretary = new SecretaryCore({ state, save });
 const organizer = new OrganizerCore({ state, save });
 const smartHome = new SmartHome({ state, save });
 const hue = new HueBridge();
-const reminders = new ProactiveReminders({ state, organizer, save, notify: item => secretary.addInbox(item),
+async function notifyDiscord(title, detail) {
+  if (state.settings.discordAlertsEnabled !== true) return false;
+  try { return await discord.notifyOwner(`${title}\n${String(detail || '').slice(0, 1700)}`); }
+  catch (error) { console.error('Discord-notifikation fejlede:', error.message); return false; }
+}
+
+const reminders = new ProactiveReminders({ state, organizer, save, notify: async item => {
+  await secretary.addInbox(item);
+  await notifyDiscord(item.title, item.text);
+},
   enabled: () => state.settings.remindersEnabled !== false });
 
 function addMessage(role, text, channel = 'text') {
@@ -221,6 +239,8 @@ const taskEngine = new TaskEngine({
     await secretary.addInbox({ title: `${task.title}: ${status === 'completed' ? 'færdig' : 'fejl'}`,
       text: status === 'completed' ? latest.slice(0, 1800) : 'Opgaven fejlede. Åbn opgaven for detaljer.',
       kind: task.category || 'research', taskId: task.id });
+    await notifyDiscord(`JARVIS · ${task.title}: ${status === 'completed' ? 'færdig' : 'fejl'}`,
+      status === 'completed' ? latest.slice(0, 1400) : 'Åbn opgaven i Command Center for detaljer.');
     if (notificationsEnabled(pushConfig)) await sendPushover(pushConfig, taskNotification(task, status));
   },
   maxRunsPerDay: state.settings.maxRunsPerDay || process.env.JARVIS_MAX_RUNS_PER_DAY || 10,
@@ -443,6 +463,19 @@ async function route(req, res) {
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/dashboard') return json(res, 200, buildCommandCenter({ state, organizer }));
+    if (req.method === 'GET' && path === '/api/system-health') return json(res, 200,
+      await systemHealth({ discord, taskEngine, dataDirectory: dirname(dataPath) }));
+    if (req.method === 'GET' && path === '/api/updates') return json(res, 200, updates.snapshot());
+    if (req.method === 'POST' && path === '/api/updates/action') {
+      try {
+        const input = await bodyJson(req);
+        const result = input.action === 'check' ? await updates.check()
+          : input.action === 'stage' ? await updates.stage()
+            : input.action === 'approve' ? await updates.approve(input.version) : null;
+        if (!result) return json(res, 400, { error: 'Ukendt opdateringshandling.' });
+        return json(res, 200, result);
+      } catch (error) { return json(res, 409, { error: error.message }); }
+    }
     if (req.method === 'GET' && path === '/api/organizer') return json(res, 200, { collections: organizer.list() });
     if (req.method === 'POST' && path === '/api/organizer/search') {
       try { return json(res, 200, { matches: organizer.search((await bodyJson(req)).query) }); }
@@ -482,6 +515,7 @@ async function route(req, res) {
     if (req.method === 'GET' && path === '/api/settings') return json(res, 200, {
       maxRunsPerDay: taskEngine.maxRunsPerDay,
       remindersEnabled: state.settings.remindersEnabled !== false,
+      discordAlertsEnabled: state.settings.discordAlertsEnabled === true,
       httpsUrl: pushConfig.url || '',
       pushConfigured: notificationsEnabled(pushConfig),
       hasPushToken: Boolean(pushConfig.token), hasPushUser: Boolean(pushConfig.user),
@@ -502,6 +536,7 @@ async function route(req, res) {
         state.settings.maxRunsPerDay = limit;
         taskEngine.maxRunsPerDay = limit;
         if (typeof input.remindersEnabled === 'boolean') state.settings.remindersEnabled = input.remindersEnabled;
+        if (typeof input.discordAlertsEnabled === 'boolean') state.settings.discordAlertsEnabled = input.discordAlertsEnabled;
         await save();
         return json(res, 200, { ok: true });
       } catch (error) { return json(res, 400, { error: error.message }); }
@@ -772,7 +807,7 @@ async function route(req, res) {
   }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Metoden understøttes ikke.' });
-  const files = { '/': 'index.html', '/app.js': 'app.js', '/organizer.js': 'organizer.js', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
+  const files = { '/': 'index.html', '/app.js': 'app.js', '/organizer.js': 'organizer.js', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
   const file = files[path];
   if (!file) return json(res, 404, { error: 'Siden findes ikke.' });
   const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';
@@ -804,3 +839,16 @@ const reminderTimer = setInterval(() => reminders.tick().catch(error => console.
 reminderTimer.unref?.();
 reminders.tick().catch(error => console.error('Påmindelsesfejl:', error.message));
 taskEngine.tick().catch(error => console.error('Opgavefejl:', error.message));
+
+async function checkForUpdates() {
+  if (!updates.snapshot().configured) return;
+  const previous = updates.snapshot().available?.version;
+  try {
+    const result = await updates.check();
+    if (result.available && result.available.version !== previous)
+      await notifyDiscord('JARVIS · Ny version', `${result.available.version} kan hentes og testes under System Health.`);
+  } catch (error) { console.error('Versionskontrol:', error.message); }
+}
+const updateTimer = setInterval(checkForUpdates, 6 * 60 * 60_000);
+updateTimer.unref?.();
+setTimeout(checkForUpdates, 60_000).unref?.();

@@ -13,10 +13,12 @@
   <link rel="stylesheet" href="/secretary.css" />
   <link rel="stylesheet" href="/dashboard.css" />
   <link rel="stylesheet" href="/smart-home.css" />
+  <link rel="stylesheet" href="/system-health.css" />
   <link rel="stylesheet" href="/organizer.css" />
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
+  <script src="/system-health.js" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -45,11 +47,13 @@
         <button type="button" class="tab-button" data-tab="secretary">✦ Sekretær</button>
         <button type="button" class="tab-button" data-tab="organizer">▤ Noter &amp; lister</button>
         <button type="button" class="tab-button" data-tab="smart-home">⌂ Smart Home</button>
+        <button type="button" class="tab-button" data-tab="system">♡ System Health</button>
         <button type="button" class="tab-button" data-tab="settings">⚙ Indstillinger</button>
       </nav>
       <div id="tab-home" class="tab-view active-view" role="region" aria-label="Samtale og overblik">
         <div id="home-overview" class="overview-cards" aria-live="polite"></div>
         <section id="home-smart-home" class="panel smart-home-summary" aria-live="polite"></section>
+        <section id="home-system-health" class="panel system-health-summary" aria-live="polite"><h2>System Health</h2><p class="muted">Henter systemstatus …</p></section>
         <div id="home-feed" class="command-center" aria-live="polite"></div>
       </div>
       <div id="tab-tasks" class="tab-view hidden" role="region" aria-label="Opgaver"></div>
@@ -94,6 +98,24 @@
           <div id="smart-home-events" class="home-events"></div>
         </section>
       </div>
+      <div id="tab-system" class="tab-view hidden" role="region" aria-label="System Health og opdateringer">
+        <section class="panel">
+          <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.6</span></div>
+          <p class="muted small-text">Faktiske målinger fra cloud-serveren. Status opdateres, mens du har Command Center åbent.</p>
+          <div id="system-health-details" class="system-health-grid"></div>
+          <button type="button" id="system-refresh" class="secondary">Opdater status</button>
+        </section>
+        <section class="panel">
+          <h2>Auto-Update Manager</h2>
+          <p class="muted small-text">Nye GitHub-versioner kan findes, hentes og testes uden at påvirke den kørende JARVIS. Installation kræver særskilt godkendelse og en dedikeret deploy-tjeneste.</p>
+          <p id="update-status" aria-live="polite">Henter opdateringsstatus …</p>
+          <div class="system-actions">
+            <button type="button" id="update-check" class="secondary">Søg efter version</button>
+            <button type="button" id="update-stage" class="secondary">Hent og test</button>
+            <button type="button" id="update-approve" class="primary">Godkend testet version</button>
+          </div>
+        </section>
+      </div>
       <div id="tab-settings" class="tab-view hidden" role="region" aria-label="Indstillinger">
         <section class="panel settings-panel">
           <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.3</span></div>
@@ -102,6 +124,7 @@
             <label for="max-runs">Maksimalt antal baggrundsopgaver pr. dag</label>
             <input id="max-runs" type="number" min="1" max="100" required />
             <label class="inline-check" for="reminders-enabled"><input id="reminders-enabled" type="checkbox" checked /> Vis proaktive påmindelser om kommende datoer i JARVIS-indbakken</label>
+            <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send opgave- og datopåmindelser til mig via Discord DM</label>
             <label for="https-url">JARVIS' HTTPS-adresse</label>
             <input id="https-url" type="url" placeholder="https://din-enhed.tailnet.ts.net" />
             <label for="push-user">Pushover User Key</label>

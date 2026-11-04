@@ -270,6 +270,18 @@ Denne version viderefører v4.3 og tilføjer en **Smart Home**-fane, en statusse
 
 ---
 
+## JARVIS v4.6 – Cloud Operations (staging-release)
+
+Version 4.6 tilføjer **System Health**, en **Auto-Update Manager** og **proaktive Discord-direktebeskeder**. De eksisterende noter, opgaver, projekter, Hue- og Sonos-indstillinger videreføres uændret.
+
+- **System Health** viser JARVIS-proces, hukommelse, disk, Discord og seneste backup-service-status. Det er diagnosticering, ikke en ekstern overvågningstjeneste.
+- **Discord-notifikationer** er fravalgt som standard. Ejeren kan slå dem til i indstillingerne. JARVIS sender kun til den konfigurerede ejers private Discord-DM, eksempelvis ved afsluttede/fejlede opgaver, påmindelser og nye versioner. Discord-bottens DM-indstillinger skal tillade beskeder.
+- **Auto-Update Manager** finder nye `vX.Y.Z`-tags fra et privat GitHub-repository via SSH, downloader den præcise version til separat staging, kontrollerer commit-SHA og kører tests i en isoleret Docker-container uden netværk. Brugeren kan derefter godkende versionen. En **separat root-ejet deployment-service** kan, når den er installeret manuelt og afprøvet, aktivere en godkendt release med backup, healthcheck og rollback. Webprocessen har ikke sudo- eller systemd-rettigheder.
+
+Se [V46_DEPLOYMENT.md](V46_DEPLOYMENT.md) for opsætning på Ubuntu, sikkerhed og begrænsninger. Tidligere README-afsnit dokumenterer oprindelige Windows-versioner og skal læses som historik.
+
+---
+
 # JARVIS v4.5 – Philips Hue + Google Nest-forberedelse
 
 Denne komplette opgradering bygger videre på v4.4 og bevarer Discord, noter/lister, kodeprojekter og den eksisterende Sonos-adapter.
