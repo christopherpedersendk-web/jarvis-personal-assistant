@@ -20,12 +20,14 @@ import { UpdateManager } from './update-manager.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const publicRoot = join(root, 'public');
+const packageVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
 const dataPath = join(process.env.JARVIS_DATA_DIR || join(root, 'data'), 'state.json');
 const privateSettingsPath = join(dirname(dataPath), 'private-settings.json');
 const updates = await new UpdateManager({
   dataDirectory: dirname(dataPath),
   stagingDirectory: process.env.JARVIS_UPDATE_STAGING || join(root, '..', 'update-staging'),
   repository: process.env.JARVIS_UPDATE_REPO || '',
+  currentVersion: `v${packageVersion}`,
 }).load();
 const port = Number(process.env.JARVIS_PORT || 8787);
 const host = process.env.JARVIS_HOST || '127.0.0.1';
