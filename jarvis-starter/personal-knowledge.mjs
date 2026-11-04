@@ -45,6 +45,18 @@ export function indexPersonalKnowledge(state) {
       `${project.title} · ${project.description || ''} · Revision ${project.revision || 'ukendt'}`,
       { kind: 'project', id: project.id }, project.updatedAt || project.createdAt));
   }
+  if (state.mealProfile?.source === 'user-entered') {
+    const profile = state.mealProfile;
+    documents.push(makeDocument('meal-profile:current', 'meal-profile', 'Madpræferencer',
+      `Husstand ${profile.householdSize} personer · Kost ${profile.diet} · Budget ${profile.budgetDkk ?? 'ikke angivet'} DKK · Undgå: ${(profile.avoid || []).join(', ') || 'intet angivet'} · Lager: ${(profile.pantry || []).map(x => `${x.name} ${x.quantity} ${x.unit}`).join(', ') || 'ikke angivet'}`,
+      { kind: 'meal-profile' }, profile.updatedAt));
+  }
+  for (const plan of (state.mealPlans || []).slice(0, 12)) {
+    if (!plan.id || !Array.isArray(plan.dishes)) continue;
+    documents.push(makeDocument(`meal-plan:${plan.id}`, 'meal-plan', 'Madplan',
+      `${plan.startDate} · ${plan.dishes.map(x => `${x.date}: ${x.title}`).join('; ')}`,
+      { kind: 'meal-plan', id: plan.id }, plan.createdAt));
+  }
   // Samtalehistorik, logfiler, .env og eksterne dokumenter bliver ikke indekseret.
   return documents;
 }

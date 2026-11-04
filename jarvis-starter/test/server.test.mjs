@@ -40,7 +40,7 @@ test('local server protects endpoints and persists preferences without a paid AP
   const page = await fetch(base);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /JARVIS/);
-  for (const asset of ['/organizer.js','/organizer.css','/dashboard.css','/intelligence.js','/intelligence.css']) {
+  for (const asset of ['/organizer.js','/organizer.css','/dashboard.css','/intelligence.js','/intelligence.css','/meals.js','/meals.css']) {
     const response = await fetch(`${base}${asset}`);
     assert.equal(response.status, 200, `${asset} must be served to both Windows and iPhone browsers`);
   }
@@ -52,6 +52,10 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal((await fetch(`${base}/api/proactive`)).status, 401);
   assert.equal((await fetch(`${base}/api/skills`)).status, 401);
   assert.equal((await fetch(`${base}/api/integrations`)).status, 401);
+  assert.equal((await fetch(`${base}/api/meals`)).status, 401);
+  assert.equal((await fetch(`${base}/api/nemlig/status`)).status, 401);
+  assert.equal((await fetch(`${base}/api/google/calendar/status`)).status, 401);
+  assert.equal((await fetch(`${base}/api/nemlig/proposals/example/approve`, { method: 'POST' })).status, 401);
 
   const authorizedHeaders = { Authorization: `Bearer ${token}` };
   const discordInitial = await fetch(`${base}/api/discord/settings`, { headers: authorizedHeaders });
@@ -176,11 +180,37 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal(knowledge.mode, 'local-lexical');
   assert.ok(knowledge.matches.some(x => x.source.itemId === item.id));
   const skillsResponse = await fetch(`${base}/api/skills`, { headers: authorizedHeaders });
-  assert.equal((await skillsResponse.json()).skills.length, 3);
+  assert.equal((await skillsResponse.json()).skills.length, 4);
   const integrationsResponse = await fetch(`${base}/api/integrations`, { headers: authorizedHeaders });
   const integrations = await integrationsResponse.json();
-  assert.equal(integrations.integrations.find(x => x.id === 'google-calendar').implementation, 'planned');
+  assert.equal(integrations.integrations.find(x => x.id === 'google-calendar').implementation, 'available');
+  assert.equal(integrations.integrations.find(x => x.id === 'nemlig').status, 'not_configured');
   assert.doesNotMatch(JSON.stringify(integrations), /secret-bot/);
+  const calendarStatus = await (await fetch(`${base}/api/google/calendar/status`, { headers: authorizedHeaders })).json();
+  assert.equal(calendarStatus.configured, false);
+  assert.equal(calendarStatus.canEdit, false);
+  assert.equal((await fetch(`${base}/api/google/calendar/connect`, { method: 'POST', headers: authorizedHeaders })).status, 409);
+  const nemligStatus = await (await fetch(`${base}/api/nemlig/status`, { headers: authorizedHeaders })).json();
+  assert.equal(nemligStatus.configured, false);
+  assert.equal(nemligStatus.canPlaceOrder, false);
+  assert.equal(nemligStatus.approvalRequired, true);
+  const newProfile = await fetch(`${base}/api/meals/profile`, {
+    method: 'PUT', headers: { ...authorizedHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ householdSize: 3, diet: 'vegan', avoid: ['æg'], pantry: [{ name: 'ris', quantity: 100, unit: 'g' }], budgetDkk: 500 }),
+  });
+  assert.equal(newProfile.status, 200);
+  assert.equal((await newProfile.json()).profile.diet, 'vegan');
+  const newPlan = await fetch(`${base}/api/meals/plans`, {
+    method: 'POST', headers: { ...authorizedHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ startDate: '2026-11-05', days: 3 }),
+  });
+  assert.equal(newPlan.status, 201);
+  const planned = (await newPlan.json()).plan;
+  assert.equal(planned.dishes.length, 3);
+  assert.equal(planned.priceStatus, 'unknown-until-retailer-lookup');
+  const mealSearch = await fetch(`${base}/api/knowledge/search`, { method: 'POST',
+    headers: { ...authorizedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'madplan' }) });
+  assert.equal((await mealSearch.json()).matches.some(x => x.type === 'meal-plan'), true);
   const proactiveSettings = await fetch(`${base}/api/proactive/settings`, { method: 'POST',
     headers: { ...authorizedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyTime: '08:45', discordEnabled: false }) });
   assert.equal(proactiveSettings.status, 200);

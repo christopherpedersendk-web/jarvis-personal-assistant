@@ -1,4 +1,14 @@
-# JARVIS v4.7 – Personlig intelligens, Command Center og sikre integrationer
+# JARVIS v4.8 – Google Kalender, madhukommelse, madplan og godkendt Nemlig-kurv
+
+**v4.8-arbejdsbranch:** Tilføjer fanen **Mad & indkøb** med gemte husstandspræferencer, pantry, budgetmål, madplaner og indkøbslister. Lokal personlig søgning inkluderer nu eksplicit gemte madpræferencer og madplaner med kilde-ID'er. Google Kalender bruger OAuth2 og kun `calendar.readonly`; ved frivilligt tilvalg kan madplanen prioritere hurtigere retter på aftaledage. Kalenderaftalers tekst gemmes ikke i madplanerne.
+
+Nemlig MCP fra [`kraenhansen/nemlig-mcp`](https://github.com/kraenhansen/nemlig-mcp) er en *valgfri*, som udgangspunkt deaktiveret adapter til produktsøgning, kurvlæsning og **kurvforslag**. JARVIS ændrer **kun** kurven efter at brugeren har gennemgået det konkrete forslag og skrevet `OPDATER NEMLIG-KURV` i brugerfladen. JARVIS har **ingen** bestillings-, checkout- eller betalingsfunktion. Chat, Discord og stemme kan kun forberede forslag. Se [V48_RELEASE.md](V48_RELEASE.md) for opsætning, begrænsninger, risiko og test.
+
+Der er ingen nye runtime-npm-afhængigheder. De nye eksterne forbindelser kræver separat brugeropsætning og er **ikke** automatisk tilsluttede ved opgradering. Den eksisterende produktionsversion skal forblive uberørt, indtil v4.8 er reviewed, tagget, testet og godkendt via Auto-Update Manager.
+
+---
+
+## Tidligere: v4.7
 
 Denne versions aktuelle installationsmetode er privat GitHub → Auto-Update Manager → isolerede tests → **udtrykkelig godkendelse** → systemd-deployment med rollback. Cloud-serveren bruger den fælles, private `shared/data`-mappe og den eksisterende lokale restic-backup. Se [V47_RELEASE.md](V47_RELEASE.md) for teknisk arkitektur, test, sikkerhed og opgraderingsplan. Afsnittene nedenfor om Windows beskriver ældre versioner.
 

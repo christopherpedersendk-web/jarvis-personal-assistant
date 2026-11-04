@@ -2,7 +2,7 @@ import { readFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // Kun versionsstyrede, gennemgåede procedurer; ikke eksterne eller brugerskrevne filer.
-const BUILTIN_SKILLS = ['daily-briefing', 'personal-follow-up', 'gift-planning'];
+const BUILTIN_SKILLS = ['daily-briefing', 'personal-follow-up', 'gift-planning', 'meal-planning'];
 
 function parseSkill(text, expectedName) {
   const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text.replace(/\r\n/g, '\n'));

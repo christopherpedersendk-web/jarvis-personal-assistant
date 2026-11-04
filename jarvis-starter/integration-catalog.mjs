@@ -1,7 +1,8 @@
 // Integrations-kontrakter, ikke aktive forbindelser. Ingen tokens eller udgående handlinger.
 const PROVIDERS = Object.freeze([
   { id: 'discord', title: 'Discord', category: 'messages', capabilities: ['notify.owner', 'message.owner'], outboundPolicy: 'owner-opt-in' },
-  { id: 'google-calendar', title: 'Google Kalender', category: 'calendar', capabilities: ['events.read', 'events.propose'], outboundPolicy: 'approval-before-write' },
+  { id: 'google-calendar', title: 'Google Kalender', category: 'calendar', capabilities: ['events.read'], outboundPolicy: 'read-only' },
+  { id: 'nemlig', title: 'Nemlig.com MCP', category: 'shopping', capabilities: ['products.read', 'basket.read', 'basket.propose', 'basket.write.after_explicit_approval'], outboundPolicy: 'approval-before-write' },
   { id: 'google-tasks', title: 'Google Tasks', category: 'tasks', capabilities: ['tasks.read', 'tasks.propose'], outboundPolicy: 'approval-before-write' },
   { id: 'home-assistant', title: 'Home Assistant', category: 'home', capabilities: ['entities.read', 'actions.propose'], outboundPolicy: 'approval-before-write' },
   { id: 'hue', title: 'Philips Hue', category: 'home', capabilities: ['lights.read', 'lights.control.with_user_request'], outboundPolicy: 'explicit-request' },
@@ -9,15 +10,19 @@ const PROVIDERS = Object.freeze([
   { id: 'nest', title: 'Google Nest', category: 'home', capabilities: ['doorbell.events'], outboundPolicy: 'read-only' },
 ]);
 
-export function integrationCatalog({ discordStatus = 'disabled', discordConfigured = false, huePaired = false, sonosConfigured = false } = {}) {
+export function integrationCatalog({ discordStatus = 'disabled', discordConfigured = false, huePaired = false, sonosConfigured = false,
+  googleCalendarConfigured = false, googleCalendarConnected = false, nemligConfigured = false } = {}) {
   return PROVIDERS.map(provider => {
     const status = provider.id === 'discord' && discordConfigured && discordStatus === 'connected' ? 'connected'
       : provider.id === 'discord' && discordConfigured ? 'configured'
+        : provider.id === 'google-calendar' && googleCalendarConnected ? 'connected'
+          : provider.id === 'google-calendar' && googleCalendarConfigured ? 'configured'
+            : provider.id === 'nemlig' && nemligConfigured ? 'configured'
         : provider.id === 'hue' && huePaired ? 'configured'
           : provider.id === 'sonos' && sonosConfigured ? 'configured' : 'not_configured';
-    return { ...provider, status, implementation: ['discord', 'hue', 'sonos'].includes(provider.id) ? 'available' : 'planned',
+    return { ...provider, status, implementation: ['discord', 'hue', 'sonos', 'google-calendar', 'nemlig'].includes(provider.id) ? 'available' : 'planned',
       permissions: { read: provider.capabilities.some(x => x.endsWith('.read') || x === 'message.owner' || x === 'doorbell.events'),
-        externalWrite: provider.capabilities.some(x => x.includes('.propose') || x.includes('control') || x.startsWith('notify.')) } };
+        externalWrite: provider.capabilities.some(x => x.includes('.write.') || x.includes('control') || x.startsWith('notify.')) } };
   });
 }
 
