@@ -22,7 +22,7 @@ function basketSummary(source) {
   // than authorizing a write against an incomplete/stale basket snapshot.
   if (!Array.isArray(source.Lines) || source.Lines.length > 500) throw new Error('Nemlig-kurvens linjer kunne ikke verificeres. Ingen ændringer tilladt.');
   const result = {};
-  for (const key of ['NumberOfProducts', 'TotalProductsPrice', 'TotalProductDiscountPrice', 'TotalBagsPrice', 'TotalDepositsPrice', 'DeliveryPrice', 'TotalPrice', 'IsMinTotalValid', 'MinimumOrderTotal', 'ValidationFailures']) {
+  for (const key of ['NumberOfProducts', 'TotalProductsPrice', 'TotalProductDiscountPrice', 'TotalBagsPrice', 'TotalDepositsPrice', 'DeliveryPrice', 'TotalPrice', 'IsMinTotalValid', 'MinimumOrderTotal']) {
     if (Object.hasOwn(source, key)) result[key] = source[key];
   }
   result.Lines = Array.isArray(source.Lines) ? source.Lines.map(publicLine).filter(Boolean) : [];
@@ -68,7 +68,9 @@ export function callLocalNemligMcp(name, args = {}, { directory = process.env.NE
     ...(process.env.NEMLIG_PASS ? { NEMLIG_PASS: process.env.NEMLIG_PASS } : {}),
   };
   return new Promise((resolve, reject) => {
-    const child = spawn(command, ['--directory', directory, 'run', '--frozen', 'nemlig-mcp'], {
+    // The owner must have run uv sync --frozen at install time. Do not sync or
+    // download new dependencies while JARVIS is handling a shopping request.
+    const child = spawn(command, ['--directory', directory, 'run', '--no-sync', '--offline', 'nemlig-mcp'], {
       stdio: ['pipe', 'pipe', 'pipe'], env, shell: false,
     });
     let finished = false; let bytes = 0; let initialized = false;
@@ -81,6 +83,7 @@ export function callLocalNemligMcp(name, args = {}, { directory = process.env.NE
     function fail(error) { finish(null, error); }
     function send(message) { child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\n'); }
     const lines = createInterface({ input: child.stdout });
+    child.stdin.on('error', () => {}); // EPIPE on startup/timeout is handled by child error/exit.
     child.stdout.on('data', chunk => { bytes += chunk.length; if (bytes > MAX_BYTES) fail(new Error('Nemlig MCP-svar overskred størrelsesgrænsen.')); });
     child.stderr.on('data', () => {}); // Never log third-party stderr; credentials may be present.
     child.on('error', () => fail(new Error('Nemlig MCP kunne ikke startes.')));

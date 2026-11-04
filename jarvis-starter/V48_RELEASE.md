@@ -35,7 +35,7 @@ OAuth-kontrol: en éngangstilstand med PKCE udløber efter ti minutter og forbru
 ## Nemlig MCP – manuel første opsætning
 
 1. Gennemgå upstream-koden og licens, sikkerhed og Nemligs gældende vilkår. **Fastlås en gennemgået commit** for [`kraenhansen/nemlig-mcp`](https://github.com/kraenhansen/nemlig-mcp). Den er ikke vendoreret i JARVIS-koden.
-2. På Ubuntu-serveren: installer `uv` og Python 3.11+, klon upstream i en separat privat mappe, checkout den fastlåste commit, og kør `uv sync --frozen`. Verificer upstream med `uv run pytest` og `uv run python tests/smoke_stdio.py` uden produktionscredentials, før adgang aktiveres. Kontrollér at `command -v uv` giver en absolut sti.
+2. På Ubuntu-serveren: installer `uv` og Python 3.11+, klon upstream i en separat privat mappe, checkout den fastlåste commit, og kør `uv sync --frozen`. Verificer upstream med `uv run pytest` og `uv run python tests/smoke_stdio.py` uden produktionscredentials, før adgang aktiveres. Kontrollér at `command -v uv` giver en absolut sti. JARVIS starter derefter adapteren med `uv run --no-sync --offline`, så nye Python-afhængigheder ikke installeres under en kurvhandling.
 3. Gem Nemlig-legitimationsoplysninger **uden for repoet** i `/home/administrator/.config/nemlig/login.json` som `{"username":"...","password":"..."}` med `chmod 600` og ejer `administrator`. Alternativt `NEMLIG_USER`/`NEMLIG_PASS` i privat `shared/.env` (aldrig i chat). Del ikke filen i nogen fejlrapport.
 4. Tilføj følgende til `shared/.env` (tilpas de **absolutte** stier):
 
