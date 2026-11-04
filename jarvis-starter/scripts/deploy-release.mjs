@@ -71,9 +71,11 @@ export async function deployRelease(config, dependencies = {}) {
 
   // Back up BEFORE touching the live symlink. The backup unit is root-owned.
   await run('/usr/bin/systemctl', ['start', 'jarvis-backup.service'], { timeout: 180000 });
-  await fs.mkdir(releases, { recursive: true, mode: 0o750 });
+  await fs.mkdir(releases, { recursive: true, mode: 0o755 });
   await fs.cp(source, destination, { recursive: true, force: false, errorOnExist: true,
     filter: path => !path.split('/').includes('.git') });
+  // Root's systemd UMask=0077 must not make the code unreadable to the unprivileged JARVIS service.
+  await run('/usr/bin/chmod', ['-R', 'a+rX', destination], { timeout: 15000 });
   const app = join(destination, 'jarvis-starter');
   await fs.symlink(join(root, 'shared', '.env'), join(app, '.env'));
   await fs.symlink(join(root, 'shared', 'data'), join(app, 'data'));
