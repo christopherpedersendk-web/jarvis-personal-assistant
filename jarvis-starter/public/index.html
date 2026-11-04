@@ -15,10 +15,12 @@
   <link rel="stylesheet" href="/smart-home.css" />
   <link rel="stylesheet" href="/system-health.css" />
   <link rel="stylesheet" href="/organizer.css" />
+  <link rel="stylesheet" href="/intelligence.css" />
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
   <script src="/system-health.js" defer></script>
+  <script src="/intelligence.js" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -45,6 +47,7 @@
         <button type="button" class="tab-button" data-tab="tasks">◷ Opgaver</button>
         <button type="button" class="tab-button" data-tab="projects">⌘ Projekter</button>
         <button type="button" class="tab-button" data-tab="secretary">✦ Sekretær</button>
+        <button type="button" class="tab-button" data-tab="knowledge">◎ Viden &amp; skills</button>
         <button type="button" class="tab-button" data-tab="organizer">▤ Noter &amp; lister</button>
         <button type="button" class="tab-button" data-tab="smart-home">⌂ Smart Home</button>
         <button type="button" class="tab-button" data-tab="system">♡ System Health</button>
@@ -52,6 +55,7 @@
       </nav>
       <div id="tab-home" class="tab-view active-view" role="region" aria-label="Samtale og overblik">
         <div id="home-overview" class="overview-cards" aria-live="polite"></div>
+        <div id="home-intelligence" class="intelligence-grid" aria-live="polite"></div>
         <section id="home-smart-home" class="panel smart-home-summary" aria-live="polite"></section>
         <section id="home-system-health" class="panel system-health-summary" aria-live="polite"><h2>System Health</h2><p class="muted">Henter systemstatus …</p></section>
         <div id="home-feed" class="command-center" aria-live="polite"></div>
@@ -59,6 +63,30 @@
       <div id="tab-tasks" class="tab-view hidden" role="region" aria-label="Opgaver"></div>
       <div id="tab-projects" class="tab-view hidden" role="region" aria-label="Projekter"></div>
       <div id="tab-secretary" class="tab-view hidden" role="region" aria-label="Sekretær"></div>
+      <div id="tab-knowledge" class="tab-view hidden" role="region" aria-label="Personlig viden og færdigheder">
+        <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>Personlig viden</h2><span class="tiny-label">LOKAL RAG · KILDER</span></div>
+          <p class="muted small-text">Søg på tværs af dine gemte noter, hukommelse, opgaver og projekter. Hver træffer viser sit grundlag. Samtaler og hemmelige nøgler indekseres ikke.</p>
+          <form id="knowledge-search-form" class="knowledge-search">
+            <label for="knowledge-query">Hvad vil du finde?</label>
+            <input id="knowledge-query" maxlength="240" required placeholder="Fx fødselsdag, gaveidéer, rejseplan, projekt …" />
+            <button type="submit" class="secondary">Søg i min viden</button>
+          </form>
+          <p id="knowledge-search-status" class="muted micro" aria-live="polite"></p>
+          <div id="knowledge-results" class="knowledge-results" aria-live="polite"></div>
+          <p class="muted micro">v4.7 benytter lokal tekstbaseret retrieval. En embeddings-/vektorsøgningsadapter kan senere tilføjes efter særskilt tilvalg.</p>
+        </section>
+        <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>JARVIS' arbejdsprocedurer</h2><span class="tiny-label">SKILL.md</span></div>
+          <p class="muted small-text">Versionsstyrede skills er metoder til gentagelige opgaver – ikke ny personlig hukommelse og ikke eksekverbar kode.</p>
+          <div id="skills-catalog" class="catalog-grid"></div>
+        </section>
+        <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>Integrationer</h2><span class="tiny-label">RETTIGHEDER FØRST</span></div>
+          <p class="muted small-text">Her ses faktiske forbindelser og planlagte adaptere. Planlagte funktioner er ikke aktiveret. Eksisterende Hue/Sonos-styring kræver en udtrykkelig anmodning, og fremtidige integrationsændringer skal godkendes særskilt.</p>
+          <div id="integrations-catalog" class="catalog-grid"></div>
+        </section>
+      </div>
       <div id="tab-organizer" class="tab-view hidden" role="region" aria-label="Noter og lister">
         <section class="panel organizer-panel">
           <div class="section-heading"><h2>Mine noter og lister</h2><span class="tiny-label">DELT MED JARVIS</span></div>
@@ -100,7 +128,7 @@
       </div>
       <div id="tab-system" class="tab-view hidden" role="region" aria-label="System Health og opdateringer">
         <section class="panel">
-          <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.6</span></div>
+          <div class="section-heading"><h2>System Health</h2><span class="tiny-label">JARVIS v4.7</span></div>
           <p class="muted small-text">Faktiske målinger fra cloud-serveren. Status opdateres, mens du har Command Center åbent.</p>
           <div id="system-health-details" class="system-health-grid"></div>
           <button type="button" id="system-refresh" class="secondary">Opdater status</button>
@@ -117,8 +145,25 @@
         </section>
       </div>
       <div id="tab-settings" class="tab-view hidden" role="region" aria-label="Indstillinger">
+        <section class="panel intelligence-panel">
+          <div class="section-heading"><h2>Proaktiv JARVIS</h2><span class="tiny-label">DAGLIGT · UGENTLIGT</span></div>
+          <p class="muted small-text">Faktabaserede lokale dags- og ugeoverblik i indbakken. Discord er et separat tilvalg. Notifikationer om tomme oversigter sendes ikke.</p>
+          <form id="proactive-form" class="task-form">
+            <label class="inline-check"><input id="proactive-daily" type="checkbox" /> Daglig briefing i indbakken</label>
+            <label for="proactive-daily-time">Tidspunkt (Danmark)</label>
+            <input id="proactive-daily-time" type="time" required />
+            <label class="inline-check"><input id="proactive-weekly" type="checkbox" /> Ugentlig opsamling søndag</label>
+            <label for="proactive-weekly-time">Ugentligt tidspunkt (Danmark)</label>
+            <input id="proactive-weekly-time" type="time" required />
+            <label class="inline-check"><input id="proactive-discord" type="checkbox" /> Send også briefinger via Discord DM (kræver Discord-advarsler aktiveret)</label>
+            <div class="time-pair"><div><label for="proactive-quiet-start">Stilletid fra</label><input id="proactive-quiet-start" type="time" required /></div>
+              <div><label for="proactive-quiet-end">Stilletid til</label><input id="proactive-quiet-end" type="time" required /></div></div>
+            <p id="proactive-status" class="muted micro" aria-live="polite"></p>
+            <button class="primary full" type="submit">Gem proaktive indstillinger</button>
+          </form>
+        </section>
         <section class="panel settings-panel">
-          <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.3</span></div>
+          <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.7</span></div>
           <p class="muted small-text">Redigér driftsindstillinger og iPhone-notifikationer her. Eksisterende hemmelige nøgler vises aldrig.</p>
           <form id="settings-form" class="task-form">
             <label for="max-runs">Maksimalt antal baggrundsopgaver pr. dag</label>

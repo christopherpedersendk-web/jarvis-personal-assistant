@@ -1,4 +1,23 @@
-# JARVIS v4.3 – Discord, Command Center og kodeagent (Windows + iPhone)
+# JARVIS v4.7 – Personlig intelligens, Command Center og sikre integrationer
+
+Denne versions aktuelle installationsmetode er privat GitHub → Auto-Update Manager → isolerede tests → **udtrykkelig godkendelse** → systemd-deployment med rollback. Cloud-serveren bruger den fælles, private `shared/data`-mappe og den eksisterende lokale restic-backup. Se [V47_RELEASE.md](V47_RELEASE.md) for teknisk arkitektur, test, sikkerhed og opgraderingsplan. Afsnittene nedenfor om Windows beskriver ældre versioner.
+
+## Nyt i v4.7
+
+- **Chat først:** Hovedsiden viser samtalen højt oppe og et konkret overblik over i dag, de næste syv dage og dokumenterede forhold, der kræver opmærksomhed.
+- **Dags- og ugebriefing:** JARVIS kan oprette faktabaserede, lokale overblik i indbakken kl. 07:30 dansk tid og søndag kl. 18:00. Indholdet kommer kun fra registrerede datoer, opgaver, godkendelser, projektstatus og indbakken. Tomme overblik giver ingen besked. Hvert overblik registreres kun én gang pr. periode.
+- **Discord:** Udsendelse af nye briefinger via DM kræver *både* almindelige Discord-advarsler og det særskilte nye tilvalg. Stilletid gælder dags- og ugebriefinger. Eksisterende andre påmindelser styres fortsat af deres egne indstillinger.
+- **Personlig søgning:** Fanen **Viden & skills** har en lokal RAG-lignende retrievalfunktion over gemt hukommelse, noter, datoer, opgaver og projekter. Resultaterne har kilder og kan hentes i både tekst- og stemmesamtalen. Samtalehistorik, adgangsnøgler og rå filer indekseres ikke. Denne første udgave anvender vægtet tekstsøgning; semantiske embeddings er **ikke** aktiveret.
+- **SKILL.md-procedurer:** Tre gennemgåede, versionsstyrede arbejdsgange for dagsbriefing, personlig opfølgning og gaveplanlægning. Skills er vejledninger og må ikke automatisk udføre køb, kontakte andre eller køre kode.
+- **Integrationskatalog:** Gør klar til Google Kalender, Google Tasks og Home Assistant med tydelige planlagte rettigheder. Viser ærligt status på eksisterende Discord, Hue og Sonos. Der oprettes **ingen** nye tredjepartsforbindelser i v4.7.
+
+v4.7 kræver ingen nye npm-pakker, credentials eller konfigurationsfiler. Personlige data og tokens bliver i `shared/data` og `shared/.env` ved deployment. Test med `npm test` før tag/godkendelse.
+
+Pull requesten har også en isoleret Chromium-browsertest i GitHub Actions med syntetiske data. Den gemmer skærmbilleder af desktop, mobil og fanen *Viden & skills*, som bør gennemgås, før der oprettes et release-tag. Playwright er kun en CI-afhængighed.
+
+---
+
+## Historik: v4.3 og tidligere
 
 ## Nyt i v4.3: Discord som ekstra samtalekanal
 

@@ -30,7 +30,39 @@ function commandLink(label, tab) {
   return link;
 }
 
+function renderPersonalAgenda(agenda, digests = []) {
+  const root = document.getElementById('home-intelligence');
+  if (!root) return;
+  root.replaceChildren();
+  const groups = [
+    { title: 'I dag', subtitle: 'Aktuelt og snart planlagt', items: agenda.today, tab: 'organizer', empty: 'Ingen registrerede datoer i dag eller opgaver inden for 36 timer.' },
+    { title: 'Næste 7 dage', subtitle: 'Datoer fra dine egne lister', items: agenda.week, tab: 'organizer', empty: 'Ingen kommende datoer registreret.' },
+    { title: 'Kræver opmærksomhed', subtitle: 'Faktiske ændringer og afventninger', items: agenda.insights, tab: 'secretary', empty: 'Ingen kendte forhold, der kræver opfølgning.' },
+  ];
+  for (const group of groups) {
+    const card = make('section', '', 'intelligence-card');
+    card.append(make('span', group.subtitle, 'tiny-label'), make('h2', group.title));
+    if (!group.items.length) card.append(make('p', group.empty, 'muted small-text'));
+    for (const item of group.items.slice(0, 4)) {
+      const entry = make('button', '', 'agenda-item');
+      entry.type = 'button'; entry.addEventListener('click', () => selectTab(item.tab || group.tab));
+      entry.append(make('span', item.priority === 'high' ? '●' : '·', item.priority === 'high' ? 'agenda-priority high' : 'agenda-priority'));
+      const content = make('span', '', 'agenda-content');
+      content.append(make('strong', item.title), make('span', item.detail, 'muted micro'));
+      entry.append(content); card.append(entry);
+    }
+    card.append(commandLink('Vis grundlag', group.tab));
+    root.append(card);
+  }
+  if (digests.length) {
+    const newest = digests[0];
+    const note = make('p', `Seneste faktabaserede ${newest.kind === 'weekly' ? 'uge-' : 'dags'}overblik: ${new Date(newest.at).toLocaleString('da-DK')} · ${newest.itemCount} punkter`, 'agenda-history muted micro');
+    root.append(note);
+  }
+}
+
 function renderCommandCenter(data) {
+  if (data.agenda) renderPersonalAgenda(data.agenda, data.recentDigests);
   const root = document.getElementById('home-feed');
   root.replaceChildren();
   const briefing = commandPanel('📰 Seneste morgenrapport', 'feature-panel');
