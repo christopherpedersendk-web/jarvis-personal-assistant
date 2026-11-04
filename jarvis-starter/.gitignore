@@ -1,4 +1,11 @@
 .env
+.env.*
+!.env.example
 data/
 node_modules/
 *.log
+update-staging/
+*.tar.gz
+*.zip
+*.sqlite
+*.sqlite-journal

@@ -624,6 +624,7 @@ async function refreshSettings() {
   const settings = await api('/api/settings');
   $('max-runs').value = settings.maxRunsPerDay;
   $('reminders-enabled').checked = settings.remindersEnabled;
+  $('discord-alerts-enabled').checked = settings.discordAlertsEnabled;
   $('https-url').value = settings.httpsUrl;
   $('settings-status').textContent = `Push: ${settings.pushConfigured ? 'konfigureret' : 'mangler nøgler'} · npm-installation: ${settings.npmInstallEnabled ? 'aktiveret' : 'låst på serveren'}`;
   const discord = await api('/api/discord/settings');
@@ -653,6 +654,7 @@ $('settings-form').addEventListener('submit', async event => {
     await api('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       maxRunsPerDay: Number($('max-runs').value), httpsUrl: $('https-url').value,
       remindersEnabled: $('reminders-enabled').checked,
+      discordAlertsEnabled: $('discord-alerts-enabled').checked,
       pushUser: $('push-user').value, pushToken: $('push-token').value,
     }) });
     $('push-user').value = ''; $('push-token').value = '';

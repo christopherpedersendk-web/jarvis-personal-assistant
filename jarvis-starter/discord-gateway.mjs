@@ -160,6 +160,22 @@ export class DiscordGateway {
     }
   }
 
+  async notifyOwner(text) {
+    if (this.status !== 'connected' || !this.config.userId || !this.config.token) return false;
+    const generation = this.generation;
+    const response = await this.fetcher('https://discord.com/api/v10/users/@me/channels', {
+      method: 'POST',
+      headers: { Authorization: `Bot ${this.config.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient_id: this.config.userId }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`Discord DM kunne ikke åbnes (${response.status}).`);
+    const channel = await response.json();
+    if (!SNOWFLAKE.test(String(channel.id || ''))) throw new Error('Discord returnerede ugyldig DM-kanal.');
+    await this.sendReply(channel.id, String(text).slice(0, 3800), generation);
+    return true;
+  }
+
   async handleIncoming(event, generation = this.generation) {
     if (generation !== this.generation || !authorizedDiscordMessage(event, this.config) || event.author.id === this.botId) return false;
     // Undgå dobbeltbehandling efter Gateway-resume.
