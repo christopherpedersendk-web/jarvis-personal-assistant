@@ -276,7 +276,7 @@ Version 4.6 tilføjer **System Health**, en **Auto-Update Manager** og **proakti
 
 - **System Health** viser JARVIS-proces, hukommelse, disk, Discord og seneste backup-service-status. Det er diagnosticering, ikke en ekstern overvågningstjeneste.
 - **Discord-notifikationer** er fravalgt som standard. Ejeren kan slå dem til i indstillingerne. JARVIS sender kun til den konfigurerede ejers private Discord-DM, eksempelvis ved afsluttede/fejlede opgaver, påmindelser og nye versioner. Discord-bottens DM-indstillinger skal tillade beskeder.
-- **Auto-Update Manager** finder nye `vX.Y.Z`-tags fra et privat GitHub-repository via SSH, downloader den præcise version til separat staging, kontrollerer commit-SHA og kører tests i en isoleret Docker-container uden netværk. Brugeren kan derefter godkende versionen. **v4.6 installerer eller genstarter ikke automatisk efter godkendelse.** Aktivering og rollback kræver en separat, restriktiv deployment-service; undlad at give webprocessen sudo-, Docker-gruppe- eller skriveadgang til systemd-opsætningen.
+- **Auto-Update Manager** finder nye `vX.Y.Z`-tags fra et privat GitHub-repository via SSH, downloader den præcise version til separat staging, kontrollerer commit-SHA og kører tests i en isoleret Docker-container uden netværk. Brugeren kan derefter godkende versionen. En **separat root-ejet deployment-service** kan, når den er installeret manuelt og afprøvet, aktivere en godkendt release med backup, healthcheck og rollback. Webprocessen har ikke sudo- eller systemd-rettigheder.
 
 Se [V46_DEPLOYMENT.md](V46_DEPLOYMENT.md) for opsætning på Ubuntu, sikkerhed og begrænsninger. Tidligere README-afsnit dokumenterer oprindelige Windows-versioner og skal læses som historik.
 

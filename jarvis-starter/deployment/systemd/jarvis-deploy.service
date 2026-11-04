@@ -1,0 +1,20 @@
+[Unit]
+Description=JARVIS approved release deployer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/node /usr/local/libexec/jarvis-deploy-release.mjs
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/administrator/jarvis /var/lib/jarvis-deployer
+ProtectHome=false
+LockPersonality=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+

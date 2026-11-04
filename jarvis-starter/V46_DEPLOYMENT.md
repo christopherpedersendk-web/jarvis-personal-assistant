@@ -13,9 +13,22 @@ Denne version er udviklet til en privat Ubuntu 26.04-server med JARVIS på `127.
 
 Updateren læser kun tags i formatet `vX.Y.Z`. Brug **lightweight tags** (ikke annotated tags), da versionens SHA fastlåses til Git-committet. En frigivet version bør gennemgås og tagges fra en kontrolleret release-branch.
 
-Til isolerede tests forventes Docker og et på forhånd downloadet `node:22-alpine` image. Staging bruger `--network none`, read-only bind mount, uprivilegeret UID, kapabilitetsbegrænsning samt hukommelses- og CPU-grænser. Docker er et særskilt privilegeret værktøj. I produktion bør staging-kommandoer udføres af en begrænset operatør/service, ikke ved at give JARVIS-brugeren generel adgang til Docker-daemonen.
+Til isolerede tests forventes **rootless Docker** under den dedikerede ikke-privilegerede JARVIS-konto og et på forhånd downloadet `node:22-alpine` image. Staging bruger `--network none`, read-only bind mount, uprivilegeret UID, kapabilitetsbegrænsning samt hukommelses- og CPU-grænser. Brug **ikke** den normale rootful Docker-socket eller medlemskab af `docker`-gruppen til JARVIS-processen. Uden sikker rootless-containeradgang fejler staging lukket, og godkendelsesknappen kan ikke bruges. Installer og kontrollér rootless-containerdrift særskilt før aktivering.
 
-Opdateringens tilstande er: `available` (tag fundet), `staged` (downloader og test er bestået), `approved` (ejer har godkendt). **Der er endnu ingen automatisk aktiveringsfase.** Undlad at flytte live-service eller overskrive data baseret alene på en godkendelse i brugerfladen.
+Opdateringens tilstande er: `available` (tag fundet), `staged` (download og test bestået), `approved` (ejer har godkendt). **Aktivering kræver, at den separat installerede, root-ejede `jarvis-deploy.service` og timer er sat op korrekt.** Webprocessen kan ikke selv starte denne service.
+
+## 2A. Sikker deployment-service – engangsopsætning
+
+Denne proces skal udføres under et aftalt vedligeholdelsesvindue med adgang til cloududbyderens webkonsol. Behold den eksisterende v4.5-mappe og restic-backups. Kontrollér først at `/usr/bin/node`, `/usr/bin/git`, `/usr/sbin/runuser` og `jarvis-backup.service` eksisterer.
+
+1. Opret versionslayoutet: `/home/administrator/jarvis/releases/`, `/home/administrator/jarvis/shared/` og `/home/administrator/jarvis/update-staging/`. Alle er private mapper. Flyt ikke backupfiler til GitHub.
+2. Tag backup, stop JARVIS kortvarigt, og flyt de nuværende private `.env` og `data/` til `shared/.env` og `shared/data/`. Bevar ejeren `administrator`, filtilstand `600` på `.env` og adgang til data for denne bruger. Sørg for at den gamle installationsmappe kan tilbageføres ved at bevare en kopi.
+3. Anbring den gennemgåede v4.6-kode som `/home/administrator/jarvis/releases/v4.6.0/jarvis-starter/`. Opret **symbolske links** fra `jarvis-starter/.env` og `jarvis-starter/data` til de to private delte stier. Opret linket `/home/administrator/jarvis/current` til `/home/administrator/jarvis/releases/v4.6.0`.
+4. Ret den eksisterende `jarvis.service` til at bruge `WorkingDirectory=/home/administrator/jarvis/current/jarvis-starter` og `ExecStart=/usr/bin/node --env-file-if-exists=.env server.mjs`, stadig med `User=administrator`. Kør `systemctl daemon-reload`, start servicen og verificér Command Center, Discord og data. Rul manuelt tilbage til den oprindelige unit/mappestruktur, hvis dette fejler.
+5. Kopiér **efter kodegennemgang** `scripts/deploy-release.mjs` til `/usr/local/libexec/jarvis-deploy-release.mjs`, og gør filen root-ejet og ikke-skrivbar for `administrator`. Installér `deployment/systemd/jarvis-deploy.service` og `.timer` i `/etc/systemd/system/`, ligeledes root-ejede. Lad timeren være deaktiveret indtil en test med isoleret staging er gennemført.
+6. Efter afprøvning kan `jarvis-deploy.timer` aktiveres. Hvert andet minut kontrollerer den en eksplicit godkendt version. Den tager restic-backup, kontrollerer SHA og ren staging, kopierer releasen, skifter atomisk `current`-linket, genstarter JARVIS og udfører HTTP-healthcheck. Ved fejl skiftes linket tilbage og den gamle service genstartes. Resultatet registreres i `/var/lib/jarvis-deployer/last-result.json` og i `shared/data/deployment-result.json`.
+
+**Vigtigt:** Deployeren må ikke opdateres automatisk fra GitHub. Opdateringer af root-script og systemd-units kræver fortsat en selvstændig manuel sikkerhedsgennemgang. Release-approval er en tillidserklæring til den nye applikationskode. En kompromitteret JARVIS-konto må derfor ikke kunne redigere root-ejet deployer, systemd-units, backups eller øvrige root-filer.
 
 ## 3. Cloud-migrering uden datatab
 
@@ -28,7 +41,7 @@ Opdateringens tilstande er: `available` (tag fundet), `staged` (downloader og te
 
 ## 4. Begrænsninger og sikkerhedsmodel
 
-- **Ingen zero-touch deployment endnu:** Godkendelse i JARVIS foretager ikke en installation.
+- **Ingen uovervåget førsteopsætning:** Første migration til `current`-linket og installation af root-ejet deployer foretages manuelt og kontrolleret. Derefter kan godkendte releases installeres automatisk.
 - **Ingen offentlige porte:** JARVIS lytter lokalt; Tailscale Serve håndterer HTTPS på dit private tailnet. Hold UFW default-deny på almindelige offentlige interfaces.
 - **Ingen udvidede rettigheder:** En kompromitteret webserver må ikke selv kunne ændre systemd units, læse restic-password eller installere vilkårlig kode som root.
 - **Ingen selvtestede producentintegrationer:** Nest-dørklokke og Hue-bro hjemme kræver stadig særskilt lokal bridge og autorisation.
