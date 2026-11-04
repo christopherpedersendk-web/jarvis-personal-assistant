@@ -68,15 +68,16 @@ test('Nemlig only reads before distinct explicit approval; absolute quantities a
   const proposal = await f.shopping.propose([{ productId: '12345', quantity: 3 }]);
   assert.equal(f.writes, 0, 'creating a proposal must not mutate basket');
   assert.deepEqual(proposal.additions[0], { productId: '12345', name: 'Havremælk', add: 3, previous: 2, target: 5 });
-  await assert.rejects(f.shopping.approve(proposal.id, 'ja'), /godkendelse/);
+  await assert.rejects(f.shopping.approve(proposal.id, false), /godkendelse/);
+  await assert.rejects(f.shopping.approve(proposal.id, undefined), /godkendelse/);
   assert.equal(f.writes, 0);
-  const approved = await f.shopping.approve(proposal.id, 'OPDATER NEMLIG-KURV');
+  const approved = await f.shopping.approve(proposal.id, true);
   assert.equal(approved.status, 'completed');
   assert.equal(f.writes, 1);
   assert.deepEqual(f.calls.at(-1).args, { items: [{ product_id: '12345', quantity: 5 }] });
   assert.equal(f.calls.some(c => /order|checkout|payment|place/i.test(c.name)), false);
   assert.equal(JSON.stringify(approved).includes('SECRET ADDRESS'), false);
-  await assert.rejects(f.shopping.approve(proposal.id, 'OPDATER NEMLIG-KURV'), /allerede behandlet/);
+  await assert.rejects(f.shopping.approve(proposal.id, true), /allerede behandlet/);
   assert.equal(f.writes, 1, 'double approval must not write twice');
   assert.ok(f.saved >= 3);
 });
@@ -89,10 +90,10 @@ test('Nemlig refuses unknown, duplicate and stale products, or basket changes be
   await assert.rejects(f.shopping.propose([{ productId: '12345', quantity: 0 }]), /Ugyldigt/);
   const proposal = await f.shopping.propose([{ productId: '12345', quantity: 1 }]);
   f.changeBasket({ Lines: [{ Id: '12345', Quantity: 4 }] });
-  await assert.rejects(f.shopping.approve(proposal.id, 'OPDATER NEMLIG-KURV'), /ændret/);
+  await assert.rejects(f.shopping.approve(proposal.id, true), /ændret/);
   assert.equal(f.writes, 0);
   await f.shopping.decline(proposal.id);
-  await assert.rejects(f.shopping.approve(proposal.id, 'OPDATER NEMLIG-KURV'), /allerede behandlet/);
+  await assert.rejects(f.shopping.approve(proposal.id, true), /allerede behandlet/);
 });
 
 test('Nemlig marks partial and unknown outcomes as single-use and never auto-retries a write', async () => {
@@ -105,10 +106,10 @@ test('Nemlig marks partial and unknown outcomes as single-use and never auto-ret
   } });
   await m.search('mel');
   const proposal = await m.propose([{ productId: '444', quantity: 2 }]);
-  const result = await m.approve(proposal.id, 'OPDATER NEMLIG-KURV');
+  const result = await m.approve(proposal.id, true);
   assert.equal(result.status, 'unknown');
   assert.match(result.result.message, /Kontroller/);
-  await assert.rejects(m.approve(proposal.id, 'OPDATER NEMLIG-KURV'), /allerede behandlet/);
+  await assert.rejects(m.approve(proposal.id, true), /allerede behandlet/);
   assert.equal(calls, 1);
 });
 

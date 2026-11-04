@@ -94,6 +94,23 @@ try {
   assert.match(await page.locator('#meal-plans').innerText(), /Indkøbsliste/);
   await page.screenshot({ path: join(artifacts, 'v48-meal-planner-desktop.png'), animations: 'disabled' });
 
+  // A synthetic, already-reviewed proposal needs one explicit button click;
+  // the UI must never require or accept a second typed confirmation.
+  const approvals = [];
+  await page.route('**/api/nemlig/proposals/*/approve', async route => {
+    approvals.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ proposal: { status: 'completed' } }) });
+  });
+  await page.evaluate(() => showNemligProposals([{ id: '11111111-1111-1111-1111-111111111111', status: 'pending',
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    additions: [{ name: 'Test-havremælk', previous: 2, add: 1, target: 3 }] }]));
+  assert.match(await page.locator('#meal-nemlig-proposals').innerText(), /Test-havremælk: 2 → 3 \(\+1\)/);
+  assert.equal(await page.locator('#meal-nemlig-proposals input').count(), 0);
+  await page.getByRole('button', { name: 'Overfør til Nemlig' }).click();
+  await page.waitForFunction(() => !document.querySelector('#meal-nemlig-proposals button.primary'));
+  assert.deepEqual(approvals, [{ approved: true }]);
+
   await page.locator('[data-tab="settings"]').click();
   await page.locator('#proactive-daily-time').waitFor();
   assert.equal(await page.locator('#proactive-daily-time').inputValue(), '07:30');
