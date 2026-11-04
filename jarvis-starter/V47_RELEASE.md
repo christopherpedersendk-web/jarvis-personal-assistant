@@ -39,6 +39,7 @@
 ## Test og installation (ingen direkte liveændringer ved oprettelse af denne branch)
 
 1. Gennemgå feature-branchen og dens pull request. Kør `npm test` (inkl. realistiske datoer, DST, kildefakta og autoriserede endpoints). Kør også `node --check server.mjs` og UI-scripts.
+   Den særskilte GitHub Actions-workflow `.github/workflows/v47-visual.yml` starter desuden en syntetisk lokal JARVIS-server i en midlertidig CI-runner og tester reelt Chromium-layout i desktop- og mobilbredde, videnssøgning, skills, integrationskort og indstillinger. Skærmbilleder gemmes som `jarvis-v47-ui-screenshots` i workflowkørslen. **Release bør afvente bestået browser-smoke og visuel gennemgang af billederne.** Playwright installeres kun i CI; ikke på produktionsserveren.
 2. Merge først efter review til den releasebranch, som ligger bag opdateringsflowet. Opret først da et **nyt, unikt** `v4.7.0`-tag på præcis den gennemgåede commit. Overvåg de eksisterende GitHub-deployrettigheder; ingen force push eller genbrug af gamle tags.
 3. Åbn privat JARVIS via Tailscale. Vælg **System Health → Søg efter version → Hent og test**. Bekræft `v4.7.0` og den præcise testede commit. Vælg derefter **Godkend testet version**.
 4. Den eksisterende `jarvis-deploy.timer` installerer kun en godkendt, testet commit. Dens root-ejede service tager lokal restic-backup, skifter `current`-symlink, genstarter og foretager healthcheck; mislykket healthcheck ruller tilbage.

@@ -13,6 +13,8 @@ Denne versions aktuelle installationsmetode er privat GitHub → Auto-Update Man
 
 v4.7 kræver ingen nye npm-pakker, credentials eller konfigurationsfiler. Personlige data og tokens bliver i `shared/data` og `shared/.env` ved deployment. Test med `npm test` før tag/godkendelse.
 
+Pull requesten har også en isoleret Chromium-browsertest i GitHub Actions med syntetiske data. Den gemmer skærmbilleder af desktop, mobil og fanen *Viden & skills*, som bør gennemgås, før der oprettes et release-tag. Playwright er kun en CI-afhængighed.
+
 ---
 
 ## Historik: v4.3 og tidligere
