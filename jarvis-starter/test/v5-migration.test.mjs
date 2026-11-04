@@ -5,12 +5,21 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { STATE_SCHEMA_VERSION, loadVersionedState, atomicStateWrite,
   restoreStateBackup, schemaVersion, stateHash } from '../state-schema.mjs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'jarvis-v5-migration-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   return { dir, stateFile: join(dir, 'state.json') };
 }
+
+test('the package release schema declaration matches the runtime migration contract', async () => {
+  const packagePath = join(dirname(dirname(fileURLToPath(import.meta.url))), 'package.json');
+  const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
+  assert.equal(manifest.jarvisSchemaVersion, STATE_SCHEMA_VERSION);
+  assert.equal(manifest.jarvisReadableSchemaFrom, 0);
+});
 
 test('synthetic v4.9.1 state migration keeps all fields, preserves exact backup, and is idempotent', async t => {
   const { stateFile } = await fixture(t);

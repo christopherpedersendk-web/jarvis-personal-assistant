@@ -77,6 +77,7 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
   for (const path of ['/api/overview', '/api/personal-tasks', '/api/personal-claims', '/api/follow-ups'])
     await f.api('GET', path, undefined, 401, false);
   assert.equal((await f.api('GET', '/health')).data.version, '5.0.0');
+  assert.equal((await f.api('GET', '/ready')).data.storage.ready, true);
   const state = (await f.api('GET', '/api/state')).data;
   assert.equal(state.preferences, 'syntetisk');
   assert.equal(JSON.parse(await readFile(join(f.dir, 'state.json'), 'utf8')).extraLegacy.manual, true);
@@ -103,6 +104,12 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
     calendarCoverage: { status: 'unknown' }, calendarEvents: [] })).data.plan;
   assert.equal(simulatedUnknown.feasible, false);
   assert.equal(simulatedUnknown.conflicts[0].code, 'calendar-unknown');
+  const unconnectedCalendar = (await f.api('POST', '/api/planning/simulate', {
+    useCalendar: true, workWindows: [{ start: '2026-11-08T09:00:00+01:00', end: '2026-11-08T12:00:00+01:00' }],
+    calendarCoverage: { status: 'ready', start: '2026-11-01T00:00:00Z', end: '2026-11-20T00:00:00Z' },
+    calendarEvents: [] })).data.plan;
+  assert.equal(unconnectedCalendar.feasible, false, 'a supplied ready flag cannot impersonate a connected read-only calendar');
+  assert.equal(unconnectedCalendar.conflicts[0].code, 'calendar-unknown');
   const simulatedKnown = (await f.api('POST', '/api/planning/simulate', {
     workWindows: [{ start: '2026-11-08T09:00:00+01:00', end: '2026-11-08T12:00:00+01:00' }],
     calendarCoverage: { status: 'ready', start: '2026-11-08T09:00:00+01:00', end: '2026-11-08T12:00:00+01:00' },

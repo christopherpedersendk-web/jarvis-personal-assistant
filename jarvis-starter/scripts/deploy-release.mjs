@@ -23,7 +23,13 @@ export function validatedApproval(state) {
       candidate.packageVersion !== candidate.version.slice(1) ||
       candidate.testedSha !== candidate.sha || state.staged?.testedSha !== candidate.sha ||
       !candidate.testedAt || !candidate.approvedAt) return null;
-  return { version: candidate.version, sha: candidate.sha };
+  const major = Number(candidate.version.split('.')[0].slice(1));
+  if (major >= 5 && (!Number.isInteger(candidate.schemaVersion) || candidate.schemaVersion < 1 ||
+      !Number.isInteger(candidate.readableFrom) || candidate.readableFrom < 0 ||
+      candidate.readableFrom > candidate.schemaVersion ||
+      candidate.schemaVersion !== state.staged?.schemaVersion || candidate.readableFrom !== state.staged?.readableFrom)) return null;
+  return { version: candidate.version, sha: candidate.sha,
+    ...(major >= 5 ? { schemaVersion: candidate.schemaVersion, readableFrom: candidate.readableFrom } : {}) };
 }
 
 export function unprivilegedGitCommand(args) {
@@ -85,6 +91,16 @@ export async function deployRelease(config, dependencies = {}) {
   const clean = await git(['status', '--porcelain', '--untracked-files=all']);
   if (clean.stdout.trim()) throw new Error('Staging er ændret efter test og godkendelse.');
   if ((await fs.lstat(join(source, 'jarvis-starter'))).isSymbolicLink()) throw new Error('Kode-mappen må ikke være et link.');
+  const manifest = JSON.parse(await fs.readFile(join(source, 'jarvis-starter', 'package.json'), 'utf8'));
+  if (manifest.version !== approval.version.slice(1) ||
+      approval.schemaVersion !== undefined && (manifest.jarvisSchemaVersion !== approval.schemaVersion ||
+        manifest.jarvisReadableSchemaFrom !== approval.readableFrom))
+    throw new Error('Godkendelsen matcher ikke releasepakke eller dataskema.');
+  let currentSchema = 0;
+  try { currentSchema = JSON.parse(await fs.readFile(join(data, 'state.json'), 'utf8')).schemaVersion || 0; }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (approval.schemaVersion !== undefined && (currentSchema > approval.schemaVersion ||
+      currentSchema < approval.readableFrom)) throw new Error('Dataskemaet er ikke kompatibelt med den godkendte release.');
 
   // Back up BEFORE touching the live symlink. The backup unit is root-owned.
   await run('/usr/bin/systemctl', ['start', 'jarvis-backup.service'], { timeout: 180000 });

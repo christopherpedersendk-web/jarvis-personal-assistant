@@ -1,9 +1,25 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { statfs } from 'node:fs/promises';
+import { statfs, writeFile, unlink, mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import os from 'node:os';
 
 const run = promisify(execFile);
+
+export async function storageReadiness(dataDirectory) {
+  const probe = join(dataDirectory, `.jarvis-ready-${randomUUID()}`);
+  try {
+    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+    await writeFile(probe, '', { flag: 'wx', mode: 0o600 });
+    await unlink(probe);
+    return { ready: true, checkedAt: new Date().toISOString() };
+  } catch (error) {
+    await unlink(probe).catch(() => {});
+    return { ready: false, checkedAt: new Date().toISOString(),
+      reason: `Lager kan ikke modtage nye lokale filer (${String(error.code || 'ukendt')}).` };
+  }
+}
 
 async function service(name) {
   try {
@@ -18,9 +34,10 @@ async function service(name) {
 }
 
 export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0' }) {
-  const [backup, disk] = await Promise.all([
+  const [backup, disk, storage] = await Promise.all([
     service('jarvis-backup.service'),
     statfs(dataDirectory).catch(() => null),
+    storageReadiness(dataDirectory),
   ]);
   const available = disk ? disk.bavail * disk.bsize : null;
   const total = disk ? disk.blocks * disk.bsize : null;
@@ -30,6 +47,7 @@ export async function systemHealth({ discord, taskEngine, dataDirectory, version
     version,
     checkedAt: new Date().toISOString(),
     process: { healthy: true, uptimeSeconds, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed },
+    storage,
     host: { freeMemoryBytes: os.freemem(), totalMemoryBytes: os.totalmem(), availableDiskBytes: available, totalDiskBytes: total },
     discord: discord.snapshot(),
     backup: {

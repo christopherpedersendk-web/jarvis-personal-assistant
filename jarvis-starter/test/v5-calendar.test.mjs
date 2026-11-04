@@ -46,3 +46,19 @@ test('revoked Google login is reported as expired instead of silently treating c
   await calendar.disconnect();
   assert.equal(calendar.status().connectionState, 'not_connected');
 });
+
+test('a failed private settings save cannot falsely publish a new Calendar credential', async () => {
+  const existing = new GoogleCalendarReadOnly({ ...config, refreshToken: 'old-private-test-token',
+    saveRefreshToken: async () => { throw new Error('synthetic settings rename failure'); } });
+  await assert.rejects(existing.disconnect(), /settings rename failure/);
+  assert.equal(existing.status().connected, true);
+  assert.equal(existing.refreshToken, 'old-private-test-token');
+  const connection = new GoogleCalendarReadOnly({ ...config,
+    saveRefreshToken: async () => { throw new Error('synthetic settings rename failure'); },
+    fetcher: async () => new Response(JSON.stringify({ refresh_token: 'new-private-test-token',
+      access_token: 'short-lived', expires_in: 3600 }), { status: 200 }),
+  });
+  const auth = new URL(connection.begin());
+  await assert.rejects(connection.exchange({ state: auth.searchParams.get('state'), code: 'synthetic-code' }), /settings rename failure/);
+  assert.equal(connection.status().connected, false);
+});

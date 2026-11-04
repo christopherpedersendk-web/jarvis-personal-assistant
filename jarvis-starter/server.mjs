@@ -15,7 +15,7 @@ import { ProactiveReminders } from './proactive-reminders.mjs';
 import { DiscordGateway, validateDiscordConfig } from './discord-gateway.mjs';
 import { SmartHome } from './smart-home.mjs';
 import { HueBridge, validBridgeIp } from './hue-bridge.mjs';
-import { systemHealth } from './system-health.mjs';
+import { systemHealth, storageReadiness } from './system-health.mjs';
 import { UpdateManager } from './update-manager.mjs';
 import { PersonalKnowledge } from './personal-knowledge.mjs';
 import { PersonalClaims } from './personal-claims.mjs';
@@ -597,6 +597,10 @@ discord.start(discordConfig);
 async function route(req, res) {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (path === '/health') return json(res, 200, { ok: true, version: packageVersion });
+  if (path === '/ready') {
+    const storage = await storageReadiness(dirname(dataPath));
+    return json(res, storage.ready ? 200 : 503, { ok: storage.ready, version: packageVersion, storage });
+  }
   // OAuth redirects cannot carry JARVIS' bearer token. One-time PKCE and
   // state validation are handled by GoogleCalendarReadOnly.exchange().
   if (req.method === 'GET' && path === '/api/google/calendar/callback') {
@@ -937,11 +941,35 @@ async function route(req, res) {
     }
     if (req.method === 'POST' && path === '/api/planning/simulate') {
       try { const input = await bodyJson(req, 128_000);
-        const plan = planPersonalTasks({ ...input, tasks: personalTasks.toPlanningTasks() });
+        let calendarEvents = input.calendarEvents || [];
+        let calendarCoverage = input.calendarCoverage;
+        if (input.useCalendar === true) {
+          try {
+            const upcoming = await googleCalendar.upcoming(14);
+            calendarCoverage = googleCalendar.status().coverage;
+            calendarEvents = upcoming.filter(event => event.transparency !== 'transparent').map(event => {
+              if (!event.allDay) return { start: event.start, end: event.end, source: { kind: 'calendar', id: event.id } };
+              // Conservative buffer around an all-day local event, including
+              // timezone/DST uncertainty: never manufacture free time.
+              const localDayStart = Date.parse(`${event.start}T00:00:00Z`);
+              const localDayEnd = Date.parse(`${event.end}T00:00:00Z`);
+              return { start: new Date(localDayStart - 12 * 3600_000).toISOString(),
+                end: new Date(localDayEnd + 12 * 3600_000).toISOString(), source: { kind: 'calendar', id: event.id } };
+            });
+          } catch {
+            calendarCoverage = { status: 'unknown' };
+            calendarEvents = [];
+          }
+        }
+        const plan = planPersonalTasks({ ...input, calendarEvents,
+          calendarCoverage: input.useCalendar === true ? { status: calendarCoverage?.complete ? 'ready' : 'unknown',
+            start: calendarCoverage?.start, end: calendarCoverage?.end } : calendarCoverage,
+          tasks: personalTasks.toPlanningTasks() });
         const taskValidation = personalTasks.validateProposals(plan.proposals);
         if (!taskValidation.valid) { plan.feasible = false; plan.conflicts.push(...taskValidation.conflicts); }
         return json(res, 200, { plan,
-        basis: 'Brugerens eksplicit angivne kalendervindue og tilgængelighed; ingen Google-kalenderændring' }); }
+        basis: input.useCalendar === true ? 'Ny læsning af valgt Google Kalender med faktisk dækningsperiode; kun læsning'
+          : 'Manuelt angivet kapacitetsdækning eller ukendt status; ingen Google-kalenderændring' }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/skills') return json(res, 200, { skills: skills.catalog() });

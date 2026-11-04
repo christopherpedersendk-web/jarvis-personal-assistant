@@ -12,6 +12,29 @@ const savedDrafts = {
   playbook: { dirty: false, value: null },
   preferences: { dirty: false, value: null },
 };
+const draftStorageKey = 'jarvis:v5:unsaved-text';
+function persistTextDrafts() {
+  const dirty = Object.fromEntries(Object.entries(savedDrafts)
+    .filter(([, item]) => item.dirty).map(([id, item]) => [id, item.value]));
+  try {
+    if (Object.keys(dirty).length) sessionStorage.setItem(draftStorageKey, JSON.stringify(dirty));
+    else sessionStorage.removeItem(draftStorageKey);
+  } catch { /* Private browsing can disable storage; the in-memory draft remains. */ }
+}
+
+try {
+  if (token) {
+    const recovered = JSON.parse(sessionStorage.getItem(draftStorageKey) || '{}');
+    for (const [id, item] of Object.entries(savedDrafts)) {
+      if (typeof recovered[id] === 'string' && recovered[id].length <= (id === 'playbook' ? 30_000 : 10_000)) {
+        item.dirty = true;
+        item.value = recovered[id];
+        $(id).value = item.value;
+        $(`${id}-draft-status`).textContent = 'Ugemt kladde gendannet fra denne browserfane. Gennemgå før du gemmer.';
+      }
+    }
+  }
+} catch { /* Malformed session storage cannot prevent login. */ }
 
 function canonicalView(view) {
   const candidate = viewAliases[view] || view;
@@ -38,6 +61,8 @@ function updateDraft(id, value) {
 
 function markDraftDirty(id) {
   savedDrafts[id].dirty = true;
+  savedDrafts[id].value = $(id).value;
+  persistTextDrafts();
   const status = $(`${id}-draft-status`);
   status.textContent = 'Ikke gemt. Dine ændringer bevares ved opdatering.';
 }
@@ -45,6 +70,7 @@ function markDraftDirty(id) {
 function markDraftSaved(id) {
   savedDrafts[id].dirty = false;
   savedDrafts[id].value = $(id).value;
+  persistTextDrafts();
   const status = $(`${id}-draft-status`);
   status.textContent = 'Gemt.';
   status.classList.remove('draft-conflict');
@@ -847,6 +873,7 @@ $('refresh').addEventListener('click', () => refresh().catch(error => toast(erro
 $('logout').addEventListener('click', () => {
   stopVoice();
   localStorage.removeItem('jarvisAccessToken');
+  try { sessionStorage.removeItem(draftStorageKey); } catch { /* ignore blocked storage */ }
   token = '';
   showLogin();
 });

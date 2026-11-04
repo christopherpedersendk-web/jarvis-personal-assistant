@@ -73,11 +73,11 @@ export class GoogleCalendarReadOnly {
     if (!tokens.refresh_token || typeof tokens.refresh_token !== 'string') throw new Error('Google returnerede intet refresh-token. Prøv igen med samtykke.');
     // Do not accept a broader scope than the one JARVIS explicitly requested.
     if (tokens.scope && tokens.scope.split(' ').some(scope => scope !== SCOPE)) throw new Error('Google returnerede uventede rettigheder.');
+    await this.saveRefreshToken(tokens.refresh_token);
     this.refreshToken = tokens.refresh_token;
     this.loginExpired = false; this.lastReadError = '';
     this.accessToken = tokens.access_token || '';
     this.accessUntil = this.now() + Math.max(0, Number(tokens.expires_in || 0) - 60) * 1000;
-    await this.saveRefreshToken(this.refreshToken);
     return this.status();
   }
 
@@ -100,12 +100,12 @@ export class GoogleCalendarReadOnly {
     if (this.accessToken && this.accessUntil > this.now()) return this.accessToken;
     const result = await this.tokenRequest({ grant_type: 'refresh_token', refresh_token: this.refreshToken });
     if (!result.access_token) throw new Error('Google returnerede ikke adgangstoken.');
+    if (result.refresh_token && result.refresh_token !== this.refreshToken) {
+      await this.saveRefreshToken(result.refresh_token);
+      this.refreshToken = result.refresh_token;
+    }
     this.accessToken = result.access_token;
     this.accessUntil = this.now() + Math.max(0, Number(result.expires_in || 0) - 60) * 1000;
-    if (result.refresh_token && result.refresh_token !== this.refreshToken) {
-      this.refreshToken = result.refresh_token;
-      await this.saveRefreshToken(this.refreshToken);
-    }
     return this.accessToken;
   }
 
@@ -117,13 +117,17 @@ export class GoogleCalendarReadOnly {
     for (const [key, value] of Object.entries({ timeMin: from.toISOString(), timeMax: until.toISOString(),
       maxResults: '100', singleEvents: 'true', orderBy: 'startTime', showDeleted: 'false', timeZone: 'Europe/Copenhagen' })) url.searchParams.set(key, value);
     const events = [];
-    const accessToken = await this.token();
+    let accessToken;
+    try { accessToken = await this.token(); }
+    catch (error) { this.lastReadError = error.message; throw error; }
     let nextPageToken = '';
     const seenPages = new Set();
     const signal = AbortSignal.timeout(20_000);
     do {
       if (nextPageToken) url.searchParams.set('pageToken', nextPageToken);
-      const response = await this.fetcher(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal });
+      let response;
+      try { response = await this.fetcher(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal }); }
+      catch (error) { this.lastReadError = 'Kalenderkilden kunne ikke læses. Kalenderdækningen er ukendt.'; throw error; }
       if (!response.ok) {
         this.lastReadError = `Google Kalender svarede med HTTP ${response.status}.`;
         throw new Error(this.lastReadError);
@@ -152,8 +156,8 @@ export class GoogleCalendarReadOnly {
   }
 
   async disconnect() {
-    this.refreshToken = ''; this.accessToken = ''; this.accessUntil = 0;
     await this.saveRefreshToken('');
+    this.refreshToken = ''; this.accessToken = ''; this.accessUntil = 0;
     this.lastReadAt = null; this.coverage = null; this.lastReadError = ''; this.loginExpired = false;
     return this.status();
   }

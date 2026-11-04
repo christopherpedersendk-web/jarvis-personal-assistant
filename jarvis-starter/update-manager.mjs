@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { schemaVersion } from './state-schema.mjs';
 
 const exec = promisify(execFile);
 const VERSION = /^v(\d+)\.(\d+)\.(\d+)$/;
@@ -25,6 +26,11 @@ export function validateReleasePackage(content, expectedVersion) {
   const requiredVersion = expectedVersion.slice(1);
   if (!metadata || metadata.version !== requiredVersion)
     throw new Error(`Releasens package.json matcher ikke ${expectedVersion}.`);
+  if (Number(VERSION.exec(expectedVersion)[1]) >= 5 &&
+      (!Number.isInteger(metadata.jarvisSchemaVersion) || metadata.jarvisSchemaVersion < 1 ||
+        !Number.isInteger(metadata.jarvisReadableSchemaFrom) || metadata.jarvisReadableSchemaFrom < 0 ||
+        metadata.jarvisReadableSchemaFrom > metadata.jarvisSchemaVersion))
+    throw new Error('Releasens version 5+ mangler kompatibel erklæring om dataskema.');
   return requiredVersion;
 }
 
@@ -86,8 +92,16 @@ export class UpdateManager {
       await this.command('git', ['clone', '--depth', '1', '--branch', release.version, '--single-branch', this.repository, folder], { timeout: 90_000 });
       const { stdout } = await this.command('git', ['rev-parse', 'HEAD'], { cwd: folder, timeout: 5000 });
       if (stdout.trim() !== release.sha) throw new Error('Tag og forventet commit matcher ikke.');
-      const candidateVersion = validateReleasePackage(
-        await this.readPackage(join(folder, 'jarvis-starter', 'package.json'), 'utf8'), release.version);
+      const packageContent = await this.readPackage(join(folder, 'jarvis-starter', 'package.json'), 'utf8');
+      const candidateVersion = validateReleasePackage(packageContent, release.version);
+      const releaseMetadata = JSON.parse(packageContent);
+      const candidateSchema = releaseMetadata.jarvisSchemaVersion ?? 0;
+      const readableFrom = releaseMetadata.jarvisReadableSchemaFrom ?? 0;
+      let activeSchema = 0;
+      try { activeSchema = schemaVersion(JSON.parse(await readFile(join(resolve(this.stateFile, '..'), 'state.json'), 'utf8'))); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (activeSchema > candidateSchema || activeSchema < readableFrom)
+        throw new Error('Kandidatens dataskema er ikke kompatibelt med den nuværende tilstand.');
       const unmodified = await this.command('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: folder, timeout: 5000 });
       if (unmodified.stdout.trim()) throw new Error('Releasekandidaten er ændret efter checkout.');
       // Untrusted release tests must never run directly as the JARVIS host user.
@@ -103,7 +117,8 @@ export class UpdateManager {
       const afterStatus = await this.command('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: folder, timeout: 5000 });
       if (afterTest.stdout.trim() !== release.sha || afterStatus.stdout.trim())
         throw new Error('Releasekandidaten blev ændret under test.');
-      this.state.staged = { ...release, packageVersion: candidateVersion, testedSha: release.sha,
+      this.state.staged = { ...release, packageVersion: candidateVersion, schemaVersion: candidateSchema,
+        readableFrom, currentSchemaAtTest: activeSchema, testedSha: release.sha,
         testedAt: new Date().toISOString() };
       this.state.approved = null;
       this.state.error = '';
@@ -119,6 +134,8 @@ export class UpdateManager {
   async approve(version) {
     if (!this.state.staged || this.state.staged.version !== version ||
         this.state.staged.packageVersion !== version.slice(1) ||
+        !Number.isInteger(this.state.staged.schemaVersion) ||
+        !Number.isInteger(this.state.staged.readableFrom) ||
         this.state.staged.testedSha !== this.state.staged.sha ||
         this.state.available?.sha !== this.state.staged.sha ||
         this.state.available?.version !== this.state.staged.version)

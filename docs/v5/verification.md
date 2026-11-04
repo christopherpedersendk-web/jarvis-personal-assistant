@@ -8,9 +8,10 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-04 | Unmodified v4.9.1 source | Compare 99 Git blobs and local `git write-tree` | 99/99 identical; tree `3de6cd0accb7f5c637835b55ca0049276b5ab08b` |
 | 2026-11-04 | Unmodified v4.9.1 source | `node --version` | `v24.22.1` |
 | 2026-11-04 | Unmodified v4.9.1 source | `cd jarvis-starter && npm test` | 149 passed, 0 failed; Node reports 1.53s |
-| 2026-11-04 | Local v5 candidate, uncommitted snapshot | `cd jarvis-starter && npm test` | **236 passed, 0 failed**; Node ~4.60 s; includes all baseline tests and v5 cases |
+| 2026-11-04 | Initial published v5 commit `5a95afa7` | GitHub Actions Node.js 22 run `41935634711`, step 4 | **236 passed, 0 failed**; exact remote candidate tree `9c92c5e7` |
+| 2026-11-04 | Follow-up local v5 candidate (not yet published) | `cd jarvis-starter && npm test` | **239 passed, 0 failed**, Node 4.69 s; adds calendar persistence failure, storage-readiness and schema-manifest coverage |
 | 2026-11-04 | Local v5 candidate | `node --test test/v5-intelligence.test.mjs` | 45 passed including 30 planning subcases; 80/80 (100%) synthetic **lexical** correct-source@5 |
-| 2026-11-04 | Local v5 candidate | `node --test test/deploy-release.test.mjs test/v5-server.test.mjs` | 9 passed, including synthetic migration restart, owner-click intention, runtime version, unsafe rollback block |
+| 2026-11-04 | Local v5 candidate | `node --test test/deploy-release.test.mjs test/v5-server.test.mjs` | Initial 9 passed; newer full-suite run additionally covers real calendar coverage and manifest compatibility |
 | 2026-11-04 | Local v5 candidate | `git diff --check` and `node --check` of edited JS | No whitespace or syntax errors in last checks; rerun after commit |
 | 2026-11-04 | Local v5 candidate | `node scripts/v5-visual-smoke.mjs` | **BLOCKED before opening browser**: Chromium OS socket `Operation not permitted`; WebKit binary unavailable. Must run on CI runner |
 
@@ -43,6 +44,7 @@ The first path was populated from local Git snapshot `ecc2944`, whose tree was v
 ## Required evidence still pending
 
 - R01–R13 focused Node tests and complete suite are green **locally**, but must be bound to the remote candidate SHA and CI.
+- The first remote v5 commit passed 236 Node tests in CI; the amended 239-test code needs its own CI run. Initial CI browser-install step still in progress at last inspection.
 - The 80 Danish lexical questions are synthetic and overlap on key terms. **Genuine semantic** retrieval and independent paraphrase quality ≥90% top-five remain pending; do not cite 100% lexical as semantic success.
 - 30 deterministic scheduling scenarios, DST, impossible schedules and locks passed locally; integrated live-calendar freshness and selective replan review remain pending.
 - Chromium and WebKit desktop (1390×950) and mobile (390×844) in CI; keyboard, zoom, focus, contrast, source URL and draft-preservation manual/browser checks pending.

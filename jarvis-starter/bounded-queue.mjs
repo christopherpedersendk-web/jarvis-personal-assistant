@@ -18,7 +18,10 @@ export class BoundedJobQueue {
 
   snapshot() {
     return this.records.slice(-100).map(({ id, label, state, enqueuedAt, startedAt, endedAt, error }) =>
-      ({ id, label, state, enqueuedAt, startedAt, endedAt, ...(error ? { error } : {}) }));
+      ({ id, label, state, enqueuedAt, startedAt, endedAt,
+        queuedMs: startedAt ? Math.max(0, Date.parse(startedAt) - Date.parse(enqueuedAt)) : null,
+        runMs: startedAt && endedAt ? Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) : null,
+        ...(error ? { error } : {}) }));
   }
 
   enqueue(label, run) {

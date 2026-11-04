@@ -80,7 +80,8 @@ test('R02: concurrent private settings edits survive and failed rename changes n
 });
 
 test('R04: metadata mismatch is rejected even for a pinned SHA', async () => {
-  assert.equal(validateReleasePackage('{"version":"5.0.0"}', 'v5.0.0'), '5.0.0');
+  assert.equal(validateReleasePackage('{"version":"5.0.0","jarvisSchemaVersion":1,"jarvisReadableSchemaFrom":0}', 'v5.0.0'), '5.0.0');
+  assert.throws(() => validateReleasePackage('{"version":"5.0.0"}', 'v5.0.0'), /dataskema/);
   assert.throws(() => validateReleasePackage('{"version":"4.9.1"}', 'v5.0.0'), /matcher ikke/);
   assert.throws(() => validateReleasePackage('not json', 'v5.0.0'), /ugyldig/);
   const dir = await mkdtemp(join(tmpdir(), 'jarvis-v5-release-'));

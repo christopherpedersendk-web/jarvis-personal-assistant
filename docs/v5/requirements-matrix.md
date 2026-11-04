@@ -1,13 +1,13 @@
 # JARVIS v5 requirement traceability
 
-Each row maps a clause in the owner-supplied handover to a milestone, implementation and executed check. `Testet (syntetisk)` does **not** imply manual acceptance, production safety or the release gate. The common test command below is `cd jarvis-starter && npm test` (**236/236** on the local candidate before a remote commit). R01–R13 are *code findings*, not claims that the owner experienced an incident.
+Each row maps a clause in the owner-supplied handover to a milestone, implementation and executed check. `Testet (syntetisk)` does **not** imply manual acceptance, production safety or the release gate. The common test command below is `cd jarvis-starter && npm test` (**239/239** on the latest local candidate; the first published commit independently passed **236/236** in GitHub Actions). R01–R13 are *code findings*, not claims that the owner experienced an incident.
 
 | ID | Priority | Milestone | Required behavior | Implementation / test evidence | Status or limitation |
 |---|---|---|---|---|---|
 | A1 | P0 | M1–M2 | Serialized atomic persistence, revision/rollback, honest errors | `state-schema.mjs`, `server.mjs`; `v5-stability`, `v5-migration` | Delvist testet: some older domain mutations still publish memory before durable save |
 | A2 | P0 | M2 | Durable action outcomes independent of a model response | `server.mjs` action journal; `v5-stability` R05 | Testet (syntetisk); journal size/history bounded, full multi-step recovery remains partial |
 | A3 | P0 | M2 | Bounded work and cancelling waiting jobs | `bounded-queue.mjs`; `v5-queue` | Delvist testet: chat queue yes, not every external/background operation |
-| A4 | P0 | M2/M6 | Distinguish readiness, failures and recovery | `server.mjs`, `system-health.mjs`, `state-schema.mjs`; `v5-migration` | Delvist testet: no live storage outage drill |
+| A4 | P0 | M2/M6 | Distinguish readiness, failures and recovery | `server.mjs` `/ready`, `system-health.mjs` write probe, `state-schema.mjs`; `v5-readiness`, `v5-migration` | Testet med fejl injiceret i syntetisk lager; ingen live outage drill |
 | B1 | P1 | M3 | Proposals, confirmed facts, temporaries, actions and sources | `personal-claims.mjs`, `personal-knowledge.mjs`; `v5-intelligence` | Testet (syntetisk); legacy memory editor remains parallel |
 | B2 | P1 | M3 | Preserve corrections/history and exclude unresolved conflicting facts | `personal-claims.mjs`, knowledge index; `v5-intelligence` | Testet (syntetisk) |
 | B3 | P1 | M3 | Structured lookup + lexical and genuine semantic retrieval | `personal-knowledge.mjs`, `semantic-index.mjs`; 80/80 lexical correct-source@5 | **Blokeret**: no installed, measured genuine local Danish embedding model; lexical score not semantic proof |
@@ -15,7 +15,7 @@ Each row maps a clause in the owner-supplied handover to a milestone, implementa
 | B5 | P1 | M3 | Incremental revision-aware indexing and local fallback | `semantic-index.mjs`, `personal-knowledge.mjs`; `v5-intelligence` | Testet with synthetic embedding adapter; real model pending B3 |
 | C1 | P1 | M3 | Distinct personal tasks, calendar events, automation jobs | `personal-tasks.mjs`, `task-engine.mjs`, `capacity-planner.mjs`; `v5-server` | Testet (syntetisk) |
 | C2 | P1 | M3 | Task purpose, effort, dependencies, windows and locks | `personal-tasks.mjs`, `/api/personal-tasks`; `v5-personal-tasks` | Testet (syntetisk) |
-| C3 | P1 | M3 | Capacity and hard constraints, unknown calendar not free time | `capacity-planner.mjs`, `/api/planning/simulate`; 30 scenarios | Testet (syntetisk); actual connected-calendar coverage not yet used by this form |
+| C3 | P1 | M3 | Capacity and hard constraints, unknown calendar not free time | `capacity-planner.mjs`, server read-only Google Calendar planning input; 30 scenarios, `v5-server` | Testet med syntetisk kalender; source read failure gives unknown capacity; live selection/freshness acceptance pending |
 | C4 | P1 | M3 | Selective replan with locked choices | `capacity-planner.mjs`, `personal-tasks.mjs`; scenario tests | Delvist testet: general interactive selective replan UI not complete |
 | C5 | P1 | M3 | Persistent source-based follow-up and stop conditions | `follow-up-cases.mjs`, `/api/follow-ups`, `public/v5-plan.js`; `v5-server` | Testet (syntetisk); live monitored follow-up not exercised |
 | D1 | P1 | M4 | Household defaults, 1–4 week rhythm and date exceptions | `meal-planner.mjs`, `public/meals.js`; `v5-household` | Delvist testet: explicit guests/holiday forms incomplete |
@@ -48,22 +48,22 @@ Each row maps a clause in the owner-supplied handover to a milestone, implementa
 | J2 | P1 | M3/M6 | Incremental lookup and bounded model context | `personal-knowledge.mjs`, `semantic-index.mjs`; `v5-intelligence`, `v5-perf` | Delvist testet; genuine local semantic model pending |
 | J3 | P1 | M2 | Modular monolith, shared internals | `personal-tasks.mjs`, `state-schema.mjs`, `food-identity.mjs`, `bounded-queue.mjs` | Delvist implementeret: `server.mjs` remains a large route module |
 | J4 | P1 | M2–M4 | Shared dates, ingredients, statuses, source rules | `food-identity.mjs`, `personal-knowledge.mjs`, `capacity-planner.mjs` | Delvist testet across domains |
-| J5 | P1 | M5 | Gradual frontend modularisation and draft control | `public/app.js`, `public/v5-plan.js`, `public/meals.js`, `public/v5.css` | Implementeret; browser evidence pending |
+| J5 | P1 | M5 | Gradual frontend modularisation and draft control | `public/app.js` session-bound reload drafts, `public/v5-plan.js`, `public/meals.js`, `public/v5.css` | Implementeret; browser evidence pending |
 | J6 | P0/P1 | M1–M2 | Project changes/tests/install approval tied to revisions | `project-agent.mjs`, `update-manager.mjs`; `v5-stability` | Testet (syntetisk) |
 | J7 | P1 | M0/M6 | Measured before/after API, retrieval, writes, memory | `scripts/v5-perf.mjs`; `verification.md` | Testet locally; queue/external waits and live model/tool costs unavailable |
 | K1 | P1 | M5 | 7 desktop + 5 mobile Danish nav items/history | `public/index.html`, `public/app.js`, `public/v5.css` | Implementeret; Chromium/WebKit pending |
 | K2 | P1 | M5 | Compact I dag with visible chat/microphone | `public/index.html`, `public/v5.css` | Implementeret; visual and physical-device check pending |
 | K3 | P1 | M4/M5 | Structured meal, ingredient and household editors | `public/meals.js`, `public/meals.css` | Implementeret; browser workflow pending |
 | K4 | P1 | M5 | Exact source navigation, unified memory/integrations | `public/intelligence.js`, `public/memory-v49.js`, `public/v5-plan.js` | Delvist implementeret: two knowledge editors still require consolidation; source browser test pending |
-| K5 | P0/P1 | M1/M5 | Preserve dirty drafts, focus, revision conflicts | `public/app.js`, `public/meals.js`; `v5-visual-smoke` | Implementeret; browser test pending due to local Chromium socket denial |
-| L1 | P0 | M6 | Regression, both engines and physical devices | `npm test` 236/236; `.github/workflows/v48-visual.yml` | Delvist testet: Chromium/WebKit in CI, real iPhone/desktop pending |
+| K5 | P0/P1 | M1/M5 | Preserve dirty drafts, focus, revision conflicts | `public/app.js` sessionStorage recovery, `public/meals.js`; `v5-visual-smoke` | Implementeret; browser test pending due to local Chromium socket denial |
+| L1 | P0 | M6 | Regression, both engines and physical devices | Local `npm test` 239/239, first published commit CI 236/236; `.github/workflows/v48-visual.yml` | Delvist testet: Chromium/WebKit CI pending, real iPhone/desktop pending |
 | L2 | P0 | M2/M6 | Independent schema and idempotent migration | `state-schema.mjs`; `v5-migration`, `v5-server` | Testet (syntetisk); schema 0→1 |
 | L3 | P0 | M6 | Restore/rollback without replacing newer data | `state-schema.mjs`, `scripts/deploy-release.mjs`; `v5-migration`, `deploy-release` | Testet synthetic; admin recovery rehearsal pending |
-| L4 | P0 | M6 | Tag/SHA/version/schema/runtime bound to candidate | `update-manager.mjs`, `deploy-release.mjs`; `v5-stability`, `deploy-release` | Delvist testet: candidate remote SHA/CI pending; M7 tag/install separate |
+| L4 | P0 | M6 | Tag/SHA/version/schema/runtime bound to candidate | `package.json` schema manifest, `update-manager.mjs`, `deploy-release.mjs`; `v5-stability`, `v5-migration`, `deploy-release` | Testet syntetisk i to led; newest remote candidate CI and M7 tag/install separate |
 | R01 | P0 | M1 | Recover save queue while reporting original failed write | `server.mjs`, `state-schema.mjs`; `v5-stability` fault injection | Testet (syntetisk), 500 then 200 and saved state |
 | R02 | P0 | M1 | Serialize full settings read-modify-write | `server.mjs` `persistPrivateSettings`; `v5-stability` | Testet (syntetisk), concurrent fields survive and failed rename is honest |
 | R03 | P0 | M1/M5 | Polling/import/navigation preserve unsaved text and focus | `public/app.js`, `public/meals.js`; `v5-visual-smoke` | Implementeret, **afventer browser** |
-| R04 | P0 | M1/M6 | Tag, commit, tested SHA, package, running version, schema | `update-manager.mjs`, `deploy-release.mjs`; `v5-stability`, `deploy-release` | Testet syntetisk; actual candidate PR CI/M7 verification pending |
+| R04 | P0 | M1/M6 | Tag, commit, tested SHA, package, running version, schema | `package.json` schema manifest, `update-manager.mjs`, `deploy-release.mjs`; `v5-stability`, `v5-migration`, `deploy-release` | Testet syntetisk; actual newest candidate PR CI/M7 verification pending |
 | R05 | P0 | M1/M2 | Durable outcome even if model fails after tool mutation | `server.mjs` action journal; `v5-stability` | Testet (syntetisk), journal survives restart |
 | R06 | P0 | M1 | Reject duplicate or different approved package sets/revisions | `project-agent.mjs`, `public/app.js`; `v5-stability` | Testet (syntetisk), unknown install cannot retry blindly |
 | R07 | P1/P0 | M4 | Refresh price-only 20→99 DKK under 30 DKK budget | `shopping-planner.mjs`; `v5-household` | Testet (syntetisk): over budget and needsReview, zero writes |

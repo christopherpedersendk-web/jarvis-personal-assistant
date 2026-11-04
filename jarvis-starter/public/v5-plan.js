@@ -178,16 +178,15 @@
     event.preventDefault();
     const start = localInstant('capacity-start');
     const end = localInstant('capacity-end');
-    const reviewed = byId('capacity-reviewed').checked;
+    const useCalendar = byId('capacity-reviewed').checked;
     if (!start || !end || end <= start) {
       errorStatus('capacity-status', 'Sluttid skal være efter starttid.', true); return;
     }
     try {
       const { plan } = await api('/api/planning/simulate', { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeZone: 'Europe/Copenhagen',
-          workWindows: [{ start, end }], calendarEvents: [],
-          calendarCoverage: reviewed ? { status: 'ready', start, end } : { status: 'unknown' } }) });
+        body: JSON.stringify({ timeZone: 'Europe/Copenhagen', useCalendar,
+          workWindows: [{ start, end }], calendarEvents: [], calendarCoverage: { status: 'unknown' } }) });
       const target = byId('capacity-results');
       target.replaceChildren();
       errorStatus('capacity-status', plan.feasible ? 'Forslaget kan placeres inden for de angivne rammer. Ingen aftaler er oprettet.'

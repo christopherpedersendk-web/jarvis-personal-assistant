@@ -16,6 +16,11 @@ test('deployment requires both staged proof and explicit approval of the same co
   assert.equal(validatedApproval({ staged, approved: { ...approved, testedSha: 'b'.repeat(40) } }), null);
   assert.equal(validatedApproval({ staged, approved: { ...approved, packageVersion: '4.8.0' } }), null);
   assert.equal(validatedApproval({ staged, approved: null }), null);
+  const v5 = { ...staged, version: 'v5.0.0', packageVersion: '5.0.0', schemaVersion: 1, readableFrom: 0 };
+  assert.deepEqual(validatedApproval({ staged: v5, approved: { ...v5, approvedAt: '2026-11-04T12:10:00Z' } }),
+    { version: 'v5.0.0', sha: commit, schemaVersion: 1, readableFrom: 0 });
+  assert.equal(validatedApproval({ staged: v5, approved: { ...v5, schemaVersion: 9,
+    approvedAt: '2026-11-04T12:10:00Z' } }), null);
 });
 
 test('runtime health must report the exact approved application version', async () => {
@@ -94,9 +99,10 @@ test('automatic rollback refuses to start v4 code after a v5 data-schema migrati
   await mkdir(join(candidate, 'jarvis-starter'), { recursive: true });
   await mkdir(data, { recursive: true });
   await writeFile(join(previous, 'jarvis-starter', 'package.json'), '{"version":"4.9.1"}');
-  await writeFile(join(candidate, 'jarvis-starter', 'package.json'), '{"version":"5.0.0"}');
+  await writeFile(join(candidate, 'jarvis-starter', 'package.json'), '{"version":"5.0.0","jarvisSchemaVersion":1,"jarvisReadableSchemaFrom":0}');
   await writeFile(join(data, 'state.json'), '{"schemaVersion":0,"manual":"retained"}');
   const approved = { version: 'v5.0.0', sha: commit, testedSha: commit, packageVersion: '5.0.0',
+    schemaVersion: 1, readableFrom: 0,
     testedAt: '2026-11-04T12:00:00Z', approvedAt: '2026-11-04T12:10:00Z' };
   await writeFile(join(data, 'update-state.json'), JSON.stringify({ staged: approved, approved }));
   await symlink(previous, current);
