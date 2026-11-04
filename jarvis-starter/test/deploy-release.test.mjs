@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readlink, symlink, rename } from 'node:fs/promises';
+import { mkdtemp, readlink, symlink, rename, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicLink, validatedApproval, unprivilegedGitCommand } from '../scripts/deploy-release.mjs';
+import { atomicLink, validatedApproval, unprivilegedGitCommand, deployRelease } from '../scripts/deploy-release.mjs';
 
 const commit = 'a'.repeat(40);
 test('deployment requires both staged proof and explicit approval of the same commit', () => {
@@ -29,4 +29,42 @@ test('deployment Git verification drops privileges without PAM', () => {
   assert.equal(program, '/usr/bin/setpriv');
   assert.deepEqual(args.slice(0, 5), ['--reuid=1000', '--regid=1000', '--clear-groups', '--', '/usr/bin/git']);
   assert.deepEqual(args.slice(-2), ['rev-parse', 'HEAD']);
+});
+
+test('failed healthcheck automatically restores the previous release and retains shared data', async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), 'jarvis-rollback-'));
+  const root = join(sandbox, 'jarvis');
+  const releases = join(root, 'releases');
+  const staging = join(root, 'update-staging');
+  const data = join(root, 'shared', 'data');
+  const audit = join(sandbox, 'audit', 'last-result.json');
+  const current = join(root, 'current');
+  const previous = join(releases, 'v4.6.1');
+  const candidate = join(staging, 'v4.6.2');
+  await mkdir(previous, { recursive: true });
+  await mkdir(join(candidate, 'jarvis-starter'), { recursive: true });
+  await mkdir(data, { recursive: true });
+  await writeFile(join(candidate, 'jarvis-starter', 'package.json'), '{"version":"4.6.2"}');
+  await writeFile(join(data, 'state.json'), '{"important":"preserved"}');
+  const approved = { version: 'v4.6.2', sha: commit, testedAt: '2026-11-04T12:00:00Z', approvedAt: '2026-11-04T12:10:00Z' };
+  await writeFile(join(data, 'update-state.json'), JSON.stringify({ staged: approved, approved }));
+  await symlink(previous, current);
+
+  const commands = [];
+  let checks = 0;
+  const result = await deployRelease({ root, staging, releases, data, current, audit }, {
+    testFixturePaths: true,
+    run: async (command, args) => {
+      commands.push([command, ...args]);
+      if (args.includes('rev-parse')) return { stdout: commit + '\n' };
+      return { stdout: '' };
+    },
+    checkHealth: async () => ++checks > 1,
+  });
+
+  assert.deepEqual(result, { status: 'rolled-back', version: 'v4.6.2' });
+  assert.equal(await readlink(current), previous);
+  assert.equal(JSON.parse(await readFile(join(data, 'state.json'), 'utf8')).important, 'preserved');
+  assert.equal(JSON.parse(await readFile(audit, 'utf8')).status, 'rolled-back');
+  assert.equal(commands.filter(([program, action]) => program === '/usr/bin/systemctl' && action === 'restart').length, 2);
 });
