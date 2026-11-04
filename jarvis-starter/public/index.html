@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07111e" />
+  <meta name="description" content="JARVIS – din private AI-assistent" />
+  <title>JARVIS · Personlig assistent</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/tasks.css" />
+  <link rel="stylesheet" href="/code.css" />
+  <link rel="stylesheet" href="/projects.css" />
+  <link rel="stylesheet" href="/secretary.css" />
+  <link rel="stylesheet" href="/dashboard.css" />
+  <link rel="stylesheet" href="/smart-home.css" />
+  <link rel="stylesheet" href="/organizer.css" />
+  <script src="/app.js" defer></script>
+  <script src="/organizer.js" defer></script>
+  <script src="/smart-home.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="orb small"></span><span>JARVIS <small>PERSONAL ASSISTANT</small></span></div>
+      <span id="connection" class="status-tag">Ikke forbundet</span>
+    </header>
+
+    <section id="login" class="login-panel panel">
+      <div class="orb hero"></div>
+      <p class="eyebrow">VELKOMMEN TILBAGE</p>
+      <h1>Din assistent.<br /><em>På dine præmisser.</em></h1>
+      <p class="muted">Log ind med adgangskoden fra <code>JARVIS_ACCESS_TOKEN</code> i din lokale .env-fil. Den er ikke din OpenAI API-nøgle.</p>
+      <form id="login-form" class="login-form">
+        <label for="token">Adgangskode</label>
+        <input id="token" type="password" autocomplete="current-password" required placeholder="Indsæt adgangskoden fra .env" />
+        <button class="primary" type="submit">Forbind til JARVIS</button>
+      </form>
+    </section>
+
+    <section id="workspace" class="workspace hidden" aria-label="JARVIS arbejdsområde">
+      <nav class="tab-nav" aria-label="Hovednavigation">
+        <button type="button" class="tab-button active" data-tab="home">⌂ Overblik</button>
+        <button type="button" class="tab-button" data-tab="tasks">◷ Opgaver</button>
+        <button type="button" class="tab-button" data-tab="projects">⌘ Projekter</button>
+        <button type="button" class="tab-button" data-tab="secretary">✦ Sekretær</button>
+        <button type="button" class="tab-button" data-tab="organizer">▤ Noter &amp; lister</button>
+        <button type="button" class="tab-button" data-tab="smart-home">⌂ Smart Home</button>
+        <button type="button" class="tab-button" data-tab="settings">⚙ Indstillinger</button>
+      </nav>
+      <div id="tab-home" class="tab-view active-view" role="region" aria-label="Samtale og overblik">
+        <div id="home-overview" class="overview-cards" aria-live="polite"></div>
+        <section id="home-smart-home" class="panel smart-home-summary" aria-live="polite"></section>
+        <div id="home-feed" class="command-center" aria-live="polite"></div>
+      </div>
+      <div id="tab-tasks" class="tab-view hidden" role="region" aria-label="Opgaver"></div>
+      <div id="tab-projects" class="tab-view hidden" role="region" aria-label="Projekter"></div>
+      <div id="tab-secretary" class="tab-view hidden" role="region" aria-label="Sekretær"></div>
+      <div id="tab-organizer" class="tab-view hidden" role="region" aria-label="Noter og lister">
+        <section class="panel organizer-panel">
+          <div class="section-heading"><h2>Mine noter og lister</h2><span class="tiny-label">DELT MED JARVIS</span></div>
+          <p class="muted small-text">Vigtige datoer, fødselsdage, gaveidéer, indkøbslister og frie noter. Du kan opdatere dem her eller bede JARVIS om det med stemmen.</p>
+          <form id="organizer-search" class="organizer-search">
+            <label for="organizer-query">Find i alle lister og noter</label>
+            <input id="organizer-query" maxlength="120" placeholder="Fx fødselsdag, LEGO, gave, indkøb …" />
+            <button type="submit" class="secondary">Søg</button>
+          </form>
+          <div id="organizer-search-results" class="search-results" aria-live="polite"></div>
+          <form id="collection-form" class="collection-create">
+            <label for="collection-type">Type</label>
+            <select id="collection-type">
+              <option value="dates">Vigtige datoer og fødselsdage</option>
+              <option value="gifts">Gaveidéer</option>
+              <option value="shopping">Indkøbsliste</option>
+              <option value="notes">Noter</option>
+              <option value="list">Almindelig liste</option>
+            </select>
+            <label for="collection-title">Navn</label>
+            <input id="collection-title" maxlength="100" required placeholder="Fx Familiens fødselsdage" />
+            <button class="primary" type="submit">+ Ny liste</button>
+          </form>
+        </section>
+        <div id="collection-list" class="collection-list"></div>
+      </div>
+      <div id="tab-smart-home" class="tab-view hidden" role="region" aria-label="Smart Home">
+        <section class="panel"><div class="section-heading"><h2>Smart Home</h2><span class="tiny-label">SONOS · GOOGLE HOME · HÆNDELSER</span></div>
+          <p class="muted small-text">Styr Hue-lys og Sonos-musik. Nest kræver særskilt Google Device Access-godkendelse.</p>
+          <div id="smart-home-status" class="smart-home-grid"></div>
+          <h3>Philips Hue · rum og lys</h3><div id="smart-home-hue"></div>
+          <button id="smart-home-load-hue" type="button" class="secondary">Opdater Hue-lys</button>
+          <h3>Hue-scener</h3><div id="smart-home-scenes"></div>
+          <h3>Sonos-afspilning</h3><div id="smart-home-groups"></div>
+          <button id="smart-home-load-groups" type="button" class="secondary">Opdater Sonos-rum</button>
+          <h3>Hændelser</h3><button id="smart-home-test" type="button" class="secondary">Test dørklokke-hændelse</button>
+          <div id="smart-home-events" class="home-events"></div>
+        </section>
+      </div>
+      <div id="tab-settings" class="tab-view hidden" role="region" aria-label="Indstillinger">
+        <section class="panel settings-panel">
+          <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v4.3</span></div>
+          <p class="muted small-text">Redigér driftsindstillinger og iPhone-notifikationer her. Eksisterende hemmelige nøgler vises aldrig.</p>
+          <form id="settings-form" class="task-form">
+            <label for="max-runs">Maksimalt antal baggrundsopgaver pr. dag</label>
+            <input id="max-runs" type="number" min="1" max="100" required />
+            <label class="inline-check" for="reminders-enabled"><input id="reminders-enabled" type="checkbox" checked /> Vis proaktive påmindelser om kommende datoer i JARVIS-indbakken</label>
+            <label for="https-url">JARVIS' HTTPS-adresse</label>
+            <input id="https-url" type="url" placeholder="https://din-enhed.tailnet.ts.net" />
+            <label for="push-user">Pushover User Key</label>
+            <input id="push-user" type="password" autocomplete="off" placeholder="Lad være tom for at beholde den nuværende" />
+            <label for="push-token">Pushover App Token</label>
+            <input id="push-token" type="password" autocomplete="off" placeholder="Lad være tom for at beholde den nuværende" />
+            <p id="settings-status" class="muted small-text"></p>
+            <button type="submit" class="primary full">Gem indstillinger</button>
+          </form>
+          <hr />
+          <h3>Discord – direkte chat med JARVIS</h3>
+          <p class="muted small-text">Kun dit Discord-bruger-ID må skrive til JARVIS. Direkte beskeder er tilladt; beskeder på en server er kun tilladt, hvis du angiver dens ID. Bot-tokenet bliver gemt privat og vises aldrig igen.</p>
+          <form id="discord-form" class="task-form">
+            <label class="inline-check" for="discord-enabled"><input id="discord-enabled" type="checkbox" /> Discord-bot aktiv</label>
+            <label for="discord-token">Discord Bot Token</label>
+            <input id="discord-token" type="password" autocomplete="off" placeholder="Lad stå tom for at beholde gemt token" />
+            <label for="discord-user-id">Dit Discord User ID (kun tal)</label>
+            <input id="discord-user-id" inputmode="numeric" placeholder="Dit bruger-ID fra Discord" />
+            <label for="discord-guild-id">Privat Discord Server ID (valgfrit)</label>
+            <input id="discord-guild-id" inputmode="numeric" placeholder="Lad stå tomt for kun at tillade DM" />
+            <p id="discord-status" class="muted small-text" aria-live="polite">Discord er ikke konfigureret.</p>
+            <button type="submit" class="primary full">Gem og forbind Discord</button>
+          </form>
+          <hr /><h3>Smart Home – Sonos</h3>
+          <p class="muted small-text">Eksperimentel Sonos Cloud API-forbindelse. Kræver et godkendt OAuth access token fra Sonos Developer Portal og household-ID. Automatisk tokenfornyelse er endnu ikke implementeret. Del aldrig dine tokens i chat.</p>
+          <form id="home-settings-form" class="task-form">
+            <label for="sonos-token">Sonos OAuth Access Token</label><input id="sonos-token" type="password" autocomplete="off" placeholder="Lad være tom for at beholde gemt token" />
+            <label for="sonos-household">Sonos Household ID</label><input id="sonos-household" autocomplete="off" placeholder="Household ID" />
+            <label class="inline-check"><input id="sonos-clear" type="checkbox" /> Fjern gemt Sonos-token</label>
+            <p id="home-settings-status" class="muted small-text"></p>
+            <button type="submit" class="primary full">Gem Sonos-indstillinger</button>
+          </form>
+          <hr /><h3>Philips Hue – lokal forbindelse</h3>
+          <p class="muted small-text">JARVIS og Hue Bridge skal være på samme hjemmenetværk. Angiv den lokale IP-adresse, gem, tryk på den fysiske knap på Hue Bridge, og vælg derefter Parring. Første forbindelse fastholder Bridges TLS-certifikat; ændringer afvises.</p>
+          <form id="hue-settings-form" class="task-form">
+            <label for="hue-ip">Hue Bridge IP-adresse</label><input id="hue-ip" inputmode="decimal" placeholder="192.168.1.20" />
+            <p id="hue-settings-status" class="muted small-text"></p>
+            <button type="submit" class="secondary full">Gem Bridge-adresse</button>
+            <button id="hue-pair" type="button" class="primary full">Par med Hue Bridge (tryk først på Bridge-knappen)</button>
+          </form>
+          <hr /><h3>Google Nest-dørklokke</h3>
+          <p class="muted small-text">Under forberedelse: kræver Google Device Access, separat OAuth-adgang og en Pub/Sub-subscription. Dørklokke-data er endnu ikke forbundet. Ingen kamerabilleder gemmes af JARVIS.</p>
+          <p class="muted small-text">API-nøgle, login-token, serverbinding og tilladelse til softwareinstallation er sikkerhedskritiske serverindstillinger og kan endnu ikke ændres i browseren.</p>
+        </section>
+      </div>
+      <div id="legacy-layout" class="hidden">
+      <div class="hero-panel panel">
+        <div class="orb hero" id="voice-orb"></div>
+        <p class="eyebrow">DIN PERSONLIGE ASSISTENT</p>
+        <h1>Godt at se dig,<br /><em>Christopher.</em></h1>
+        <p id="voice-status" class="muted">Klar til at lytte, når du starter en samtale.</p>
+        <div class="action-row">
+          <button id="voice-toggle" class="primary large" type="button">🎙️ Start stemmesamtale</button>
+          <button id="refresh" class="secondary" type="button">Opdater historik</button>
+        </div>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel chat-panel" aria-label="Samtale">
+          <div class="section-heading"><h2>Samtale</h2><span id="history-count" class="muted micro"></span></div>
+          <div id="messages" class="messages" role="log" aria-live="polite"></div>
+          <form id="message-form" class="composer">
+            <label class="sr-only" for="message">Besked til JARVIS</label>
+            <textarea id="message" rows="2" maxlength="5000" placeholder="Spørg om noget, eller del en idé …" required></textarea>
+            <button class="primary" id="send" type="submit">Send ↗</button>
+          </form>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel secretary-panel" aria-label="Personlig sekretær">
+            <div class="section-heading"><h2>Sekretær &amp; hukommelse</h2><span id="secretary-count" class="tiny-label">0 NYE</span></div>
+            <p class="muted small-text">Fælles viden, morgenrapporter, overvågninger og forslag til godkendelse.</p>
+            <div class="secretary-actions">
+              <button id="briefing-template" type="button" class="secondary">+ Morgenrapport</button>
+              <button id="monitor-template" type="button" class="secondary">+ Prisovervågning</button>
+              <button id="gift-template" type="button" class="secondary">+ Gaveidéer</button>
+            </div>
+            <details class="secretary-details">
+              <summary>Skills-dokument – sekretærens instruktioner</summary>
+              <label for="playbook">Ret den faste instruktionssamling</label>
+              <textarea id="playbook" rows="10" maxlength="15000"></textarea>
+              <div class="secretary-actions"><button id="import-playbook" type="button" class="secondary">Importér .md</button><button id="export-playbook" type="button" class="secondary">Eksportér .md</button></div>
+              <input id="playbook-file" class="hidden" type="file" accept=".md,text/markdown,text/plain" />
+              <button id="save-playbook" type="button" class="secondary full">Gem skills-dokument</button>
+            </details>
+            <h3>Hukommelse på tværs</h3>
+            <form id="memory-form" class="task-form">
+              <label for="memory-text">Hvad skal JARVIS huske?</label>
+              <textarea id="memory-text" rows="2" maxlength="1200" required placeholder="Fx Jeg foretrækker gaveidéer under 500 kr. …"></textarea>
+              <button type="submit" class="secondary full">Husk dette</button>
+            </form>
+            <div id="memories" class="secretary-list"></div>
+            <h3>Indbakke</h3>
+            <div id="secretary-inbox" class="secretary-list"></div>
+            <h3>Handlinger til godkendelse</h3>
+            <p class="muted small-text">Godkendelse registrerer din beslutning. Den udfører endnu ikke reservationer, køb eller beskeder.</p>
+            <div id="approvals" class="secretary-list"></div>
+            <div class="secretary-actions"><span id="push-status" class="tiny-label">Push: ikke opsat</span><button id="push-test" class="secondary" type="button">Test iPhone-push</button></div>
+          </section>
+          <section class="panel projects-panel" aria-label="Kodeprojekter">
+            <div class="section-heading"><h2>Projektværksted</h2><span class="tiny-label">JARVIS V3</span></div>
+            <p class="muted small-text">JARVIS kan oprette og videreudvikle separate projekter og teste dem i en isoleret Docker-container. Ved fejl prøver den op til to automatiske rettelser. Docker skal være installeret.</p>
+            <form id="project-form" class="task-form">
+              <label for="project-title">Nyt projekt</label>
+              <input id="project-title" maxlength="80" required placeholder="Fx D&amp;D karakterbog" />
+              <label for="project-description">Hvad skal projektet kunne?</label>
+              <textarea id="project-description" rows="3" maxlength="1500" required placeholder="En lille webapp til mine karakterer, level og udstyr …"></textarea>
+              <button id="project-create" class="primary full" type="submit">Opret projektmappe</button>
+            </form>
+            <div id="projects" class="project-list"></div>
+          </section>
+          <section class="panel code-panel" aria-label="Kodeagent">
+            <div class="section-heading"><h2>Kodeagent</h2><span class="tiny-label">KRÆVER GODKENDELSE</span></div>
+            <p class="muted small-text">Lad JARVIS foreslå en ændring til sin egen brugerflade eller personlighed. Gennemse forslaget, før du installerer. Der gemmes en backup.</p>
+            <form id="code-form" class="task-form">
+              <label for="code-file">Fil, der må ændres</label>
+              <select id="code-file">
+                <option value="persona.md">Personlighed og instruktioner</option>
+                <option value="public/styles.css">Design og farver</option>
+                <option value="public/tasks.css">Opgavevisning</option>
+                <option value="public/index.html">Sideindhold og layout</option>
+                <option value="public/app.js">Brugerfladens JavaScript (avanceret)</option>
+              </select>
+              <label for="code-request">Hvad skal forbedres?</label>
+              <textarea id="code-request" rows="3" maxlength="2000" required placeholder="Fx Gør opgavekortene mere kompakte på iPhone …"></textarea>
+              <button id="code-submit" class="primary full" type="submit">Foreslå kodeændring</button>
+            </form>
+            <div id="code-proposals" class="task-list"></div>
+          </section>
+          <section class="panel tasks-panel" aria-label="Baggrundsopgaver">
+            <div class="section-heading"><h2>Baggrundsopgaver</h2><span id="usage" class="tiny-label">0/10 I DAG</span></div>
+            <p class="muted small-text">Opgaver kan undersøge ting på nettet, mens Windows-serveren kører. Resultater vises her. Ingen eksterne handlinger.</p>
+            <form id="task-form" class="task-form">
+              <label for="task-category">Opgavetype</label>
+              <select id="task-category"><option value="research">Research</option><option value="briefing">Morgenrapport</option><option value="monitor">Overvågning / priser</option></select>
+              <label for="task-title">Titel</label>
+              <input id="task-title" maxlength="120" required placeholder="Fx Restaurantidéer til fredag" />
+              <label for="task-prompt">Hvad skal JARVIS undersøge?</label>
+              <textarea id="task-prompt" rows="3" maxlength="3500" required placeholder="Find 3 gode restauranter i København med priser og kildelinks …"></textarea>
+              <label for="task-when">Start</label>
+              <select id="task-when"><option value="now">Nu</option><option value="later">På et bestemt tidspunkt</option></select>
+              <div id="later-wrap" class="hidden">
+                <label for="task-run-at">Dato og tidspunkt (lokal tid)</label>
+                <input id="task-run-at" type="datetime-local" />
+              </div>
+              <label for="task-repeat">Gentagelse</label>
+              <select id="task-repeat">
+                <option value="0">Kun én gang</option>
+                <option value="60">Hver time</option>
+                <option value="360">Hver 6. time</option>
+                <option value="1440">Hver 24. time</option>
+                <option value="10080">Hver 7. dag</option>
+                <option value="daily">Dagligt på dansk klokkeslæt</option>
+              </select>
+              <div id="daily-wrap" class="hidden"><label for="task-daily-time">Klokkeslæt (Danmark)</label><input type="time" id="task-daily-time" value="07:30" /></div>
+              <button id="task-submit" class="primary full" type="submit">+ Opret opgave</button>
+            </form>
+            <div id="tasks" class="task-list" aria-live="polite"></div>
+          </section>
+          <section class="panel notes-panel">
+            <div class="section-heading"><h2>Det JARVIS skal huske</h2><span class="tiny-label">PRIVAT</span></div>
+            <p class="muted small-text">Skriv dine varige præferencer. De bruges i både tekst- og stemmesamtaler.</p>
+            <label class="sr-only" for="preferences">Hukommelsesnoter</label>
+            <textarea id="preferences" rows="7" maxlength="10000" placeholder="Fx: Jeg foretrækker restauranter i København i mellemprisklassen …"></textarea>
+            <button id="save-preferences" class="secondary full" type="button">Gem noter</button>
+          </section>
+          <section class="panel capabilities">
+            <h2>Næste integrationer</h2>
+            <div><span>◌</span><p><strong>Restaurantbooking</strong><small>Undersøgelse virker nu; selve bookingfunktionen kræver en godkendelsesstyret integration</small></p></div>
+            <div><span>⌘</span><p><strong>Projektværksted</strong><small>Separat projektmappe og automatiske filændringer virker nu. Afgrænset pakkeinstallation kræver godkendelse.</small></p></div>
+            <div><span>◷</span><p><strong>Push-notifikationer</strong><small>Resultater vises i appen, men sendes endnu ikke automatisk til låseskærmen</small></p></div>
+            <p class="disclaimer">Filændringer kræver din særskilte godkendelse. JARVIS kan ikke foretage køb, bookinger eller sende beskeder.</p>
+          </section>
+          <button id="logout" class="quiet" type="button">Log ud på denne enhed</button>
+        </aside>
+      </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <footer>JARVIS v4.3 · Command Center · Discord, tale og tekst med fælles hukommelse · Stemmen aktiveres kun, når du trykker Start</footer>
+  </main>
+</body>
+</html>

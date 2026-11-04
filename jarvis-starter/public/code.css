@@ -1,0 +1,8 @@
+.code-panel .code-proposal { border: 1px solid rgba(138,180,210,.22); border-radius: 12px; padding: 12px; margin-top: 12px; }
+.code-proposal h3 { margin: 0 0 6px; font-size: 1rem; overflow-wrap: anywhere; }
+.code-proposal p { font-size: .85rem; overflow-wrap: anywhere; }
+.code-proposal .code-controls { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.code-proposal .code-controls button { padding: 8px 12px; }
+.code-preview { display: grid; gap: 10px; margin-top: 10px; }
+.code-preview pre { max-height: 320px; overflow: auto; white-space: pre; font-size: .75rem; border: 1px solid rgba(138,180,210,.2); padding: 10px; border-radius: 8px; background: rgba(0,0,0,.2); }
+.code-proposal .warning { color: #f7cb7f; font-size: .8rem; }

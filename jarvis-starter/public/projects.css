@@ -1,0 +1,16 @@
+.project-list { display: grid; gap: 12px; margin-top: 15px; }
+.project-card { border: 1px solid rgba(138,180,210,.24); padding: 12px; border-radius: 12px; }
+.project-card h3 { margin: 0 0 6px; overflow-wrap: anywhere; font-size: 1rem; }
+.project-card p { margin: 6px 0; font-size: .85rem; overflow-wrap: anywhere; }
+.project-card .project-meta { color: #9ac0cf; font-size: .77rem; }
+.project-card .project-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.project-card .project-actions button { padding: 8px 10px; }
+.project-card textarea { box-sizing: border-box; width: 100%; margin: 8px 0; }
+.project-files { margin: 10px 0; max-height: 350px; overflow: auto; }
+.project-files details { margin: 6px 0; }
+.project-files pre { white-space: pre; overflow: auto; max-height: 220px; font-size: .72rem; border-radius: 8px; background: rgba(0,0,0,.23); padding: 8px; }
+.project-warning { color: #f7cb7f; }
+.project-test-status { padding: 8px; border-radius: 8px; font-size: .8rem; background: rgba(140,180,210,.1); }
+.project-test-status.passed { color: #9fe2ac; }
+.project-test-status.failed { color: #ff9b9b; }
+.project-test-status.unavailable { color: #f7cb7f; }

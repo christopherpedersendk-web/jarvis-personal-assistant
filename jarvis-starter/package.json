@@ -1,0 +1,15 @@
+{
+  "name": "jarvis-personal-assistant-starter",
+  "version": "4.3.0",
+  "private": true,
+  "type": "module",
+  "description": "A personal voice secretary with scheduled briefings, monitoring, shared memory, approvals and isolated code development",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}
