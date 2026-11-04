@@ -8,7 +8,9 @@
 .meal-form > p, .meal-form > button { grid-column: 1 / -1; }
 .meal-plan-controls, .meal-search, .meal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; margin: 1rem 0; }
 .meal-plan-controls > label { align-self: center; }
-.meal-plan-controls input, .meal-plan-controls select { width: auto; min-width: 140px; }
+.meal-plan-controls input[type="date"], .meal-plan-controls select { width: auto; min-width: 140px; }
+.meal-plan-controls .inline-check { flex: 1 1 100%; min-width: 0; }
+.meal-plan-controls input[type="checkbox"] { width: auto; min-width: 0; }
 .meal-search input { max-width: 360px; }
 .meal-card { background: rgba(40, 66, 85, .36); border: 1px solid rgba(160, 194, 217, .24); border-radius: 14px; padding: 1rem; margin: .7rem 0; }
 .meal-card ul { margin: .5rem 0 1rem; padding-left: 1.4rem; line-height: 1.65; }
@@ -24,5 +26,5 @@
   .meal-form { grid-template-columns: minmax(0, 1fr); }
   .meal-form > p, .meal-form > button { grid-column: auto; }
   .meal-plan-controls { align-items: stretch; }
-  .meal-plan-controls input, .meal-plan-controls select { flex: 1 1 140px; }
+  .meal-plan-controls input[type="date"], .meal-plan-controls select { flex: 1 1 140px; }
 }

@@ -110,7 +110,10 @@ try {
   await page.locator('[data-tab="meals"]').click();
   await page.screenshot({ path: join(artifacts, 'v48-meal-planner-mobile.png'), animations: 'disabled' });
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  assert.ok(horizontalOverflow <= 2, `mobile horizontal overflow: ${horizontalOverflow}px`);
+  const overflowSources = horizontalOverflow > 2 ? await page.evaluate(() => [...document.querySelectorAll('#tab-meals *')]
+    .filter(el => { const b = el.getBoundingClientRect(); return b.right > window.innerWidth + 2 && b.width > 0; })
+    .slice(0, 12).map(el => `${el.tagName.toLowerCase()}#${el.id}.${el.className} → ${Math.round(el.getBoundingClientRect().right)}px`)) : [];
+  assert.ok(horizontalOverflow <= 2, `mobile horizontal overflow: ${horizontalOverflow}px · ${overflowSources.join(' | ')}`);
   assert.deepEqual(pageErrors, [], `Frontend runtime exceptions: ${pageErrors.join(' | ')}`);
   console.log('Visual smoke passed: desktop, mobile, meal planning, knowledge sources, skills, adapters, proactive settings.');
 } finally {
