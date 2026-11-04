@@ -25,7 +25,7 @@
 .meal-status { display: inline-flex; max-width: 100%; padding: .3rem .55rem; margin: .1rem 0 .5rem; border: 1px solid #38596b; border-radius: 7px; background: #16384a; color: #aedbe9; font-size: .72rem; line-height: 1.4; overflow-wrap: anywhere; }
 .meal-warning { margin: .6rem 0; padding: .65rem .8rem; border-left: 2px solid #b9a274; border-radius: 4px; background: #5d4f241f; color: #e2cfaa; font-size: .8rem; line-height: 1.5; }
 .meal-field { display: flex; flex-direction: column; gap: .35rem; min-width: 0; margin: .6rem 0; }
-.meal-field > span { font-size: .78rem; color: #b4ccd8; line-height: 1.4; }
+.meal-field > label { font-size: .78rem; color: #b4ccd8; line-height: 1.4; }
 .meal-field input, .meal-field select, .meal-field textarea { margin: 0; padding: .65rem .7rem; border-radius: 9px; font-size: .88rem; }
 .meal-field textarea { line-height: 1.6; }
 .meal-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .75rem; }

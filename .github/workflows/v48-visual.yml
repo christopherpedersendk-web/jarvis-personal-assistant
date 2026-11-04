@@ -39,6 +39,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-v49-ui-screenshots
-          path: jarvis-starter/artifacts/v49-*.png
+          path: jarvis-starter/artifacts/v49-*
           retention-days: 14
           if-no-files-found: warn

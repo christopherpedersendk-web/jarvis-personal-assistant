@@ -3,6 +3,7 @@
 let mealLoaded = false;
 let mealRefreshPromise = null;
 let mealRefreshAgain = false;
+let mealFieldSequence = 0;
 let mealData = { profile: {}, plans: [], household: { configured: false, days: {} }, recipes: [] };
 const mealSelection = new Map();
 const mealDirty = new Set();
@@ -25,8 +26,13 @@ function mealApi(path, method = 'GET', body) {
 }
 
 function mealField(label, control) {
-  const wrapper = mealNode('label', '', 'meal-field');
-  wrapper.append(mealNode('span', label), control);
+  const wrapper = mealNode('div', '', 'meal-field');
+  const caption = mealNode('label', label);
+  if (!control.id) control.id = 'meal-field-' + (++mealFieldSequence);
+  caption.htmlFor = control.id;
+  // Keep option text outside the label. Every field has one exact, stable
+  // accessible name, independent of its selected value or catalogue contents.
+  wrapper.append(caption, control);
   return wrapper;
 }
 

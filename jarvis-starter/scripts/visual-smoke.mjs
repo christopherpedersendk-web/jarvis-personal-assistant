@@ -43,6 +43,9 @@ const backend = spawn(process.execPath, ['server.mjs'], { cwd: app,
     GOOGLE_OAUTH_CLIENT_ID: '', GOOGLE_OAUTH_CLIENT_SECRET: '', GOOGLE_OAUTH_REDIRECT_URI: '' },
   stdio: 'pipe' });
 let browser;
+let page;
+const pageErrors = [];
+const dialogs = [];
 let logs = '';
 backend.stderr.on('data', chunk => { logs += String(chunk).slice(0, 500); });
 try {
@@ -57,9 +60,7 @@ try {
   await mkdir(artifacts, { recursive: true });
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1390, height: 950 }, deviceScaleFactor: 1 });
-  const page = await context.newPage();
-  const pageErrors = [];
-  const dialogs = [];
+  page = await context.newPage();
   page.on('pageerror', error => pageErrors.push(error.message));
   page.on('dialog', async dialog => { dialogs.push(`${dialog.type()}: ${dialog.message()}`); await dialog.dismiss(); });
   // Browser fixtures may use only this isolated local server. Nemlig responses
@@ -92,6 +93,17 @@ try {
         return box.width > 0 && (box.right > window.innerWidth + 2 || box.left < -2);
       }).slice(0, 12).map(element => `${element.tagName.toLowerCase()}#${element.id}.${element.className} → ${Math.round(element.getBoundingClientRect().left)}–${Math.round(element.getBoundingClientRect().right)}px`), selector);
     assert.deepEqual(sources, [], `${label} leaves viewport: ${sources.join(' | ')}`);
+  }
+  async function assertMealFieldLabels() {
+    const errors = await page.evaluate(() => [...document.querySelectorAll('#tab-meals .meal-field')].flatMap(field => {
+      const label = field.querySelector(':scope > label');
+      const control = field.querySelector(':scope > input, :scope > select, :scope > textarea');
+      const valid = label && control && control.id && label.htmlFor === control.id && label.control === control
+        && label.textContent.trim() && !label.querySelector('input, select, textarea')
+        && [...document.querySelectorAll('[id]')].filter(node => node.id === control.id).length === 1;
+      return valid ? [] : [field.textContent.trim().slice(0, 160)];
+    }));
+    assert.deepEqual(errors, [], 'each editable meal field must have one exact label and a unique control id');
   }
   await page.goto(origin, { waitUntil: 'domcontentloaded' });
   await page.locator('#token').fill(token);
@@ -177,6 +189,7 @@ try {
   const firstDate = await page.locator('#meal-family-start').inputValue();
   const firstDay = page.locator(`#meal-family-days [data-record-key="family-day:${firstDate}"]`);
   await firstDay.getByText('Tilpas dagen', { exact: true }).click();
+  await assertMealFieldLabels();
   await firstDay.getByLabel('Voksne', { exact: true }).fill('1');
   await firstDay.getByLabel('Børns aldre / portionsfaktorer', { exact: true }).fill('4:0.5');
   await firstDay.getByLabel('Dagens tema', { exact: true }).selectOption('child_friendly');
@@ -191,6 +204,7 @@ try {
   assert.equal(inboxRecipe.status, 'inbox');
   const recipeCard = page.locator(`#meal-recipes [data-record-key="recipe:${inboxRecipe.id}"]`);
   await recipeCard.waitFor();
+  await assertMealFieldLabels();
   assert.equal((await readApi('/api/meals')).recipes.some(recipe => recipe.sourceRef?.id === inboxRecipe.id), false);
   await recipeCard.getByLabel('Titel', { exact: true }).fill('Visuel test: ris med linser');
   await recipeCard.getByLabel('Kosttype — skal være kontrolleret', { exact: true }).selectOption('vegan');
@@ -220,6 +234,7 @@ try {
   assert.equal(await page.locator('#meal-nemlig-search-form button').isDisabled(), true);
   assert.equal(await page.locator('#meal-use-calendar').isDisabled(), true);
   const firstDish = planCard.locator('.meal-day-editor').first();
+  await assertMealFieldLabels();
   await firstDish.getByLabel('Ret', { exact: true }).selectOption(usableRecipe.id);
   await firstDish.getByLabel('Portioner', { exact: true }).fill('2.25');
   await firstDish.locator('summary').click();
@@ -272,7 +287,7 @@ try {
         reason: 'Kontrollér pakningsantal.', candidates: [{ Id: productId, Name: 'Test-ris, 500 g', Price: 15, IsAvailable: true }] }] };
     await reply(route, { draft: syntheticDraft }, 201);
   });
-  await page.route(`${origin}/api/shopping-drafts**`, async route => {
+  await page.route(url => url.origin === origin && /^\/api\/shopping-drafts(?:\/|$)/.test(url.pathname), async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/shopping-drafts' && route.request().method() === 'GET') return reply(route, { drafts: syntheticDraft ? [syntheticDraft] : [] });
     if (path === `/api/shopping-drafts/${draftId}` && route.request().method() === 'PUT') {
@@ -320,6 +335,7 @@ try {
   await uiWrite(`/api/meals/plans/${initialPlan.id}/nemlig-draft`, 'POST', () => planCard.getByRole('button', { name: 'Find varer på Nemlig', exact: true }).click());
   await waitRecord(`shopping-draft:${draftId}`, 1);
   const shoppingCard = page.locator(`#meal-shopping-drafts [data-record-key="shopping-draft:${draftId}"]`);
+  await assertMealFieldLabels();
   await shoppingCard.getByLabel('Pakninger der skal tilføjes (0 = udelad)', { exact: true }).fill('2');
   assert.equal(await shoppingCard.getByRole('button', { name: 'Gennemgået — opret kurvforslag', exact: true }).isDisabled(), true);
   await uiWrite(`/api/shopping-drafts/${draftId}`, 'PUT', () => shoppingCard.getByRole('button', { name: 'Gem varevalg og antal', exact: true }).click());
@@ -373,6 +389,23 @@ try {
   assert.deepEqual(pageErrors, [], `Frontend runtime exceptions: ${pageErrors.join(' | ')}`);
   assert.deepEqual(dialogs, [], `No typed confirmation or unexpected dialogs: ${dialogs.join(' | ')}`);
   console.log('Visual smoke passed: desktop/mobile overflow, household themes and portions, editable draft-first meals and shopping, reviewed recipe memory, corrected/confirmed personal memory, one-click synthetic Nemlig transfer, knowledge, skills, adapters, proactive settings.');
+} catch (error) {
+  // Preserve the actual failing browser state before cleanup. The fixture is
+  // isolated and synthetic; do not record environment variables or credentials.
+  if (page && !page.isClosed()) {
+    try {
+      await mkdir(artifacts, { recursive: true });
+      await page.screenshot({ path: join(artifacts, 'v49-failure.png'), animations: 'disabled', timeout: 10_000 });
+      await page.screenshot({ path: join(artifacts, 'v49-failure-full.png'), fullPage: true, animations: 'disabled', timeout: 10_000 });
+      const fields = await page.evaluate(() => [...document.querySelectorAll('#tab-meals input, #tab-meals select, #tab-meals textarea')]
+        .map(control => ({ id: control.id, tag: control.tagName, type: control.type, disabled: control.disabled,
+          visible: Boolean(control.getClientRects().length), labels: [...(control.labels || [])].map(label => label.textContent.trim()),
+        })));
+      await writeFile(join(artifacts, 'v49-failure.json'), JSON.stringify({ message: error.message, stack: error.stack,
+        url: page.url(), pageErrors, dialogs, fields }, null, 2));
+    } catch (diagnosticError) { console.error('Could not capture browser failure diagnostics:', diagnosticError.message); }
+  }
+  throw error;
 } finally {
   await browser?.close();
   backend.kill('SIGTERM');
