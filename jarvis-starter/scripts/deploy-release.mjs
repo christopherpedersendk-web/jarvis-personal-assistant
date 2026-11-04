@@ -24,6 +24,11 @@ export function validatedApproval(state) {
   return { version: candidate.version, sha: candidate.sha };
 }
 
+export function unprivilegedGitCommand(args) {
+  return ['/usr/bin/setpriv', ['--reuid=1000', '--regid=1000', '--clear-groups', '--', '/usr/bin/git',
+    '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args]];
+}
+
 async function healthCheck(url, { fetcher = fetch, attempts = 12, intervalMs = 2000 } = {}) {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -63,8 +68,10 @@ export async function deployRelease(config, dependencies = {}) {
   const sourceReal = await fs.realpath(source);
   if (sourceReal !== source || (await fs.lstat(source)).isSymbolicLink()) throw new Error('Usikker staging-mappe.');
   // Git reads repository-controlled configuration. Run it unprivileged even though the deployer is root.
-  const git = async args => run('/usr/sbin/runuser', ['-u', 'administrator', '--', '/usr/bin/git',
-    '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd: source, timeout: 8000 });
+  const git = async args => {
+    const [program, argv] = unprivilegedGitCommand(args);
+    return run(program, argv, { cwd: source, timeout: 8000 });
+  };
   const { stdout } = await git(['rev-parse', 'HEAD']);
   if (stdout.trim() !== approval.sha) throw new Error('Commit-SHA er ændret siden godkendelsen.');
   const clean = await git(['status', '--porcelain', '--untracked-files=all']);
