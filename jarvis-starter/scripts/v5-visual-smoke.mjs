@@ -57,6 +57,7 @@ async function runDevice(type, width, height, label) {
   await page.locator('#tab-home .chat-panel').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#message').isVisible(), true, `${label}: message input hidden`);
   const composerBottom = await page.locator('#message').evaluate(el => el.getBoundingClientRect().bottom);
+  await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-initial-home.png`), animations: 'disabled' });
   assert.ok(composerBottom < height, `${label}: chat input below first screen (${composerBottom}px)`);
   const topNav = page.locator('.tab-nav > a[data-tab="plan"]');
   await topNav.click();
@@ -85,6 +86,11 @@ async function runDevice(type, width, height, label) {
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde');
   assert.match(await page.locator('#preferences-draft-status').textContent(), /Ikke gemt/);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#tab-settings').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
+    `${label}: unsaved preferences draft was lost on reload`);
+  assert.match(await page.locator('#preferences-draft-status').textContent(), /Ugemt kladde|Ikke gemt/);
 
   await page.locator('#tab-settings').screenshot({ path: join(screenshotDir, `${label}-settings.png`), animations: 'disabled' });
   await page.locator('[data-tab="knowledge"]').first().click();

@@ -14,6 +14,8 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-04 | Local v5 candidate | `node --test test/deploy-release.test.mjs test/v5-server.test.mjs` | Initial 9 passed; newer full-suite run additionally covers real calendar coverage and manifest compatibility |
 | 2026-11-04 | Local v5 candidate | `git diff --check` and `node --check` of edited JS | No whitespace or syntax errors in last checks; rerun after commit |
 | 2026-11-04 | Local v5 candidate | `node scripts/v5-visual-smoke.mjs` | **BLOCKED before opening browser**: Chromium OS socket `Operation not permitted`; WebKit binary unavailable. Must run on CI runner |
+| 2026-11-04 | Published follow-up `ceeb038da64d83a765723bcf01d23964f25d0444` | GitHub Actions `41937431111` | Node 22 **239/239 passed**, Chromium and WebKit installed. Browser smoke **failed** on desktop 1390×950: message composer bottom 994.58 px, beyond 950 px viewport. Real product defect, not an environment skip. |
+| 2026-11-04 | Pending new iteration | `public/v5.css` constrained chat history scroll; `scripts/v5-visual-smoke.mjs` now captures initial-home evidence and asserts draft retention through a reload | **Not yet browser-verified**. New commit + CI required before closing K2/R03/M5. |
 
 ## Synthetic before/after performance
 
@@ -44,7 +46,7 @@ The first path was populated from local Git snapshot `ecc2944`, whose tree was v
 ## Required evidence still pending
 
 - R01–R13 focused Node tests and complete suite are green **locally**, but must be bound to the remote candidate SHA and CI.
-- The first remote v5 commit passed 236 Node tests in CI; the amended 239-test code needs its own CI run. Initial CI browser-install step still in progress at last inspection.
+- The first remote v5 commit passed 236 Node tests in CI; follow-up `ceeb038` passed 239 Node tests in CI but **failed browser smoke** on first-screen composer visibility. The CSS correction must be verified on both browsers and sizes at a newer candidate SHA.
 - The 80 Danish lexical questions are synthetic and overlap on key terms. **Genuine semantic** retrieval and independent paraphrase quality ≥90% top-five remain pending; do not cite 100% lexical as semantic success.
 - 30 deterministic scheduling scenarios, DST, impossible schedules and locks passed locally; integrated live-calendar freshness and selective replan review remain pending.
 - Chromium and WebKit desktop (1390×950) and mobile (390×844) in CI; keyboard, zoom, focus, contrast, source URL and draft-preservation manual/browser checks pending.

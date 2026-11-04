@@ -23,8 +23,10 @@ body { background: radial-gradient(circle at 55% -30%, #16435e 0, #07111e 56%); 
 #tab-home .hero-panel #voice-status { grid-column: 2; grid-row: 3; font-size: 12px; margin: 3px 0 0; }
 #tab-home .hero-panel .action-row { grid-column: 3; grid-row: 1 / 4; margin: 0; display: flex; align-items: center; justify-content: end; }
 #tab-home .hero-panel .action-row button { padding: 10px 13px; font-size: 12px; }
-#tab-home .chat-panel { min-height: 390px; }
-#tab-home .messages { min-height: 170px; max-height: 380px; }
+/* The message composer must remain on the first screen. Scroll long history
+   inside the chat rather than letting history move the composer off-screen. */
+#tab-home .chat-panel { min-height: 0; height: clamp(320px, 43dvh, 390px); }
+#tab-home .messages { min-height: 0; max-height: none; overflow-y: auto; }
 .draft-status { min-height: 18px; color: #9bd3e9; margin: 7px 0 11px; }
 .draft-status.draft-conflict, .source-open-status { color: #ffd3a4; }
 .source-open-status { background: #4c2d20; border: 1px solid #bf906c; border-radius: 10px; padding: 12px 14px; }
@@ -64,7 +66,7 @@ body { background: radial-gradient(circle at 55% -30%, #16435e 0, #07111e 56%); 
   #tab-home .hero-panel #voice-status { grid-column: 1 / 3; font-size: 11px; }
   #tab-home .hero-panel .action-row { grid-column: 1 / 3; grid-row: 4; justify-content: start; margin-top: 8px; }
   #tab-home .hero-panel .action-row button { padding: 9px 11px; }
-  #tab-home .chat-panel { min-height: 360px; }
+  #tab-home .chat-panel { min-height: 0; height: clamp(310px, 43dvh, 360px); }
   .tab-view > .panel, .system-settings-group > .panel { padding: 17px; }
   .v5-fields { grid-template-columns: 1fr; }
   .v5-fields > button { grid-column: 1; width: 100%; }
