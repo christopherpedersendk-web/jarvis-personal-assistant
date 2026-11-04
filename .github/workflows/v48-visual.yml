@@ -1,0 +1,44 @@
+name: JARVIS v4.8 browser and safety smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'jarvis-starter/**'
+      - '.github/workflows/v48-visual.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  visual-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout proposed changes
+        uses: actions/checkout@v4
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Offline unit and basket-approval tests
+        working-directory: jarvis-starter
+        run: npm test
+      - name: Install browser test dependency in ephemeral CI only
+        working-directory: jarvis-starter
+        run: npm install --no-save --no-package-lock playwright
+      - name: Install Chromium in CI only
+        working-directory: jarvis-starter
+        run: npx playwright install --with-deps chromium
+      - name: Test desktop and mobile UI with synthetic data only
+        working-directory: jarvis-starter
+        run: node scripts/visual-smoke.mjs
+      - name: Preserve synthetic screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-v48-ui-screenshots
+          path: jarvis-starter/artifacts/v48-*.png
+          retention-days: 14
+          if-no-files-found: warn

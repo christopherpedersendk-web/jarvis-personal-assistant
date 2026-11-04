@@ -1,0 +1,32 @@
+.meals-panel { margin-bottom: 1.1rem; }
+.meals-panel .section-heading { flex-wrap: wrap; gap: .6rem 1rem; }
+.meals-panel h3 { margin: 1.2rem 0 .5rem; }
+.meals-panel h4 { margin: .7rem 0 .4rem; }
+.meal-form { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: .65rem 1rem; align-items: center; }
+.meal-form label { font-size: .88rem; color: var(--muted, #afc0ce); }
+.meal-form input, .meal-form select, .meal-form textarea, .meal-plan-controls input, .meal-plan-controls select,
+.meal-search input, .meal-product input, .meal-card input { width: 100%; min-width: 0; }
+.meal-form select, .meal-plan-controls select { background: #091c2c; color: #e1f5fc; border: 1px solid #31556b; border-radius: 10px; padding: .55rem .7rem; }
+.meal-form > p, .meal-form > button { grid-column: 1 / -1; }
+.meal-plan-controls, .meal-search, .meal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; margin: 1rem 0; }
+.meal-plan-controls > label { align-self: center; }
+.meal-plan-controls input[type="date"], .meal-plan-controls select { width: auto; min-width: 140px; }
+.meal-plan-controls .inline-check { flex: 1 1 100%; min-width: 0; }
+.meal-plan-controls input[type="checkbox"] { width: auto; min-width: 0; }
+.meal-search input { max-width: 360px; }
+.meal-card { background: rgba(40, 66, 85, .36); border: 1px solid rgba(160, 194, 217, .24); border-radius: 14px; padding: 1rem; margin: .7rem 0; }
+.meal-card ul { margin: .5rem 0 1rem; padding-left: 1.4rem; line-height: 1.65; }
+.meal-card button { margin: .4rem .5rem .25rem 0; }
+.meal-card input { max-width: 330px; display: block; margin: .6rem 0; }
+.meal-products, .meal-selection { margin: 1rem 0; }
+.meal-product { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: .7rem 0; border-bottom: 1px solid rgba(154, 178, 194, .16); }
+.meal-product span { flex: 1 1 200px; }
+.meal-product input { width: 82px; }
+.meal-event { padding: .65rem; margin: .35rem 0; border-left: 2px solid #69acc6; background: rgba(63, 124, 156, .12); }
+.meal-proposals .meal-card { border-color: rgba(240, 192, 95, .34); }
+@media (max-width: 650px) {
+  .meal-form { grid-template-columns: minmax(0, 1fr); }
+  .meal-form > p, .meal-form > button { grid-column: auto; }
+  .meal-plan-controls { align-items: stretch; }
+  .meal-plan-controls input[type="date"], .meal-plan-controls select { flex: 1 1 140px; }
+}

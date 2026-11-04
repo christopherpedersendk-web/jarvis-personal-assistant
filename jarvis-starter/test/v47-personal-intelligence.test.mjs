@@ -51,8 +51,9 @@ test('optional semantic retrieval may only rank the already allowlisted document
 test('bundled SKILL.md are structured, selected by triggers, and forbid symlinked skill files', async () => {
   const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
   const skills = await loadBundledSkills(root);
-  assert.equal(skills.catalog().length, 3);
+  assert.equal(skills.catalog().length, 4);
   assert.match(skills.context('Giv mig gaveidéer til jul'), /Gaveplanlægning/);
+  assert.match(skills.context('Lav en madplan'), /Madplan og indkøb/);
   assert.equal(skills.context('Hej med dig'), '');
 
   const temporary = await mkdtemp(join(tmpdir(), 'jarvis-skills-'));
@@ -65,7 +66,9 @@ test('integration catalog reveals capabilities and status, never credentials or 
   const catalog = integrationCatalog({ discordStatus: 'connected', discordConfigured: true, huePaired: true });
   assert.equal(catalog.find(x => x.id === 'discord').status, 'connected');
   assert.equal(catalog.find(x => x.id === 'hue').status, 'configured');
-  assert.equal(catalog.find(x => x.id === 'google-calendar').implementation, 'planned');
+  assert.equal(catalog.find(x => x.id === 'google-calendar').implementation, 'available');
+  assert.equal(catalog.find(x => x.id === 'google-calendar').permissions.externalWrite, false);
+  assert.equal(catalog.find(x => x.id === 'nemlig').permissions.externalWrite, true);
   assert.equal(catalog.find(x => x.id === 'nest').status, 'not_configured');
   assert.doesNotMatch(JSON.stringify(catalog), /token|password|secret/i);
   assert.deepEqual(normalizedIntegrationEvent({ provider: 'nest', kind: 'doorbell.press', reference: 'event-1', occurredAt: '2026-11-04T12:00:00Z', image: 'private photo' }),

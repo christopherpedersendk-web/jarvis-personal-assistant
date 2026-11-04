@@ -52,7 +52,7 @@ document.getElementById('knowledge-search-form').addEventListener('submit', asyn
       entry.append(knowledgeElement('p', match.text));
       const button = knowledgeElement('button', 'Åbn kilde', 'secondary compact-button');
       button.type = 'button';
-      button.addEventListener('click', () => selectTab(({ organizer: 'organizer', memory: 'secretary', task: 'tasks', project: 'projects' })[match.type] || 'secretary'));
+      button.addEventListener('click', () => selectTab(({ organizer: 'organizer', memory: 'secretary', task: 'tasks', project: 'projects', 'meal-profile': 'meals', 'meal-plan': 'meals' })[match.type] || 'secretary'));
       entry.append(button);
       results.append(entry);
     }
