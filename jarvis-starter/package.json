@@ -1,6 +1,6 @@
 {
   "name": "jarvis-personal-assistant-starter",
-  "version": "4.9.0",
+  "version": "4.9.1",
   "private": true,
   "type": "module",
   "description": "A personal assistant with reviewed memory, household-aware meal drafts, recipe intake and approval-gated shopping",

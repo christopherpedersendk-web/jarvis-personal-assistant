@@ -104,7 +104,7 @@ export function callLocalNemligMcp(name, args = {}, { directory = process.env.NE
       }
     });
     send({ id: 1, method: 'initialize', params: {
-      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'jarvis', version: '4.9.0' },
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'jarvis', version: '4.9.1' },
     } });
   });
 }

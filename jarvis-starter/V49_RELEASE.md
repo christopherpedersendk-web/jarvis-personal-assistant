@@ -1,6 +1,14 @@
-# JARVIS v4.9.0 – reviewkandidat
+# JARVIS v4.9.1 – godkendt releasegrundlag
 
-Status: udviklingsversion på særskilt branch. Ikke en frigivet eller installeret produktionsrelease. Merge, tag og deployment kræver efterfølgende brugerreview og den eksisterende godkendelsesproces.
+Status: frigivelsesforberedelse for v4.9.1. Funktionsreview, test og merge af v4.9 er godkendt. Denne opdatering bevarer funktionaliteten og retter kun versionsmetadata og dokumentation. Tag og GitHub-release publiceres særskilt; dette dokument bekræfter ikke, at publicering eller serverinstallation er gennemført. Installation kræver fortsat ejerens særskilte godkendelse i Auto-Update Manager.
+
+## Versionsrettelse: brug v4.9.1
+
+Det eksisterende `v4.9.0`-tag peger på `6cd5bd46f7507af89d284bbda42a2527f39f686f`, hvor `package.json` angiver **4.8.1**. Tagget forbliver urørt og må ikke bruges som v4.9-opdatering. De godkendte v4.9-funktioner blev merged i `1b608138485f58c659afd40082ad5cb1c7b364b6`; v4.9.1 er samme funktionalitet med korrekt versionsmærkning.
+
+- Opret det nye `v4.9.1`-tag på den færdige, testede commit med denne versionsrettelse, hvor `package.json` angiver **4.9.1**. Kontrollér SHA og versionsnummer før publicering.
+- Brug et lightweight Git-tag, der peger direkte på committen. Auto-Update Manager sammenligner tag-refens SHA med klonens `HEAD`.
+- Efter verificeret publicering: **System Health → Søg efter version → Hent og test → Godkend testet version**. Først det sidste trin giver deployeren lov til at installere; tag og release er ikke en installationsgodkendelse.
 
 ## De seks leverancer
 
@@ -51,7 +59,7 @@ Kun det faktisk læste 14-dagesvindue må bruges, og ufuldstændig paginering af
 
 ## Verifikation før release
 
-Automatiske tests er syntetiske og må ikke bruge rigtige Google-/Discord-/Nemlig-konti, klientdata, tokens eller personbilleder. Kør npm test og GitHub-browserjobbet; gennemgå desktop-/mobilskærmbilleder. Ekstern billedudtrækning og autentificerede integrationer kræver senere ejerens afgrænsede smoke test.
+Automatiske tests er syntetiske og må ikke bruge rigtige Google-/Discord-/Nemlig-konti, klientdata, tokens eller personbilleder. Kør npm test og GitHub-browserjobbet også efter versionsrettelsen; gennemgå desktop-/mobilskærmbilleder. Ekstern billedudtrækning og autentificerede integrationer testes særskilt af ejeren og er ikke verificeret af de syntetiske tests.
 
 Manuel acceptcheckliste:
 
@@ -61,7 +69,7 @@ Manuel acceptcheckliste:
 - Registrer pantry og gennemgå Nemlig-match, pakningsstørrelser, antal, undgå-ingredienser og prisforbehold. Test et tvetydigt match og en ændret kurv; ingen liveoverførsel før dit klik.
 - Gem/ret et hukommelsespunkt, bekræft et model-forslag og arkivér et andet. Søg efter den gamle tekst; bekræft at aktive resultater følger rettelser/arkivering. Separate historik/backups må ikke beskrives som slettet.
 - Kontrollér planlægningsforslagenes kilde/forklaring. Afprøv opt-in/stilletid uden at aktivere ekstra notifikationer.
-- Bevar et lokalt restorepunkt, afslut review og brug derefter særskilt release-tag → staging → tests → ejergodkendelse. Ingen automatisk frigivelse fra denne udviklingsbranch.
+- Bevar et lokalt restorepunkt, kontrollér det nye v4.9.1-tag og brug derefter staging → tests → ejergodkendelse. Merge og GitHub-publicering udløser ikke i sig selv installation.
 
 ## Primære integrationsreferencer
 
