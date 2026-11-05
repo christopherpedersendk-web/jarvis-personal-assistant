@@ -221,6 +221,9 @@ test('local server protects endpoints and persists preferences without a paid AP
     body: JSON.stringify({ message: 'Hej!' }),
   });
   assert.equal(chat.status, 503, 'chat should require a configured API key');
+  const chatFailure = await chat.json();
+  assert.equal(chatFailure.code, 'CHAT_NOT_CONFIGURED');
+  assert.equal(chatFailure.outcome, 'no_actions');
 
   const transcript = await fetch(`${base}/api/transcript`, {
     method: 'POST',

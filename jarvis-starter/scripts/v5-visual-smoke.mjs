@@ -1213,6 +1213,7 @@ async function verifyAccessibility(page, width, height, label) {
   await page.locator('[data-plan-tab="meals"]').focus(); await page.keyboard.press('Enter');
   assert.equal(new URL(page.url()).searchParams.get('view'), 'plan');
   assert.equal(new URL(page.url()).searchParams.get('section'), 'meals', `${label}: Enter activates the real meals subroute`);
+  for (const section of await page.locator('.meal-secondary-section').all()) await openDetails(section);
   for (const id of ['meal-family-preferences', 'meal-profile-preferences', 'meal-recipe-create']) await openDetails(page.locator(`#${id}`));
   await page.evaluate(() => refreshMeals());
   await page.getByLabel('Voksne som standard', { exact: true }).focus(); await page.keyboard.press('Tab');

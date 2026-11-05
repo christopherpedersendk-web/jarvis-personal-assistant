@@ -89,3 +89,13 @@ test('Discord empty assistant result is a visible failure instead of a false suc
   assert.equal(gateway.snapshot().lastFailure.code, 'DISCORD_EMPTY_REPLY');
   assert.equal(gateway.snapshot().lastMessageAt, null);
 });
+
+
+test('invalid saved Discord IDs remain a visible integration error without throwing during server startup', () => {
+  let connections = 0;
+  const gateway = new DiscordGateway({ socketFactory: () => { connections++; throw new Error('must not connect'); } });
+  assert.doesNotThrow(() => gateway.start({ enabled: true, token: 'synthetic-token', userId: 'not-an-id' }));
+  assert.equal(gateway.snapshot().status, 'error'); assert.match(gateway.snapshot().lastError, /User ID/);
+  assert.equal(connections, 0); assert.equal(gateway.snapshot().dedupeStatus, 'inactive');
+  gateway.stop();
+});

@@ -147,3 +147,17 @@ test('GUI-T10 malformed or secret-shaped context is not composed into the reques
     await f.controller.submit(); assert.equal(f.calls[0].body.message, 'Almindelig besked');
   }
 });
+
+test('confirmed no-actions API failure shows its cause and preserves a usable draft without automatic resend', async () => {
+  const f = fixture({ api: async () => { throw Object.assign(new Error('OpenAI-kvoten er opbrugt.'), { status: 502, code: 'CHAT_QUOTA', outcome: 'no_actions' }); } });
+  f.type('hej'); await f.controller.submit();
+  assert.equal(f.calls.length, 1); assert.equal(f.field.value, 'hej'); assert.equal(f.send.disabled, false);
+  assert.equal(f.review.hidden, true); assert.match(f.status.textContent, /kvoten.*ikke.*udføre handlinger/);
+});
+
+test('a known diagnostic never unblocks an uncertain action, even with a normally safe HTTP rejection status', async () => {
+  const f = fixture({ api: async () => { throw Object.assign(new Error('Modelsvar afvist.'), { status: 400, code: 'CHAT_API_REQUEST', outcome: 'unknown' }); } });
+  f.type('Ændr listen'); await f.controller.submit(); await f.controller.submit();
+  assert.equal(f.calls.length, 1); assert.equal(f.field.value, 'Ændr listen'); assert.equal(f.send.disabled, true);
+  assert.match(f.status.textContent, /Modelsvar afvist.*udfald er ikke bekræftet/);
+});

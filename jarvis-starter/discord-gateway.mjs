@@ -187,7 +187,7 @@ export class DiscordGateway {
 
   start(config) {
     this.stop();
-    this.config = { ...config, ...validateDiscordConfig(config), token: String(config.token || '').trim() };
+    this.config = { ...config, token: String(config.token || '').trim() };
     this.lastError = '';
     this.retryCount = 0;
     this.sequence = null;
@@ -197,6 +197,13 @@ export class DiscordGateway {
     this.botId = null;
     this.dedupeFailure = false;
     this.dedupeLoaded = false;
+    this.dedupeEnabled = false;
+    this.dedupeReady = Promise.resolve();
+    try { Object.assign(this.config, validateDiscordConfig(config)); }
+    catch (error) {
+      this.status = 'error'; this.lastError = error.message;
+      return; // A bad saved integration must not prevent the web server starting.
+    }
     this.dedupeEnabled = Boolean(this.config.enabled && this.config.token && this.config.userId);
     const generation = this.generation;
     if (this.dedupeEnabled) this.status = 'connecting';
@@ -702,13 +709,15 @@ export class DiscordGateway {
       const stage = replyAttempted ? 'delivery' : 'processing';
       // Only fixed public messages/codes enter status; never API bodies or user text.
       if (context.generation === this.generation) this.lastFailure = { at: new Date().toISOString(), stage,
-        code: /^DISCORD_[A-Z_]+$/.test(error.code || '') ? error.code : 'ASSISTANT_FAILED',
+        code: error.chatFailure?.code || (/^DISCORD_[A-Z_]+$/.test(error.code || '') ? error.code : 'ASSISTANT_FAILED'),
         message: replyAttempted ? 'Svaret kunne ikke leveres til Discord. Kontrollér bottens adgang til kanalen og Send Messages.'
-          : 'Beskeden blev modtaget, men assistenten kunne ikke færdiggøre den. Kontrollér API-opsætning og serverlog.' };
+          : error.chatFailure?.message || 'Beskeden blev modtaget, men assistenten kunne ikke færdiggøre den. Kontrollér API-opsætning og serverlog.' };
       this.logError('Discord-beskedfejl', error, context.token);
       if (!replyAttempted && context.generation === this.generation && !this.dedupeFailure) {
-        try { await this.sendReply(context.channelId,
-          'Jeg modtog din besked, men kunne ikke færdiggøre den. Kontrollér JARVIS, før du gentager en handling; noget kan allerede være udført. Se Discord-status under Indstillinger → Integrationer.', context.generation); }
+        const diagnostic = error.chatFailure?.message ? error.chatFailure.message + ' ' : '';
+        try { await this.sendReply(context.channelId, diagnostic + (error.chatFailure?.outcome === 'no_actions'
+          ? 'JARVIS nåede ikke at udføre handlinger. Beskeden er ikke genforsøgt.'
+          : 'Jeg modtog din besked, men kunne ikke færdiggøre den. Kontrollér JARVIS, før du gentager en handling; noget kan allerede være udført. Se Discord-status under Indstillinger → Integrationer.'), context.generation); }
         catch (deliveryError) { this.logError('Discord-fejlbesked', deliveryError, context.token); }
       }
       // Never retry a handler or send a second response after an attempted reply.

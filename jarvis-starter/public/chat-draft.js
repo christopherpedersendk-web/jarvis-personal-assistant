@@ -39,9 +39,10 @@
         storageFailed = false;
       } catch { storageFailed = true; }
     }
-    const unknown = () => {
+    const unknown = error => {
       blocked = true; updateControls(); persist();
-      message('Beskedens udfald er ikke bekræftet. Den kan have udført handlinger. Kladden er bevaret; gennemgå historikken og de berørte handlinger, før du vælger en ny anmodning. Der er ikke genforsøgt automatisk.');
+      const reason = /^CHAT_[A-Z_]+$/.test(error?.code || '') ? `${error.message}. ` : '';
+      message(reason + 'Beskedens udfald er ikke bekræftet. Den kan have udført handlinger. Kladden er bevaret; gennemgå historikken og de berørte handlinger, før du vælger en ny anmodning. Der er ikke genforsøgt automatisk.');
     };
     try {
       const saved = getToken() ? JSON.parse(getStorage().getItem(KEY) || 'null') : null;
@@ -90,9 +91,11 @@
       } catch (error) {
         if (!current()) return;
         busy = false;
-        if ([400, 401, 403, 413, 422].includes(error.status)) {
+        if (error.outcome === 'no_actions' && /^CHAT_[A-Z_]+$/.test(error.code || '')) {
+          persist(); message(`${error.message} JARVIS nåede ikke at udføre handlinger. Din kladde er bevaret; beskeden er ikke genforsøgt.`);
+        } else if (error.outcome !== 'unknown' && [400, 401, 403, 413, 422].includes(error.status)) {
           persist(); message(`Beskeden blev afvist før behandling: ${error.message}. Din kladde er bevaret.`);
-        } else unknown();
+        } else unknown(error);
       } finally {
         if (current()) { busy = false; updateControls(); if (acknowledged) persist(); }
       }

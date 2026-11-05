@@ -6,7 +6,7 @@ Status pr. 5. november 2026: v5.0.0 er merged og udgivet fra `f52b871e2e767c6a6b
 
 ### Discord svarer ikke
 
-Ejeren har præciseret, at webchat virker. Den delte chat-/modelkode ændres derfor ikke på grundlag af den oprindelige, bredere fejlbeskrivelse.
+Ejeren præciserede først, at Discord var tavs, og har senere også rapporteret webchattens besked om ukendt udfald. Den fælles chatkode er derfor inkluderet i rettelsen.
 
 Kodefund:
 
@@ -16,6 +16,14 @@ Kodefund:
 - ID-felter og token normaliseres ved start, så indledende/afsluttende mellemrum ikke medfører falsk mismatch. Diagnostik indeholder ikke indgående beskedtekst eller upstream-fejlindhold.
 
 Det er konkrete kodefejl og forbedringer, men uden live logs kan den enkelte årsag til ejerens tavse bot ikke fastslås. Efter installation: send en ufarlig direkte testbesked, og læs **Indstillinger → Integrationer → Discord**. “Afsender matcher ikke” kræver ejerens User ID; “server matcher ikke” kræver korrekt Server ID. Ingen modtagelse peger på forbindelse/Discord-opsætning. “Behandling” og “levering” skelnes i status; serverchat kræver også Message Content Intent og adgang til kanalen/Send Messages. En driftsprøve skal vise et faktisk svar og ingen dobbelt handling efter genforbindelse.
+
+### Webchat viser kun “Beskedens udfald er ikke bekræftet”
+
+Denne tekst er en beskyttelse mod gentagelse, ikke en rodårsag. Serveren mistede upstream-status/kode, og browseren viste samme advarsel ved både en API-afvisning før første værktøj og et fejlet svar efter udførte handlinger. Fejlkoden bevares nu internt og omsættes til en fast forklaring: API-adgang, model, kvote, hastighedsgrænse, anmodningsformat eller timeout. Råt upstream-indhold vises ikke. Serveren angiver kun `no_actions`, når ingen værktøjsdispatcher eller historikskrivning er startet; ellers bevares ukendt udfald. Kladden bevares, og intet genforsøges automatisk.
+
+Et særskilt reproduceret problem: Efter tredje værktøjsrunde stoppede løkken uden mulighed for et tekstsvar, selv om værktøjerne var lykkedes. Der er nu én afsluttende modelrunde med værktøjer slået fra. Den må ikke udføre en fjerde værktøjsrunde. Det er dækket på både web- og Discord-dispatcheren. Patchværktøjer bruger desuden eksplicit `strict: false`, så valgfrie felter beholder deres “udeladt = uændret”-betydning. Se [OpenAI om strict/valgfrie felter](https://developers.openai.com/api/docs/guides/function-calling).
+
+Den konkrete årsag på ejerens server er fortsat ikke verificeret: den citerede generelle besked indeholder ingen API-status eller serverlog. Rettelsen gør næste fejl diagnosticerbar og lukker den reproducerede afslutningsfejl.
 
 ### Madplan: én plan ad gangen, kort ugeoverblik
 
@@ -27,7 +35,7 @@ Hver dag vises som dato, ret, portioner og eventuel lås. Tryk på dagen for at 
 
 | Prioritet | Milestone | Resterende arbejde / afslutningskriterium |
 |---|---|---|
-| P1 – nu | Stabilisering efter release | Installér den gennemgåede rettelse; verificér et faktisk Discord-svar og én redigerbar madplan på telefonen. De to rapporterede fejl er ikke lukkede i drift alene ved grønne syntetiske tests. |
+| P1 – nu | Stabilisering efter release | Installér den gennemgåede rettelse; verificér et faktisk Discord-svar og én redigerbar madplan på telefonen. De rapporterede chat- og madplansfejl er ikke lukkede i drift alene ved grønne syntetiske tests. |
 | M6 – dokumentér accept | Fysisk iPhone og desktop | Safari/skærmtastatur, faktisk zoom, mikrofon/tale, navigation og kladdebevaring. Browserautomation er gennemført for v5-kandidaten; fysisk accept er ikke dokumenteret. |
 | M6 – dokumentér drift | Administratorens gendannelse og drift | Kontroller backup/restore, genstart, private indstillinger, Discordjournal, medier/projekter og den faktiske servicekonfiguration i et isoleret restore-miljø. Den tidligere syntetiske restore dækkede ikke hele dette miljø. |
 | P2 – næste funktionsrelease | Sonos | Fuld OAuth og tokenfornyelse samt reelle afspilnings-/kontrolprøver. Eksisterende funktioner er ikke bevis på et færdigt OAuth-flow. |
@@ -41,9 +49,9 @@ M0–M5's implementerede funktioner skal ikke genopføres som manglende blot for
 
 ## Verifikation af denne rettelse
 
-- Lokal Node 24: **996/996 tests bestået**, nul fejl eller skips.
-- Heraf målrettet Discord/madplan: **57/57 bestået**.
-- Browserregression: afventer GitHub Actions på den publicerede kandidat. Den dybe test åbner dagseditorer gennem deres faktiske summary-kontrol og kontrollerer én synlig plan samt kompakt standardvisning.
+- Lokal Node 24 efter den udvidede chatrettelse: **1006/1006 tests bestået**, nul fejl eller skips.
+- Heraf målrettet Discord/madplan: **58/58 bestået** efter testen af ugyldige gemte Discord-ID'er.
+- Browserregression: den første GUI-matrix bestod; den dybe test fandt en testnavigation, der forsøgte at åbne et underpanel uden først at åbne det nye overpanel. Testen åbner nu begge gennem de faktiske kontroller; ny samlet browserkørsel afventer. Den dybe test åbner dagseditorer gennem deres faktiske summary-kontrol og kontrollerer én synlig plan samt kompakt standardvisning.
 - Faktisk Discord-konto, fysisk telefon og produktion er ikke testet her. Ingen ny release, merge eller installation er udført af denne rettelse.
 
 Kilder: [implementeringsplanens P2-afgrænsning](implementation-plan.md), [samlet v5-verifikation](../gui/verification.md), [manuel acceptliste](manual-acceptance.md) samt ejerens fejlrapport/præcisering efter opdateringen.
