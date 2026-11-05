@@ -50,7 +50,12 @@ function updateDraft(id, value) {
   const field = $(id);
   const status = $(`${id}-draft-status`);
   if (draft.dirty) {
-    if (draft.serverValue !== null && draft.serverValue !== value && field.value !== value) {
+    if (draft.serverValue === null) {
+      // A user can type while the first state request is still loading.
+      // Establish the first observed server basis without replacing the draft.
+      draft.serverValue = value;
+      persistTextDrafts();
+    } else if (draft.serverValue !== value && field.value !== value) {
       status.textContent = 'Ændret et andet sted. Din ikke-gemte tekst er bevaret. Gennemgå forskellen før du gemmer.';
       status.classList.add('draft-conflict');
     }

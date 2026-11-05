@@ -93,6 +93,7 @@ async function runDevice(type, width, height, label) {
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
     `${label}: unsaved preferences draft was lost on reload`);
   assert.match(await page.locator('#preferences-draft-status').textContent(), /Ugemt kladde|Ikke gemt/);
+  await page.evaluate(() => refresh()); // establish server baseline even if draft was typed before the first fetch
   const concurrentChange = await page.request.post(`${origin}/api/preferences`, {
     headers: { Authorization: `Bearer ${token}` }, data: { text: 'Syntetisk ændring fra en anden fane' },
   });
