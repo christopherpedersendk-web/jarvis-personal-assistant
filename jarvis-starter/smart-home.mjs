@@ -29,12 +29,17 @@ export class SmartHome {
     return item;
   }
 
+  async credentials(config) {
+    try { return await this.authorizeSonos(config); }
+    catch (error) { return this.health.check(config, async () => { throw error; }); }
+  }
+
   async sonos(config, action) {
     if (!config.sonosToken) throw new Error('Sonos er ikke forbundet.');
     if (!/^[A-Za-z0-9_:-]{1,120}$/.test(action.groupId || '')) throw new Error('Ugyldigt Sonos-gruppe-ID.');
     const allowed = { play: 'play', pause: 'pause', skip: 'skipToNextTrack', previous: 'skipToPreviousTrack' };
     if (!allowed[action.command]) throw new Error('Ukendt afspilningskommando.');
-    config = await this.authorizeSonos(config);
+    config = await this.credentials(config);
     return this.health.check(config, async () => {
     const response = await this.fetcher(`${API}/groups/${encodeURIComponent(action.groupId)}/playback/${allowed[action.command]}`, {
       method: 'POST', headers: { Authorization: `Bearer ${config.sonosToken}`, 'Content-Type': 'application/json' },
@@ -48,7 +53,7 @@ export class SmartHome {
   async sonosGroups(config) {
     if (!config.sonosToken || !config.sonosHouseholdId) return { groups: [], message: 'Angiv et gyldigt Sonos-token og household-ID under Indstillinger.' };
     if (!/^[A-Za-z0-9_-]{1,120}$/.test(config.sonosHouseholdId)) throw new Error('Ugyldigt household-ID.');
-    config = await this.authorizeSonos(config);
+    config = await this.credentials(config);
     return this.health.check(config, async () => {
     const response = await this.fetcher(`${API}/households/${config.sonosHouseholdId}/groups`, {
       headers: { Authorization: `Bearer ${config.sonosToken}` }, redirect: 'error', signal: AbortSignal.timeout(12_000),

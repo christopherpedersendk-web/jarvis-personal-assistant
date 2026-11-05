@@ -73,3 +73,15 @@ test('Sonos invalid redirect cannot initiate login', () => {
     const f = setup({ redirectUri }); assert.equal(f.auth.configured(), false); assert.throws(() => f.auth.begin());
   }
 });
+
+test('Sonos failed refresh invalidates a previously connected health observation', async () => {
+  let denied = false;
+  const config = { sonosToken: 'access', sonosRefreshToken: 'refresh', sonosHouseholdId: 'house' };
+  const home = new SmartHome({ state: {}, save: async () => {}, authorizeSonos: async value => {
+    if (denied) throw Object.assign(new Error('Login afvist'), { status: 401 });
+    return value;
+  }, fetcher: async () => ({ ok: true, json: async () => ({ groups: [] }) }) });
+  await home.sonosGroups(config); assert.equal(home.snapshot(config).sonos.connected, true);
+  denied = true; await assert.rejects(home.sonosGroups(config));
+  assert.equal(home.snapshot(config).sonos.connectionState, 'expired_login');
+});
