@@ -1079,11 +1079,15 @@ async function verifyAccessibility(page, width, height, label) {
     await page.setViewportSize(reduced);
     for (const [view, control, labelText] of [
       ['home', '#message', 'Besked til JARVIS'], ['plan', '#personal-task-title', 'Hvad vil du nå?'], ['meals', '#meal-adults', 'Voksne som standard'],
-      ['knowledge', '#knowledge-query', 'Hvad vil du finde?'], ['projects', '#project-title', 'Nyt projekt'], ['settings', '#preferences', 'Hukommelsesnoter'],
+      ['knowledge', '#knowledge-query', 'Hvad vil du finde?'], ['smart-home', '#smart-home-load-hue', 'Opdater Hue-lys'],
+      ['projects', '#project-title', 'Nyt projekt'], ['settings', '#preferences', 'Hukommelsesnoter'],
     ]) {
       await navigate(page, view);
       await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
-      assert.equal(await page.getByLabel(labelText, { exact: true }).isVisible(), true,
+      const accessibleControl = view === 'smart-home'
+        ? page.getByRole('button', { name: labelText, exact: true })
+        : page.getByLabel(labelText, { exact: true });
+      assert.equal(await accessibleControl.isVisible(), true,
         `${label}: the reflowed ${view} control retains its exact accessible label`);
       const input = page.locator(control); await input.scrollIntoViewIfNeeded(); await input.focus();
       const layout = await page.evaluate(selector => {
