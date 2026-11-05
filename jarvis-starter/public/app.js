@@ -9,13 +9,14 @@ const handledCalls = new Set();
 const viewAliases = Object.freeze({ tasks: 'plan', secretary: 'plan', organizer: 'knowledge', system: 'settings' });
 const publicViews = new Set(['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings']);
 const savedDrafts = {
-  playbook: { dirty: false, value: null },
-  preferences: { dirty: false, value: null },
+  playbook: { dirty: false, value: null, serverValue: null },
+  preferences: { dirty: false, value: null, serverValue: null },
 };
 const draftStorageKey = 'jarvis:v5:unsaved-text';
 function persistTextDrafts() {
   const dirty = Object.fromEntries(Object.entries(savedDrafts)
-    .filter(([, item]) => item.dirty).map(([id, item]) => [id, item.value]));
+    .filter(([, item]) => item.dirty).map(([id, item]) => [id,
+      { text: item.value, serverValue: item.serverValue }]));
   try {
     if (Object.keys(dirty).length) sessionStorage.setItem(draftStorageKey, JSON.stringify(dirty));
     else sessionStorage.removeItem(draftStorageKey);
@@ -26,9 +27,12 @@ try {
   if (token) {
     const recovered = JSON.parse(sessionStorage.getItem(draftStorageKey) || '{}');
     for (const [id, item] of Object.entries(savedDrafts)) {
-      if (typeof recovered[id] === 'string' && recovered[id].length <= (id === 'playbook' ? 30_000 : 10_000)) {
+      const record = recovered[id];
+      const recoveredText = typeof record === 'string' ? record : record?.text;
+      if (typeof recoveredText === 'string' && recoveredText.length <= (id === 'playbook' ? 30_000 : 10_000)) {
         item.dirty = true;
-        item.value = recovered[id];
+        item.value = recoveredText;
+        item.serverValue = typeof record?.serverValue === 'string' ? record.serverValue : null;
         $(id).value = item.value;
         $(`${id}-draft-status`).textContent = 'Ugemt kladde gendannet fra denne browserfane. Gennemgå før du gemmer.';
       }
@@ -46,7 +50,7 @@ function updateDraft(id, value) {
   const field = $(id);
   const status = $(`${id}-draft-status`);
   if (draft.dirty) {
-    if (draft.value !== null && draft.value !== value && field.value !== value) {
+    if (draft.serverValue !== null && draft.serverValue !== value && field.value !== value) {
       status.textContent = 'Ændret et andet sted. Din ikke-gemte tekst er bevaret. Gennemgå forskellen før du gemmer.';
       status.classList.add('draft-conflict');
     }
@@ -55,6 +59,7 @@ function updateDraft(id, value) {
   if (document.activeElement === field && field.value !== value && draft.value !== null) return;
   field.value = value;
   draft.value = value;
+  draft.serverValue = value;
   status.textContent = '';
   status.classList.remove('draft-conflict');
 }
@@ -70,6 +75,7 @@ function markDraftDirty(id) {
 function markDraftSaved(id) {
   savedDrafts[id].dirty = false;
   savedDrafts[id].value = $(id).value;
+  savedDrafts[id].serverValue = savedDrafts[id].value;
   persistTextDrafts();
   const status = $(`${id}-draft-status`);
   status.textContent = 'Gemt.';

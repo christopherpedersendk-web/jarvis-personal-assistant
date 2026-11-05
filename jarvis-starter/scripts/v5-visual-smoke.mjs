@@ -86,11 +86,21 @@ async function runDevice(type, width, height, label) {
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde');
   assert.match(await page.locator('#preferences-draft-status').textContent(), /Ikke gemt/);
+  assert.equal(await page.locator('#preferences-draft-status').evaluate(el => el.classList.contains('draft-conflict')),
+    false, `${label}: an unchanged server value must not appear as a concurrent conflict`);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-settings').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
     `${label}: unsaved preferences draft was lost on reload`);
   assert.match(await page.locator('#preferences-draft-status').textContent(), /Ugemt kladde|Ikke gemt/);
+  const concurrentChange = await page.request.post(`${origin}/api/preferences`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { text: 'Syntetisk ændring fra en anden fane' },
+  });
+  assert.equal(concurrentChange.status(), 200);
+  await page.evaluate(() => refresh());
+  assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
+    `${label}: concurrent save replaced a dirty local draft`);
+  assert.match(await page.locator('#preferences-draft-status').textContent(), /Ændret et andet sted/);
 
   await page.locator('#tab-settings').screenshot({ path: join(screenshotDir, `${label}-settings.png`), animations: 'disabled' });
   await page.locator('[data-tab="knowledge"]').first().click();

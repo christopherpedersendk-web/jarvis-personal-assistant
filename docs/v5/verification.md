@@ -18,6 +18,8 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-04 | Pending new iteration | `public/v5.css` constrained chat history scroll; `scripts/v5-visual-smoke.mjs` now captures initial-home evidence and asserts draft retention through a reload | **Not yet browser-verified**. New commit + CI required before closing K2/R03/M5. |
 | 2026-11-05 | Published `f85f475e` | GitHub Actions `41938011226`, Node 22 + Chromium smoke | **239/239 Node passed; browser failed identically (994.58px)**. Screenshot artifact `13373919053` proved the browser was rendering the *old* unstyled hero. Root cause: server static-file allowlist did not serve `v5.css` or `v5-plan.js` (HTTP 404), so neither layout nor Plan handlers loaded. |
 | 2026-11-05 | Next local iteration | `node --test test/v5-server.test.mjs`; `npm test` | **4/4 focused and 240/240 full suite passed**, Node ~4.90 s; new test fetches **every** `index.html` linked stylesheet/script over HTTP, verifies MIME types, and explicitly checks `/v5.css` and `/v5-plan.js`. Browser rerun required. |
+| 2026-11-05 | Published `9ce2760c` | GitHub Actions `41938734839` | **240/240 Node 22 passed**. Chromium got through first-screen layout, navigation and forms, but browser smoke failed because a normal refresh flagged an unchanged server preference as a concurrent edit: `/Ikke gemt/` expected, actual `Ændret et andet sted...`. This is a *real false conflict* in `updateDraft`, not a typo in the acceptance test. |
+| 2026-11-05 | Local follow-up (pending CI) | `public/app.js`, `scripts/v5-visual-smoke.mjs`; `npm test` | **240/240** Node + syntax passed (~5.23 s). Dirty drafts now compare fetched server text with the **previous server baseline** (preserved across reload) rather than comparing against the user's unsaved text. Browser also tests real synthetic concurrent remote save; not yet verified on CI. |
 
 ## Synthetic before/after performance
 
@@ -48,7 +50,7 @@ The first path was populated from local Git snapshot `ecc2944`, whose tree was v
 ## Required evidence still pending
 
 - R01–R13 focused Node tests and complete suite are green **locally**, but must be bound to the remote candidate SHA and CI.
-- The first remote v5 commit passed 236 Node tests in CI; `ceeb038` and `f85f475e` passed 239 Node tests each but **failed browser smoke**. The latter's saved screenshot identified a server allowlist defect hiding new CSS/JS; this is now locally fixed with explicit asset smoke coverage. Must be verified on both browsers and sizes at a newer candidate SHA.
+- Published v5 commits pass their full Node 22 suites. The CI browser test has progressively identified static asset 404s and a false preferences conflict. The newest local draft state fix must pass Chromium/WebKit at both sizes before browser acceptance; neither failure is being waived.
 - The 80 Danish lexical questions are synthetic and overlap on key terms. **Genuine semantic** retrieval and independent paraphrase quality ≥90% top-five remain pending; do not cite 100% lexical as semantic success.
 - 30 deterministic scheduling scenarios, DST, impossible schedules and locks passed locally; integrated live-calendar freshness and selective replan review remain pending.
 - Chromium and WebKit desktop (1390×950) and mobile (390×844) in CI; keyboard, zoom, focus, contrast, source URL and draft-preservation manual/browser checks pending.
