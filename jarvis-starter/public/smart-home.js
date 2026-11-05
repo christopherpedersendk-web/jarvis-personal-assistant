@@ -91,7 +91,7 @@ if (typeof document !== 'undefined') (() => {
       hueSettings && !hueAvailable ? 'Opsæt og par Hue Bridge under Integrationer.' : '');
     connectionRow('sonos', 'Sonos', data?.sonos || unavailable(home.reason || new Error('Forbindelsesstatus mangler')), 'sonos-household',
       sonos.status !== 'fulfilled' ? `Opsætningens status kunne ikke hentes: ${sonos.reason.message}`
-        : !sonosAvailable ? 'Gem et Sonos-token og Household ID under Integrationer. Automatisk tokenfornyelse er ikke implementeret.' : '');
+        : !sonosAvailable ? 'Forbind Sonos og gem Household ID under Integrationer.' : '');
     connectionRow('nest', 'Google Nest', {}, 'settings-nest-info', data?.google?.status || 'Live-hændelser er endnu ikke understøttet.');
     if (!hueAvailable) resourceNote('smart-home-hue', hueSettings ? 'Hue er ikke klar til at hente rum. Se opsætning under Integrationer.' : 'Hue-status kunne ikke hentes. Prøv at åbne Hjem igen.', !hueSettings);
     else if (hueReadState === 'idle' && !el('smart-home-hue').querySelector('[data-home-room]')) resourceNote('smart-home-hue', 'Vælg Opdater Hue-lys for at læse rum og lys fra den opsatte Bridge.');
@@ -113,6 +113,10 @@ if (typeof document !== 'undefined') (() => {
       if (hueSettings && !el('hue-ip').dataset.dirty) el('hue-ip').value = hueSettings.bridgeIp || '';
       settingsLoaded = Boolean(sonosSettings && hueSettings);
     }
+    if (el('sonos-connect')) el('sonos-connect').disabled = !sonosSettings?.oauthConfigured;
+    if (el('sonos-oauth-status')) el('sonos-oauth-status').textContent = sonosSettings?.automaticRefresh
+      ? 'Sonos-login gemt. Token fornyes automatisk ved brug.' : sonosSettings?.oauthConfigured
+        ? 'Sonos-login er klar. Vælg Forbind med Sonos.' : 'Sonos-login kræver client ID, client secret og redirect-URL på serveren.';
     setAvailability();
   }
 
@@ -241,6 +245,21 @@ if (typeof document !== 'undefined') (() => {
     } catch (error) { if (isOwner(owner)) el('home-settings-status').textContent = `Kunne ikke fuldføre gemningen: ${error.message}. Dine felter er bevaret.`; }
     finally { if (isOwner(owner)) button.disabled = false; }
   });
+  el('sonos-connect')?.addEventListener('click', async () => {
+    const button = el('sonos-connect'), owner = token;
+    if (!owner || button.disabled) return;
+    if (el('sonos-token').value || el('sonos-clear').checked || el('sonos-household').dataset.dirty) {
+      el('home-settings-status').textContent = 'Gem dine Sonos-ændringer før login.'; return;
+    }
+    button.disabled = true;
+    try {
+      const result = await api('/api/smart-home/sonos/connect', { method: 'POST' });
+      if (isOwner(owner)) location.assign(result.url);
+    } catch (error) { if (isOwner(owner)) { el('home-settings-status').textContent = error.message; button.disabled = false; } }
+  });
+  const sonosOutcome = new URLSearchParams(location.search).get('sonos');
+  if (sonosOutcome && el('home-settings-status')) el('home-settings-status').textContent = sonosOutcome === 'connected'
+    ? 'Sonos-login gennemført. Gem Household ID og hent rum fra Hjem for at kontrollere forbindelsen.' : 'Sonos-login kunne ikke gennemføres. Start igen fra Indstillinger.';
   const relevant = () => !el('tab-smart-home').classList.contains('hidden') || !el('tab-settings').classList.contains('hidden') ||
     (!el('tab-home').classList.contains('hidden') && el('home-more-details').open);
   for (const id of ['sonos-household', 'hue-ip']) el(id).addEventListener('input', () => { el(id).dataset.dirty = 'true'; });

@@ -6,6 +6,7 @@ on:
       - main
       - feature/v5-foundation
       - feature/gui-redesign
+      - fix/v5-discord-meal-plan
     paths:
       - 'jarvis-starter/**'
       - 'docs/gui/**'

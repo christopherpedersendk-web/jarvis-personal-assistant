@@ -384,7 +384,9 @@
 </section>
 <section id="settings-sonos-controls" class="gui-settings-group">
 <h3>Smart Home – Sonos</h3>
-          <p class="muted small-text">Eksperimentel Sonos Cloud API-forbindelse. Kræver et godkendt OAuth access token fra Sonos Developer Portal og household-ID. Automatisk tokenfornyelse er endnu ikke implementeret. Del aldrig dine tokens i chat.</p>
+          <p class="muted small-text">Forbind med Sonos-login for automatisk tokenfornyelse. Kræver serveropsætning i Sonos Developer Portal og household-ID. Et manuelt token kan stadig bruges. Del aldrig dine tokens i chat.</p>
+          <button id="sonos-connect" type="button" class="secondary">Forbind med Sonos</button>
+          <p id="sonos-oauth-status" class="muted small-text" role="status"></p>
           <form id="home-settings-form" class="task-form">
             <label for="sonos-token">Sonos OAuth Access Token</label><input id="sonos-token" type="password" autocomplete="off" placeholder="Lad være tom for at beholde gemt token" />
             <label for="sonos-household">Sonos Household ID</label><input id="sonos-household" autocomplete="off" placeholder="Household ID" />

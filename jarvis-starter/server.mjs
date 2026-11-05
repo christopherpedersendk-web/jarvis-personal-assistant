@@ -1,3 +1,4 @@
+import { SonosAuth, sonosCredentialKey, clearSonosCookie } from './sonos-auth.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -211,7 +212,7 @@ function json(res, status, payload) {
 }
 
 function knownSecrets() {
-  return [accessToken, apiKey, discordConfig.token, homeConfig.sonosToken, hueConfig.applicationKey,
+  return [accessToken, apiKey, discordConfig.token, homeConfig.sonosToken, homeConfig.sonosRefreshToken, process.env.SONOS_CLIENT_SECRET, hueConfig.applicationKey,
     googleConfig.refreshToken, pushConfig.token, pushConfig.user];
 }
 
@@ -329,7 +330,15 @@ async function createMealPlan(input = {}) {
   }
   return meals.createPlan({ startDate: input.startDate, days: input.days, calendarBusyDates });
 }
-const smartHome = new SmartHome({ state, save });
+const sonosAuth = new SonosAuth({
+  clientId: process.env.SONOS_CLIENT_ID, clientSecret: process.env.SONOS_CLIENT_SECRET, redirectUri: process.env.SONOS_REDIRECT_URI,
+  getConfig: () => homeConfig,
+  persist: (tokens, expected) => persistPrivateSettings(next => {
+    if (sonosCredentialKey(next.smartHome) !== expected) throw new Error('Sonos-indstillingerne blev ændret under login. Start igen.');
+    Object.assign(next.smartHome, tokens, { sonosAuthRevision: randomUUID() });
+  }),
+});
+const smartHome = new SmartHome({ state, save, authorizeSonos: () => sonosAuth.credentials() });
 protectLocalMutations(smartHome, { event: ['homeEvents'] });
 const hue = new HueBridge();
 boundIntegration(hue, ['resources', 'control', 'scene', 'pair']);
@@ -725,6 +734,18 @@ async function route(req, res) {
     }
   }
 
+  if (req.method === 'GET' && path === '/api/smart-home/sonos/callback') {
+    let outcome = 'error';
+    try {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const browser = String(req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('jarvis_sonos='))?.slice('jarvis_sonos='.length);
+      await sonosAuth.exchange({ state: params.get('state'), code: params.get('code'), error: params.get('error'), browser });
+      outcome = 'connected';
+    } catch { /* Fixed callback response: provider codes and tokens never reach logs or UI. */ }
+    res.writeHead(303, headers({ Location: `/?sonos=${outcome}`, 'Set-Cookie': clearSonosCookie }));
+    return res.end();
+  }
+
   if (path.startsWith('/api/')) {
     if (!authenticated(req)) return json(res, 401, { error: 'Forkert adgangskode.' });
     if (req.method === 'GET' && path === '/api/actions')
@@ -981,6 +1002,13 @@ async function route(req, res) {
         await bodyJson(req), handleHomeTool, 'web')); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
+    if (req.method === 'POST' && path === '/api/smart-home/sonos/connect') {
+      try {
+        const login = sonosAuth.begin();
+        res.setHeader('Set-Cookie', login.cookie);
+        return json(res, 200, { url: login.url });
+      } catch (error) { return json(res, 400, { error: error.message }); }
+    }
     if (req.method === 'GET' && path === '/api/smart-home/sonos/groups') {
       try { return json(res, 200, await smartHome.sonosGroups(homeConfig)); } catch (error) { return json(res, 400, { error: error.message }); }
     }
@@ -992,15 +1020,18 @@ async function route(req, res) {
       try { return json(res, 201, { event: await smartHome.event({ source: 'test', kind: 'doorbell', label: 'Test: nogen ringer på døren' }) }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
-    if (req.method === 'GET' && path === '/api/smart-home/settings') return json(res, 200, { hasSonosToken: Boolean(homeConfig.sonosToken), sonosHouseholdId: homeConfig.sonosHouseholdId });
+    if (req.method === 'GET' && path === '/api/smart-home/settings') return json(res, 200, { hasSonosToken: Boolean(homeConfig.sonosToken), sonosHouseholdId: homeConfig.sonosHouseholdId, ...sonosAuth.status() });
     if (req.method === 'POST' && path === '/api/smart-home/settings') {
       try {
         const input = await bodyJson(req);
         if (input.sonosToken && (typeof input.sonosToken !== 'string' || input.sonosToken.length > 4096)) throw new Error('Ugyldigt token.');
         if (input.sonosHouseholdId !== undefined && (typeof input.sonosHouseholdId !== 'string' || !/^[A-Za-z0-9_-]{0,120}$/.test(input.sonosHouseholdId))) throw new Error('Ugyldigt household-ID.');
         await persistPrivateSettings(next => {
-          next.smartHome = { sonosToken: input.clearSonosToken ? '' : input.sonosToken?.trim() || next.smartHome.sonosToken,
+          next.smartHome = { ...next.smartHome, sonosToken: input.clearSonosToken ? '' : input.sonosToken?.trim() || next.smartHome.sonosToken,
             sonosHouseholdId: input.sonosHouseholdId ?? next.smartHome.sonosHouseholdId };
+          if (input.clearSonosToken || input.sonosToken?.trim()) Object.assign(next.smartHome, {
+            sonosRefreshToken: '', sonosExpiresAt: null, sonosAuthRevision: randomUUID(),
+          });
         });
         return json(res, 200, { ok: true, hasSonosToken: Boolean(homeConfig.sonosToken) });
       } catch (error) { return json(res, 400, { error: error.message }); }

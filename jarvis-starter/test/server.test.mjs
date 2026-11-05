@@ -186,6 +186,16 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal(calendarStatus.configured, false);
   assert.equal(calendarStatus.canEdit, false);
   assert.equal((await fetch(`${base}/api/google/calendar/connect`, { method: 'POST', headers: authorizedHeaders })).status, 409);
+  assert.equal((await fetch(`${base}/api/smart-home/sonos/connect`, { method: 'POST' })).status, 401);
+  assert.equal((await fetch(`${base}/api/smart-home/sonos/connect`, { method: 'POST', headers: authorizedHeaders })).status, 400);
+  const sonosStatus = await (await fetch(`${base}/api/smart-home/settings`, { headers: authorizedHeaders })).json();
+  assert.equal(sonosStatus.oauthConfigured, false);
+  assert.equal(sonosStatus.automaticRefresh, false);
+  const sonosCallback = await fetch(`${base}/api/smart-home/sonos/callback?state=invalid&code=private-code`, { redirect: 'manual' });
+  assert.equal(sonosCallback.status, 303);
+  assert.equal(sonosCallback.headers.get('location'), '/?sonos=error');
+  assert.match(sonosCallback.headers.get('set-cookie'), /Max-Age=0/);
+  assert.equal(await sonosCallback.text(), '');
   const nemligStatus = await (await fetch(`${base}/api/nemlig/status`, { headers: authorizedHeaders })).json();
   assert.equal(nemligStatus.configured, false);
   assert.equal(nemligStatus.canPlaceOrder, false);
