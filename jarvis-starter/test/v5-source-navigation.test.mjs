@@ -225,7 +225,11 @@ test('R11 copied source URL is preserved by application initialization', async (
     window: { location: { href: 'https://synthetic.invalid/?view=meals&source=household%3A2026-12-20' } },
     sessionStorage: { getItem: () => 'home' }, selectTab: (view, options) => called.push({ view, ...options }),
   });
-  assert.deepEqual(called, [{ view: 'meals', replace: true, sourceId: 'household:2026-12-20' }]);
+  assert.equal(called.length, 1);
+  assert.deepEqual({ view: called[0].view, replace: called[0].replace, sourceId: called[0].sourceId },
+    { view: 'meals', replace: true, sourceId: 'household:2026-12-20' });
+  assert.equal(called[0].preserveDestination, false, 'an old alias may resolve to the exact source domain');
+  assert.equal(called[0].attention, false);
 });
 
 test('B3/R09 voice household lookup uses the fixed read-only route and encodes the requested date', async () => {

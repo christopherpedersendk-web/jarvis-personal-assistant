@@ -1,0 +1,132 @@
+name: JARVIS GUI exact-candidate verification
+
+on:
+  pull_request:
+    branches:
+      - feature/v5-foundation
+      - feature/gui-redesign
+    paths:
+      - 'jarvis-starter/**'
+      - 'docs/gui/**'
+      - '.github/workflows/gui-redesign.yml'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: 'Exact 40-character commit SHA to verify; no production deployment'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gui-${{ github.event.pull_request.number || inputs.candidate_sha }}
+  cancel-in-progress: false
+
+env:
+  GUI_EXPECTED_CANDIDATE: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+
+jobs:
+  unit-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout the exact GUI candidate, not a generated merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Record and verify checkout identity
+        working-directory: jarvis-starter
+        run: node scripts/gui-evidence.mjs --output artifacts/gui/unit-candidate.json
+      - name: Run the full existing and GUI Node regression
+        working-directory: jarvis-starter
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee artifacts/gui/unit-tests.log
+      - name: Retain actual unit result and candidate identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-unit-${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          path: jarvis-starter/artifacts/gui/
+          retention-days: 30
+          if-no-files-found: warn
+
+  browser-regression:
+    # Independent from unit-regression: preserve GUI evidence even when an
+    # unrelated v5 gate fails. Both jobs still have to be reviewed.
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the exact GUI candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Record and verify checkout identity
+        id: identity
+        working-directory: jarvis-starter
+        run: node scripts/gui-evidence.mjs --output artifacts/gui/browser-candidate.json
+      - name: Install only the pinned test dependency outside the candidate tree
+        id: runtime
+        shell: bash
+        run: npm install --prefix "$RUNNER_TEMP/gui-browser-runtime" --no-package-lock --ignore-scripts playwright@1.64.1
+      - name: Require matching preinstalled Chromium and WebKit binaries
+        id: binaries
+        working-directory: jarvis-starter
+        shell: bash
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          node --input-type=commonjs - <<'NODE'
+          const assert = require('node:assert/strict');
+          const { existsSync } = require('node:fs');
+          assert.equal(require('playwright/package.json').version, '1.64.1');
+          const { chromium, webkit } = require('playwright');
+          for (const [name, browser] of Object.entries({ chromium, webkit })) {
+            assert.ok(existsSync(browser.executablePath()), `${name} missing from pinned image`);
+            console.log(`${name}: ${browser.executablePath()}`);
+          }
+          NODE
+      - name: Verify GUI fixture matrix on both browser engines
+        id: gui
+        working-directory: jarvis-starter
+        shell: bash
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          JARVIS_GUI_ARTIFACT_DIR: artifacts/gui/browser
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          set -o pipefail
+          node scripts/gui-visual-smoke.mjs 2>&1 | tee artifacts/gui/gui-browser.log
+      - name: Preserve deep v5 behavior through the redesigned navigation
+        if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
+        working-directory: jarvis-starter
+        shell: bash
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          JARVIS_V5_ARTIFACT_DIR: artifacts/gui/v5-regression
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          set -o pipefail
+          node scripts/v5-visual-smoke.mjs 2>&1 | tee artifacts/gui/v5-browser.log
+      - name: Retain screenshots, traces, measured checks and exact identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-browser-${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          path: jarvis-starter/artifacts/gui/
+          retention-days: 30
+          if-no-files-found: warn

@@ -6,21 +6,46 @@ let remoteAudio = null;
 let startingVoice = false;
 let toastTimer;
 const handledCalls = new Set();
-const viewAliases = Object.freeze({ tasks: 'plan', secretary: 'plan', organizer: 'knowledge', system: 'settings' });
-const publicViews = new Set(['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings']);
+let currentGuiRoute = null;
+let aiReady = false;
 const savedDrafts = {
   playbook: { dirty: false, value: null, serverValue: null },
   preferences: { dirty: false, value: null, serverValue: null },
 };
 const draftStorageKey = 'jarvis:v5:unsaved-text';
+let textDraftGeneration = 0, textDraftStorageReady = true;
+const textDraftSensitive = (value, owner = token) => {
+  const text = String(value || '');
+  return /\b(?:sk-[\w-]{16,}|gh[pousr]_[A-Za-z0-9]{16,})\b|\beyJ[\w-]{12,}\.[\w-]{10,}\.[\w-]{10,}\b|PRIVATE KEY|Authorization\s*:\s*Bearer|\b(?:api[_ -]?key|api-nøgle|password|adgangskode|token|secret|cpr|personnummer)\s*[:=]|https?:\/\/[^/\s]+@/i.test(text)
+    || Boolean(owner && owner.length >= 6 && text.includes(owner));
+};
+function textDraftStorageNotice(id) {
+  const item = savedDrafts[id];
+  if (!item?.dirty) return '';
+  if (textDraftSensitive(item.value) || textDraftSensitive(item.serverValue))
+    return ' Teksten eller dens gemte grundlag kan indeholde følsomme oplysninger. Kladden findes kun på denne side og gendannes ikke efter genindlæsning.';
+  return textDraftStorageReady ? '' : ' Browseren afviser kladdelagring. Behold fanen åben; kladden gendannes ikke sikkert efter genindlæsning.';
+}
 function persistTextDrafts() {
   const dirty = Object.fromEntries(Object.entries(savedDrafts)
-    .filter(([, item]) => item.dirty).map(([id, item]) => [id,
-      { text: item.value, serverValue: item.serverValue }]));
+    .filter(([, item]) => token && item.dirty && !textDraftSensitive(item.value) && !textDraftSensitive(item.serverValue))
+    .map(([id, item]) => [id, { text: item.value, serverValue: item.serverValue }]));
   try {
     if (Object.keys(dirty).length) sessionStorage.setItem(draftStorageKey, JSON.stringify(dirty));
     else sessionStorage.removeItem(draftStorageKey);
-  } catch { /* Private browsing can disable storage; the in-memory draft remains. */ }
+    textDraftStorageReady = true;
+  } catch { textDraftStorageReady = false; }
+}
+function clearTextDrafts() {
+  textDraftGeneration++;
+  for (const [id, item] of Object.entries(savedDrafts)) {
+    Object.assign(item, { dirty: false, value: null, serverValue: null, latestServerValue: null });
+    $(id).value = '';
+    const status = $(`${id}-draft-status`); status.textContent = ''; status.classList.remove('draft-conflict');
+    $(`${id}-review-conflict`)?.remove();
+    $(id === 'playbook' ? 'save-playbook' : 'save-preferences').disabled = false;
+  }
+  try { sessionStorage.removeItem(draftStorageKey); } catch { /* The visible and in-memory values are cleared. */ }
 }
 
 try {
@@ -29,7 +54,8 @@ try {
     for (const [id, item] of Object.entries(savedDrafts)) {
       const record = recovered[id];
       const recoveredText = typeof record === 'string' ? record : record?.text;
-      if (typeof recoveredText === 'string' && recoveredText.length <= (id === 'playbook' ? 30_000 : 10_000)) {
+      if (typeof recoveredText === 'string' && recoveredText.length <= (id === 'playbook' ? 30_000 : 10_000) &&
+          !textDraftSensitive(recoveredText) && !textDraftSensitive(record?.serverValue)) {
         item.dirty = true;
         item.value = recoveredText;
         item.serverValue = typeof record?.serverValue === 'string' ? record.serverValue : null;
@@ -38,11 +64,11 @@ try {
       }
     }
   }
-} catch { /* Malformed session storage cannot prevent login. */ }
+  persistTextDrafts();
+} catch { textDraftStorageReady = false; /* Malformed session storage cannot prevent login. */ }
 
 function canonicalView(view) {
-  const candidate = viewAliases[view] || view;
-  return publicViews.has(candidate) ? candidate : 'home';
+  return JarvisNavigation.resolve(view).view;
 }
 
 function updateDraft(id, value) {
@@ -76,7 +102,7 @@ function markDraftDirty(id) {
   savedDrafts[id].value = $(id).value;
   persistTextDrafts();
   const status = $(`${id}-draft-status`);
-  status.textContent = 'Ikke gemt. Dine ændringer bevares ved opdatering.';
+  status.textContent = 'Ikke gemt. Dine ændringer bevares ved navigation.' + textDraftStorageNotice(id);
 }
 
 function markDraftSaved(id, submitted) {
@@ -86,7 +112,7 @@ function markDraftSaved(id, submitted) {
   savedDrafts[id].latestServerValue = submitted;
   persistTextDrafts();
   const status = $(`${id}-draft-status`);
-  status.textContent = savedDrafts[id].dirty ? 'Den afsendte tekst er gemt. Dine nyere ændringer er stadig en ugemt kladde.' : 'Gemt.';
+  status.textContent = (savedDrafts[id].dirty ? 'Den afsendte tekst er gemt. Dine nyere ændringer er stadig en ugemt kladde.' : 'Gemt.') + textDraftStorageNotice(id);
   status.classList.remove('draft-conflict');
   $(`${id}-review-conflict`)?.remove();
 }
@@ -114,6 +140,9 @@ async function saveTextDraft(id, path, field) {
   const button = $(id === 'playbook' ? 'save-playbook' : 'save-preferences');
   if (button.disabled) return;
   const draft = savedDrafts[id], submitted = $(id).value;
+  const owner = token, epoch = textDraftGeneration;
+  const current = () => Boolean(owner && token === owner && textDraftGeneration === epoch);
+  if (!current()) return;
   if (draft.serverValue === null) {
     $(`${id}-draft-status`).textContent = 'Hent det aktuelle grundlag før gemning. Din kladde er bevaret.';
     await refresh(); return;
@@ -126,69 +155,38 @@ async function saveTextDraft(id, path, field) {
   try {
     await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [field]: submitted, expectedText: draft.serverValue }) });
+    if (!current()) return;
     markDraftSaved(id, submitted);
   } catch (error) {
-    $(`${id}-draft-status`).textContent = `Gemning fejlede: ${error.message}. Din tekst er bevaret.`;
+    if (!current()) return;
+    $(`${id}-draft-status`).textContent = `Gemning fejlede: ${error.message}. Din tekst er bevaret.` + textDraftStorageNotice(id);
     if (error.status === 409) await refresh();
-  } finally { button.disabled = false; }
+  } finally { if (current()) button.disabled = false; }
 }
 
 for (const id of Object.keys(savedDrafts)) $(id).addEventListener('input', () => markDraftDirty(id));
+window.addEventListener('beforeunload', event => {
+  if (Object.keys(savedDrafts).some(id => textDraftStorageNotice(id))) { event.preventDefault(); event.returnValue = ''; }
+});
 
-// Flyt eksisterende, gennemtestede funktioner ind i faner uden at genskabe formularer.
+// Reparent the existing editors without recreating their fields or controllers.
 function initializeDashboard() {
-  const destinations = {
-    home: ['.hero-panel', '.chat-panel'],
-    plan: ['.tasks-panel', '.secretary-panel'],
-    projects: ['.projects-panel', '.code-panel'],
-    settings: ['.notes-panel', '.capabilities', '#logout'],
-  };
-  for (const [tab, selectors] of Object.entries(destinations)) {
-    for (const selector of selectors) {
-      const element = document.querySelector(`#legacy-layout ${selector}`);
-      if (element) $(`tab-${tab}`).append(element);
-    }
-  }
-  const hero = document.querySelector('#tab-home .hero-panel');
-  if (hero) $('tab-home').prepend(hero);
-  const chat = document.querySelector('#tab-home .chat-panel');
-  if (chat) $('tab-home').insertBefore(chat, $('home-intelligence'));
-  document.querySelectorAll('a[data-tab]').forEach(link => link.addEventListener('click', event => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-    event.preventDefault();
-    selectTab(link.dataset.tab);
-  }));
-  $('more-toggle').addEventListener('click', () => {
-    const expanded = $('more-toggle').getAttribute('aria-expanded') !== 'true';
-    $('more-toggle').setAttribute('aria-expanded', String(expanded));
-    $('more-menu').classList.toggle('hidden', !expanded);
-  });
+  JarvisShell.mount({ navigate: selectTab, getRoute: () => currentGuiRoute });
 }
 
-function selectTab(tab, { fromHistory = false, replace = false, sourceId = null } = {}) {
-  tab = canonicalView(tab);
-  document.querySelectorAll('[data-tab]').forEach(button => {
-    const active = button.dataset.tab === tab;
-    button.classList.toggle('active', active);
-    if (active) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
-  });
-  document.querySelectorAll('.tab-view').forEach(view => view.classList.toggle('hidden', view.id !== `tab-${tab}`));
-  const moreActive = ['smart-home', 'projects', 'settings'].includes(tab);
-  $('more-toggle').classList.toggle('active', moreActive);
-  $('more-toggle').setAttribute('aria-expanded', 'false');
-  $('more-menu').classList.add('hidden');
+function selectTab(tab, { fromHistory = false, replace = false, sourceId = null, section, kind, panel, attention, preserveDestination = false } = {}) {
+  const route = fromHistory ? JarvisNavigation.fromURL(window.location.href)
+    : JarvisNavigation.resolve(tab, { sourceId, section, kind, panel, attention, preserveDestination });
+  currentGuiRoute = route;
   if (!fromHistory) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('view', tab);
-    if (sourceId) url.searchParams.set('source', sourceId);
-    else url.searchParams.delete('source');
+    const url = JarvisNavigation.toURL(window.location.href, route);
     const method = replace ? 'replaceState' : 'pushState';
-    if (url.href !== window.location.href) history[method]({ view: tab, sourceId }, '', url);
+    if (url.href !== window.location.href) history[method]({ ...(replace ? history.state : {}), view: route.view, sourceId: route.sourceId }, '', url);
   }
-  document.title = `JARVIS · ${({ home: 'I dag', plan: 'Plan', meals: 'Mad og indkøb', knowledge: 'Min viden', 'smart-home': 'Hjem', projects: 'Projekter', settings: 'Indstillinger' })[tab]}`;
-  sessionStorage.setItem('jarvisTab', tab);
-  document.dispatchEvent(new CustomEvent('jarvis:view-changed', { detail: { view: tab } }));
+  JarvisShell.apply(route);
+  document.title = `JARVIS · ${route.label}`;
+  try { sessionStorage.setItem('jarvisTab', route.view); } catch { /* In-memory navigation still works. */ }
+  document.dispatchEvent(new CustomEvent('jarvis:view-changed', { detail: { ...route, primaryView: route.view, view: route.legacyView } }));
 }
 
 function renderOverview(state) {
@@ -201,7 +199,7 @@ function renderOverview(state) {
     .sort((a, b) => b.at.localeCompare(a.at))[0];
   const root = $('home-overview');
   root.replaceChildren();
-  for (const [title, value, tab] of [['Nye beskeder', inbox, 'plan'], ['Afventer godkendelse', approvals, 'plan'], ['Aktive opgaver', `${running} kører · ${scheduled} planlagt`, 'plan'], ['Kodeprojekter', summary.projectCount ?? (state.projects || []).length, 'projects']]) {
+  for (const [title, value, tab] of [['Nye beskeder', inbox, 'secretary'], ['Afventer godkendelse', approvals, 'secretary'], ['Aktive opgaver', `${running} kører · ${scheduled} planlagt`, 'tasks'], ['Kodeprojekter', summary.projectCount ?? (state.projects || []).length, 'projects']]) {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'overview-card';
     const label = document.createElement('span'); label.textContent = title;
@@ -219,7 +217,10 @@ function renderOverview(state) {
 initializeDashboard();
 const initialRoute = new URL(window.location.href);
 selectTab(initialRoute.searchParams.get('view') || sessionStorage.getItem('jarvisTab') || 'home',
-  { replace: true, sourceId: initialRoute.searchParams.get('source') });
+  { replace: true, sourceId: initialRoute.searchParams.get('source'),
+    attention: initialRoute.searchParams.get('attention') === '1' || initialRoute.searchParams.get('view') === 'secretary',
+    section: initialRoute.searchParams.get('section') || undefined, kind: initialRoute.searchParams.get('kind') || undefined,
+    panel: initialRoute.searchParams.get('panel') || undefined, preserveDestination: initialRoute.searchParams.get('view') === 'watches' });
 window.addEventListener('popstate', () => {
   const url = new URL(window.location.href);
   selectTab(url.searchParams.get('view') || 'home', { fromHistory: true });
@@ -266,6 +267,7 @@ function showWorkspace() {
 let historySnapshot = { items: [], revision: null, total: 0, nextCursor: null };
 function renderHistory(history) {
   const list = $('messages');
+  document.querySelector('.chat-panel')?.classList.toggle('chat-empty', !history.length);
   list.replaceChildren();
   $('history-count').textContent = historySnapshot.total > history.length ? `${history.length} af ${historySnapshot.total} beskeder` : `${history.length} beskeder`;
   $('history-older').classList.toggle('hidden', !historySnapshot.nextCursor);
@@ -315,10 +317,14 @@ $('logout').addEventListener('click', () => {
 });
 
 async function refreshActiveCore() {
-  const view = canonicalView(new URL(window.location.href).searchParams.get('view'));
-  if (view === 'plan') await Promise.all([refreshTasks(), refreshSecretary()]);
-  else if (view === 'projects') await Promise.all([refreshProjects(), refreshCode()]);
-  else if (view === 'settings') await refreshSettings();
+  const route = currentGuiRoute || JarvisNavigation.fromURL(window.location.href);
+  if (route.view === 'home') await refreshSecretary();
+  else if (route.view === 'watches' || (route.view === 'plan' && route.kind === 'agent')) await refreshTasks();
+  else if (route.view === 'plan' && route.kind === 'projects') await refreshProjects();
+  else if (route.view === 'settings') {
+    await refreshSettings();
+    if (route.section === 'system') await refreshCode();
+  }
 }
 document.addEventListener('jarvis:view-changed', () => {
   if (token && !$('workspace').classList.contains('hidden')) refreshActiveCore().catch(error => toast(error.message));
@@ -330,6 +336,9 @@ async function refresh() {
   if (!sessionToken || sessionToken !== token) return;
   localStorage.setItem('jarvisAccessToken', sessionToken);
   showWorkspace();
+  aiReady = state.configured === true;
+  $('connection').textContent = aiReady ? 'Privat forbindelse' : 'Forbundet · AI mangler opsætning';
+  if (!peer && !startingVoice) $('voice-status').textContent = aiReady ? 'Start en stemmesamtale, når du er klar.' : 'AI mangler en API-nøgle på serveren. Se System og opdateringer.';
   acceptHistoryPage({ items: state.history || [], ...(state.historyPagination || {}) });
   updateDraft('playbook', state.playbook || '');
   $('push-status').textContent = state.pushEnabled ? 'Push: opsat' : 'Push: ikke opsat';
@@ -337,7 +346,8 @@ async function refresh() {
   document.dispatchEvent(new CustomEvent('jarvis:refreshed'));
   updateDraft('preferences', state.preferences || '');
   await refreshActiveCore();
-  if (!state.configured) toast('API-nøglen mangler i .env. Se installationsguiden.');
+  const readiness = $('chat-readiness');
+  if (readiness) { readiness.classList.toggle('hidden', aiReady); readiness.textContent = aiReady ? '' : 'Samtalen er ikke klar. Serverens API-nøgle mangler; se System og opdateringer.'; }
 }
 
 const taskStatus = {
@@ -347,21 +357,28 @@ const taskStatus = {
 
 function taskDate(value) {
   if (!value) return '';
-  return new Intl.DateTimeFormat('da-DK', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+  const date = new Date(value); if (!Number.isFinite(date.getTime())) return 'Tidspunkt ukendt';
+  return new Intl.DateTimeFormat('da-DK', { dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23', timeZone: 'Europe/Copenhagen' }).format(date);
 }
 
 const jobPolicyEditor = JarvisJobs.attach({ document, api, getToken: () => token, refresh: () => refreshTasks(),
+  onOpen: ({ category }) => JarvisShell.openJobEditor(category),
   navigateSkill: sourceId => { selectTab('knowledge', { sourceId });
     focusRecordedSource(sourceId).catch(error => sourceStatus('knowledge', error.message)); } });
 
-function renderTasks(tasks, usage = {}) { jobPolicyEditor.render(tasks, usage); }
+const watches = JarvisWatches.attach({ document, editor: jobPolicyEditor, navigate: selectTab, getToken: () => token });
+let currentTaskRecords = [];
+function renderTasks(tasks, usage = {}) { currentTaskRecords = tasks; jobPolicyEditor.render(tasks, usage, { filter: task => task.category !== 'monitor' }); watches.render(tasks); }
 
 let taskRefreshSequence = 0;
 async function refreshTasks() {
   const request = ++taskRefreshSequence, owner = token;
-  const result = await api('/api/tasks');
-  if (request !== taskRefreshSequence || owner !== token) return;
-  renderTasks(result.tasks, result.usage);
+  if (currentGuiRoute?.view === 'watches') watches.loading();
+  try {
+    const result = await api('/api/tasks');
+    if (request !== taskRefreshSequence || owner !== token) return;
+    renderTasks(result.tasks, result.usage);
+  } catch (error) { if (request === taskRefreshSequence && owner === token) watches.error(error.message); throw error; }
 }
 
 function renderSecretary(data) {
@@ -420,7 +437,7 @@ $('playbook-file').addEventListener('change', async () => {
   if (file.size > 15_000) return toast('Skills-dokumentet må højst fylde 15 KB.');
   $('playbook').value = await file.text();
   markDraftDirty('playbook');
-  toast('Markdown indlæst. Tryk Gem skills-dokument for at aktivere det.');
+  toast('Markdown indlæst. Tryk Gem arbejdsinstruktioner for at gemme det.');
   $('playbook-file').value = '';
 });
 $('export-playbook').addEventListener('click', () => {
@@ -444,15 +461,14 @@ function applyTaskTemplate(category) {
     'task-repeat': 'daily', 'task-daily-time': category === 'briefing' ? '07:30' : '08:00' },
     category === 'briefing' ? { skillId: 'daily-briefing' } : {});
   if (!accepted) return;
-  selectTab('plan');
   $('task-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 $('briefing-template').addEventListener('click', () => applyTaskTemplate('briefing'));
 $('monitor-template').addEventListener('click', () => applyTaskTemplate('monitor'));
 $('gift-template').addEventListener('click', () => {
-  if (jobPolicyEditor.template({ 'task-category': 'monitor', 'task-title': 'Gaveidéer og tilbud',
+  jobPolicyEditor.template({ 'task-category': 'monitor', 'task-title': 'Gaveidéer og tilbud',
     'task-prompt': 'Find 3 nye gaveidéer til [PERSON, ALDER, INTERESSER] under [BUDGET] kr. i danske butikker. Medtag pris, levering, links og sammenlign med tidligere forslag. Registrér struktureret observation: ændret, uændret eller ukendt. En fejlet kilde er ikke bevis for uændret.',
-    'task-repeat': '10080' }, { skillId: 'gift-planning' })) selectTab('plan');
+    'task-repeat': '10080' }, { skillId: 'gift-planning' });
 });
 
 const projectUi = JarvisProjects.attach({
@@ -498,7 +514,8 @@ $('login-form').addEventListener('submit', async event => {
   } catch (error) { toast(error.message); }
 });
 
-JarvisChat.attach({ document, api, refresh, getToken: () => token });
+JarvisChat.attach({ document, api, refresh, getToken: () => token,
+  getContext: JarvisShell.getContext, setContext: JarvisShell.setContext, canSend: () => aiReady });
 
 $('save-preferences').addEventListener('click', async () => {
   await saveTextDraft('preferences', '/api/preferences', 'text');
@@ -508,7 +525,7 @@ $('refresh').addEventListener('click', () => refresh().catch(error => toast(erro
 $('logout').addEventListener('click', () => {
   stopVoice();
   localStorage.removeItem('jarvisAccessToken');
-  try { sessionStorage.removeItem(draftStorageKey); } catch { /* ignore blocked storage */ }
+  clearTextDrafts();
   try {
     for (const key of ['jarvis:v5:memory-note-draft', 'jarvis:v5:memory-claim-draft', 'jarvis:v5:memory-mode'])
       sessionStorage.removeItem(key);
@@ -539,7 +556,7 @@ async function handleVoiceTool(channel, call) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...args, activation: 'paused' }),
       });
       output = { ok: true, id: data.task.id, title: data.task.title, status: data.task.status, nextRunAt: data.task.nextRunAt,
-        note: 'Gemt som pauset forslag. Ejeren skal gennemgå politikken og aktivere i Plan; intet baggrundsarbejde er startet.' };
+        note: 'Gemt som pauset forslag. Ejeren skal gennemgå politikken og aktivere i Planlægning; intet baggrundsarbejde er startet.' };
       await refreshTasks();
     } else if (call.name === 'list_research_tasks') {
       const data = await api('/api/tasks');
@@ -601,11 +618,12 @@ function stopVoice() {
   if (remoteAudio) { remoteAudio.pause(); remoteAudio.srcObject = null; remoteAudio = null; }
   $('voice-orb').classList.remove('listening');
   $('voice-toggle').textContent = '🎙️ Start stemmesamtale';
-  $('voice-status').textContent = 'Klar til at lytte, når du starter en samtale.';
+  $('voice-status').textContent = aiReady ? 'Start en stemmesamtale, når du er klar.' : 'AI mangler opsætning på serveren.';
 }
 
 async function startVoice() {
   if (startingVoice) return;
+  if (!aiReady) { toast('AI mangler opsætning. Se System og opdateringer.'); selectTab('settings', { section: 'system' }); return; }
   startingVoice = true;
   $('voice-toggle').disabled = true;
   $('voice-status').textContent = 'Opretter sikker stemmeforbindelse …';
@@ -665,11 +683,10 @@ else showLogin();
 
 setInterval(() => {
   if (token && !$('workspace').classList.contains('hidden') && document.visibilityState === 'visible') {
-    const view = canonicalView(new URL(window.location.href).searchParams.get('view'));
-    if (view === 'plan') {
+    const route = currentGuiRoute || JarvisNavigation.fromURL(window.location.href);
+    if (route.view === 'watches' || (route.view === 'plan' && route.kind === 'agent')) {
       refreshTasks().catch(() => {});
-      refreshSecretary().catch(() => {});
     }
-    if (view === 'home') api('/api/overview').then(renderOverview).catch(() => {});
+    if (route.view === 'home') { api('/api/overview').then(renderOverview).catch(() => {}); refreshSecretary().catch(() => {}); }
   }
 }, 20_000);

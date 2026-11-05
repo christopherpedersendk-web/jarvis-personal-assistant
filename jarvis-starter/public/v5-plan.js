@@ -477,7 +477,9 @@ if (typeof document !== 'undefined') (() => {
   repeatedTime = field(zoneBox, {}, 'plan-repeated-time', 'Når et klokkeslæt forekommer to gange ved skift til vintertid', 'select');
   option(repeatedTime, 'reject', 'Spørg mig — ingen automatisk antagelse');
   option(repeatedTime, 'earlier', 'Første forekomst (sommertid)'); option(repeatedTime, 'later', 'Anden forekomst (vintertid)');
-  byId('tab-plan').insertBefore(zoneBox, byId('tab-plan').querySelector('section'));
+  const zoneDetails = node('details', 'gui-disclosure');
+  zoneDetails.append(node('summary', '', 'Avancerede tidsvalg'), zoneBox);
+  byId('tab-plan').append(zoneDetails);
 
   let taskRecords = [], followRecords = [], taskEdit = null, followEdit = null, taskEpoch = 0, followEpoch = 0;
   let taskDirty = false, followDirty = false, capacityDirty = false, storageReady = true;
@@ -624,11 +626,13 @@ if (typeof document !== 'undefined') (() => {
     } catch { storageReady = false; }
   }
   function taskEditControls() {
+    if ((taskEdit || taskDirty) && byId('personal-task-create')) byId('personal-task-create').open = true;
     taskSubmit.textContent = taskEdit ? 'Gem ændringer' : 'Opret personlig opgave';
     taskCancel.hidden = !taskEdit && !taskDirty; taskReload.hidden = !taskEdit;
     taskFields['personal-task-state'].disabled = !taskEdit;
   }
   function followEditControls() {
+    if ((followEdit || followDirty) && byId('follow-up-create')) byId('follow-up-create').open = true;
     followSubmit.textContent = followEdit ? 'Gem opfølgning' : 'Opret opfølgning';
     byId('follow-up-awaiting').readOnly = Boolean(followEdit); byId('follow-up-stop').readOnly = Boolean(followEdit);
     followAdvanced.details.hidden = !followEdit; followCancel.hidden = !followEdit && !followDirty; followReload.hidden = !followEdit;
@@ -923,7 +927,9 @@ if (typeof document !== 'undefined') (() => {
     try { sessionStorage.removeItem(draftKey); } catch { /* The signed-out page does not display saved drafts. */ }
   }
   const viewVisible = view => {
-    const root = byId(`tab-${view}`);
+    const root = view === 'knowledge' ? (byId('settings-profile') || byId('tab-knowledge'))
+      : view === 'plan' && byId('plan-personal') ? (typeof JarvisShell === 'object' && JarvisShell.visible(byId('plan-calendar')) ? byId('plan-calendar') : byId('plan-personal')) : byId(`tab-${view}`);
+    if (typeof JarvisShell === 'object') return JarvisShell.visible(root);
     return Boolean(root && !root.hidden && !root.classList.contains('hidden'));
   };
   const refresh = async ({ forceKinds = [] } = {}) => {

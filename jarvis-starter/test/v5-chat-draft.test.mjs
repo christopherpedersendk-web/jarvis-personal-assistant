@@ -6,13 +6,16 @@ import { readFile } from 'node:fs/promises';
 const code = await readFile(new URL('../public/chat-draft.js', import.meta.url), 'utf8');
 const KEY = 'jarvis:v5:chat-draft';
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
-function fixture({ api = async () => ({}), refresh = async () => {}, storage = new Map(), unavailable = false } = {}) {
+function fixture({ api = async () => ({}), refresh = async () => {}, storage = new Map(), unavailable = false, selectedContext = null } = {}) {
   const nodes = new Map(), added = [];
   const make = id => { const events = new Map(); const node = { id, value: '', textContent: '', disabled: false, hidden: false,
     setAttribute() {}, focus() { document.activeElement = node; }, after(...items) { added.push(...items); },
     addEventListener(type, fn) { events.set(type, [...(events.get(type) || []), fn]); },
     fire(type) { for (const fn of events.get(type) || []) fn({ preventDefault() {} }); } }; nodes.set(id, node); return node; };
-  const document = { getElementById: id => nodes.get(id) || make(id), createElement: tag => make(`generated-${tag}-${added.length}-${nodes.size}`) };
+  const documentEvents = new Map();
+  const document = { getElementById: id => nodes.get(id) || make(id), createElement: tag => make(`generated-${tag}-${added.length}-${nodes.size}`),
+    addEventListener(type, fn) { documentEvents.set(type, [...(documentEvents.get(type) || []), fn]); },
+    dispatchEvent(event) { for (const fn of documentEvents.get(event.type) || []) fn(event); } };
   for (const id of ['message', 'message-form', 'send', 'logout']) make(id);
   let token = 'synthetic-owner'; const calls = [];
   const context = vm.createContext({ document, globalThis: {}, Object, JSON });
@@ -20,10 +23,13 @@ function fixture({ api = async () => ({}), refresh = async () => {}, storage = n
   const controller = context.globalThis.JarvisChat.attach({ document, getToken: () => token,
     getStorage: () => { if (unavailable) throw new Error('storage unavailable'); return { getItem: key => storage.get(key) || null,
       setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }; },
-    api: async (path, options) => { calls.push({ path, body: JSON.parse(options.body) }); return api(path, options); }, refresh });
+    api: async (path, options) => { calls.push({ path, body: JSON.parse(options.body) }); return api(path, options); }, refresh,
+    getContext: () => selectedContext, setContext: value => { selectedContext = value; } });
   return { controller, calls, storage, field: nodes.get('message'), send: nodes.get('send'), status: added[0], review: added[1],
     type: text => { const node = nodes.get('message'); node.value = text; node.fire('input'); },
-    logout: () => { nodes.get('logout').fire('click'); token = ''; }, login: value => { token = value; }, document };
+    logout: () => { nodes.get('logout').fire('click'); token = ''; }, login: value => { token = value; }, document,
+    context: () => selectedContext,
+    changeContext: value => { selectedContext = value; document.dispatchEvent({ type: 'jarvis:chat-context-change' }); } };
 }
 
 test('R03 chat retains newer typing during an in-flight message and ignores duplicate submits', async () => {
@@ -100,4 +106,44 @@ test('I4 voice task tools cannot choose activation even with injected additional
     api: async (path, options) => { calls.push(JSON.parse(options.body)); return { task: { id: 'synthetic', status: 'paused' } }; }, refreshTasks: async () => {} });
   const output = await run(); assert.equal(calls[0].activation, 'paused'); assert.equal(output.status, 'paused');
   assert.match(output.note, /intet baggrundsarbejde er startet/);
+});
+
+test('GUI-T10 outgoing context is captured before a delayed response while newer typing survives', async () => {
+  const g = gate(), selectedContext = { label: 'Noter og lister', sourceId: 'organizer:list:item' };
+  const f = fixture({ selectedContext, api: () => g.promise });
+  f.type('Gennemgå denne note'); const sending = f.controller.submit();
+  f.changeContext({ label: 'Madplan', sourceId: 'meal-plan:different' });
+  f.type('Ny usendt kladde'); g.release({ answer: 'Syntetisk svar' }); await sending;
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0].path, '/api/message');
+  assert.deepEqual(Object.keys(f.calls[0].body), ['message'], 'reuse the existing API contract');
+  assert.equal(f.calls[0].body.message,
+    '[Brugervalgt kontekst: Noter og lister]\n[Kilde-ID: organizer:list:item]\n\nGennemgå denne note');
+  assert.equal(f.field.value, 'Ny usendt kladde');
+  assert.match(f.status.textContent, /nyere kladde er bevaret/);
+});
+
+test('GUI-T10 context removal keeps the draft and restored context never invents object identity', () => {
+  const storage = new Map(), f = fixture({ storage, selectedContext: { label: 'Planlægning · Madplan', sourceId: null } });
+  f.type('Min usendte besked');
+  const reloaded = fixture({ storage });
+  assert.equal(reloaded.field.value, 'Min usendte besked'); assert.equal(reloaded.context().sourceId, null);
+  reloaded.changeContext(null);
+  assert.equal(reloaded.field.value, 'Min usendte besked');
+  assert.equal(JSON.parse(storage.get(KEY)).context, null);
+});
+
+test('GUI-T10 context and text respect the existing message length bound without dropping the draft', async () => {
+  const f = fixture({ selectedContext: { label: 'En valgt kontekst', sourceId: 'memory:one' } });
+  f.type('x'.repeat(4990)); await f.controller.submit();
+  assert.equal(f.calls.length, 0); assert.equal(f.field.value.length, 4990);
+  assert.match(f.status.textContent, /5\.000/);
+});
+
+test('GUI-T10 malformed or secret-shaped context is not composed into the request or persisted', async () => {
+  for (const selectedContext of [{ label: 'Skjult\nanden kontekst', sourceId: 'memory:one' },
+    { label: 'password=synthetic-sensitive', sourceId: 'memory:one' }]) {
+    const f = fixture({ selectedContext }); f.type('Almindelig besked');
+    assert.equal(JSON.parse(f.storage.get(KEY)).context, null);
+    await f.controller.submit(); assert.equal(f.calls[0].body.message, 'Almindelig besked');
+  }
 });

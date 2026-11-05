@@ -282,8 +282,13 @@ export class UpdateManager {
     return this.snapshot();
   }
 
-  async approve(version, expectedSha) {
+  async approve(version, expectedSha, expectedTestedAt) {
     await this.commit(state => {
+      // Bind the reviewed test inside the same durable transaction as the
+      // existing version/SHA checks. A queued request cannot approve a retest.
+      if (expectedTestedAt !== undefined &&
+          (typeof expectedTestedAt !== 'string' || !Number.isFinite(Date.parse(expectedTestedAt)) || state.staged?.testedAt !== expectedTestedAt))
+        throw conflict('Den gennemgåede testrevision er ændret. Hent status og gennemgå den aktuelle målversion igen.');
       if (!VERSION.test(version || '') || ['running', 'unknown'].includes(state.stageOperation?.status) ||
           !state.staged || state.staged.version !== version || !SHA.test(state.staged.sha || '') ||
           state.staged.packageVersion !== version.slice(1) ||

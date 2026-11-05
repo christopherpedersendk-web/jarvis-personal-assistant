@@ -15,8 +15,9 @@ const JarvisHealth = Object.freeze({
     return { discord, backup, storage: health.storage?.ready === true ? 'Klar' : health.storage?.ready === false ? 'Ikke klar' : 'Ikke verificeret', warnings };
   },
   updatePresentation(updates) {
-    if (!updates) return { text: 'Opdateringsstatus er endnu ikke verificeret.', canCheck: false, canStage: false, canApprove: false };
+    if (!updates) return { text: 'Opdateringsstatus er endnu ikke verificeret.', canCheck: false, canStage: false, canApprove: false, tested: false, alreadyApproved: false, target: null };
     const staged = updates.staged, available = updates.available;
+    const dated = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
     const validRelease = value => /^v\d+\.\d+\.\d+$/.test(value?.version || '') && /^[0-9a-f]{40}$/.test(value?.sha || '');
     const busy = updates.checkOperation?.status === 'running' || updates.stageOperation?.status === 'running';
     const interrupted = updates.busy && (updates.checkOperation?.status === 'running' && !updates.busy.check
@@ -27,12 +28,14 @@ const JarvisHealth = Object.freeze({
     const tested = validRelease(staged) && staged.testedSha === staged.sha && staged.packageVersion === staged.version.slice(1)
       && Number.isSafeInteger(staged.schemaVersion) && staged.schemaVersion >= 0
       && Number.isSafeInteger(staged.readableFrom) && staged.readableFrom >= 0 && staged.readableFrom <= staged.schemaVersion
-      && staged.version === available?.version && staged.sha === available?.sha && !stageUnknown;
+      && staged.version === available?.version && staged.sha === available?.sha && dated(staged.testedAt) && !stageUnknown;
     const approved = storageReady && tested && updates.approved?.version === staged.version && updates.approved?.sha === staged.sha
-      && updates.approved?.testedSha === staged.sha && updates.approved?.packageVersion === staged.packageVersion;
+      && updates.approved?.testedSha === staged.sha && updates.approved?.packageVersion === staged.packageVersion
+      && updates.approved?.testedAt === staged.testedAt && dated(updates.approved?.approvedAt);
     const notes = [`Installeret: ${updates.currentVersion || 'ukendt'}`,
       `Tilgængelig: ${validRelease(available) ? `${available.version} (${available.sha})` : 'ingen'}`,
       `Testet: ${tested ? `${staged.version} (${staged.testedSha})` : 'intet aktuelt verificeret grundlag'}`];
+    if (tested) notes.push(`Testtidspunkt: ${new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23' }).format(new Date(staged.testedAt))} (dansk tid)`);
     if (uncertain) notes.push('Gemningens udfald er ukendt. Godkendelse kan ikke bekræftes; nye handlinger er låst. Genstart og kontrollér opdateringsjournalen.');
     else if (!storageReady) notes.push('Opdateringslageret er ikke verificeret klar. Nye handlinger er låst.');
     else if (stageUnknown) notes.push('Den afbrudte tests udfald er ukendt. Kontrollér den præcise stagingmappe før en ny test. Ingen automatisk gentagelse.');
@@ -43,8 +46,13 @@ const JarvisHealth = Object.freeze({
     if (updates.error) notes.push(String(updates.error).slice(0, 300));
     const ready = updates.configured === true && storageReady && !busy;
     return { text: notes.join(' · '), canCheck: ready, canStage: ready && validRelease(available) && !stageUnknown,
-      canApprove: ready && tested && !approved };
+      canApprove: ready && tested && !approved, configured: updates.configured === true,
+      tested, alreadyApproved: approved, message: notes.join(' · '), currentVersion: updates.currentVersion || 'Ukendt',
+      availableVersion: validRelease(available) ? available.version : null, testedVersion: tested ? staged.version : null,
+      testedAt: tested ? staged.testedAt : null, approvedVersion: approved ? staged.version : null,
+      target: tested ? { version: staged.version, sha: staged.sha, testedAt: staged.testedAt } : null };
   },
+  updates(snapshot) { return JarvisHealth.updatePresentation(snapshot); },
 });
 
 if (typeof document !== 'undefined') (() => {
@@ -62,7 +70,7 @@ if (typeof document !== 'undefined') (() => {
   let observedToken = session().token;
   const current = captured => captured.generation === generation && captured.token && captured.token === session().token
     && !el('workspace').classList.contains('hidden');
-  const blocked = () => { for (const id of ['update-check', 'update-stage', 'update-approve']) el(id).disabled = true; };
+  const blocked = () => { for (const id of ['update-check', 'update-stage', 'update-approve']) el(id).disabled = true; el('update-approve').hidden = true; };
   function resetPrivateState() {
     generation++; refreshSequence++; latestUpdates = null; actionPending = false; attempt = null; actionNotice = ''; pending = null;
     pendingScope = null; refreshQueued = false;
@@ -79,6 +87,9 @@ if (typeof document !== 'undefined') (() => {
     el('update-check').disabled = actionPending || Boolean(attempt) || !presentation.canCheck;
     el('update-stage').disabled = actionPending || Boolean(attempt) || !presentation.canStage;
     el('update-approve').disabled = actionPending || Boolean(attempt) || !presentation.canApprove;
+    el('update-approve').hidden = !presentation.canApprove || Boolean(attempt);
+    el('update-stage').textContent = presentation.availableVersion ? `Hent og test ${presentation.availableVersion}` : 'Hent og test';
+    el('update-approve').textContent = presentation.testedVersion ? `Godkend testet ${presentation.testedVersion}` : 'Godkend testet version';
   }
   function acceptUpdates(updates) {
     latestUpdates = updates;
@@ -86,7 +97,7 @@ if (typeof document !== 'undefined') (() => {
       const operation = updates[attempt.name === 'stage' ? 'stageOperation' : 'checkOperation'];
       const approved = updates.approved;
       const confirmed = attempt.name === 'approve'
-        ? approved?.version === attempt.version && approved?.sha === attempt.sha && approved?.testedSha === attempt.sha
+        ? approved?.version === attempt.version && approved?.sha === attempt.sha && approved?.testedSha === attempt.sha && approved?.testedAt === attempt.testedAt
         : operation?.id && operation.id !== attempt.previousId && ['completed', 'failed'].includes(operation.status)
           && (attempt.name !== 'stage' || operation.version === attempt.version && operation.sha === attempt.sha);
       if (confirmed) { attempt = null; actionNotice = ''; }
@@ -104,19 +115,20 @@ if (typeof document !== 'undefined') (() => {
     const presentation = JarvisHealth.presentation(health);
     const backup = presentation.backup;
     const pairs = [
-      ['JARVIS', `Kører · ${uptime} timer`],
+      ['Version', health.version || 'Ukendt'],
+      ['Serverproces', health.process.healthy === true ? `Kører · ${uptime} timer` : health.process.healthy === false ? 'Processen melder fejl' : 'Ikke verificeret'],
       ['Lager', presentation.storage],
       ['Discord', presentation.discord],
       ['Backup', backup],
       ['Ledig disk', gb(health.host.availableDiskBytes)],
       ['Ledig RAM', gb(health.host.freeMemoryBytes)],
-      ['Fejlede opgaver', health.tasks.failed],
+      ['Fejlede agentopgaver', health.tasks.failed],
     ];
     el('system-health-details').replaceChildren(...pairs.map(([a,b]) => card(a,b)));
     el('home-system-health').replaceChildren();
-    const h = document.createElement('h2'); h.textContent = 'Systemtilstand';
+    const h = document.createElement('h2'); h.textContent = 'Systemstatus';
     const p = document.createElement('p');
-    p.textContent = `JARVIS online · Lager: ${presentation.storage} · Discord: ${presentation.discord} · Backup: ${backup} · Ledig disk: ${gb(health.host.availableDiskBytes)}`;
+    p.textContent = `Lager: ${presentation.storage} · Backup: ${backup}. Se de enkelte målinger under System og opdateringer.`;
     el('home-system-health').append(h,p);
     const alert = el('home-system-alert');
     alert.replaceChildren(); alert.classList.toggle('hidden', !presentation.warnings.length);
@@ -124,7 +136,7 @@ if (typeof document !== 'undefined') (() => {
       const title = document.createElement('strong'); title.textContent = 'Drift kræver opmærksomhed'; alert.append(title);
       for (const message of presentation.warnings) { const line = document.createElement('p'); line.textContent = message; alert.append(line); }
       const link = document.createElement('button'); link.type = 'button'; link.className = 'secondary'; link.textContent = 'Åbn driftsstatus';
-      link.addEventListener('click', () => selectTab('settings')); alert.append(link);
+      link.addEventListener('click', () => selectTab('settings', { section: 'system' })); alert.append(link);
     }
     if (!updates) return;
     acceptUpdates(updates);
@@ -134,14 +146,15 @@ if (typeof document !== 'undefined') (() => {
     const captured = session(), presentation = JarvisHealth.updatePresentation(latestUpdates);
     if (!current(captured) || actionPending || attempt || !presentation[({ check: 'canCheck', stage: 'canStage', approve: 'canApprove' })[name]]) return;
     const reviewed = name === 'stage' ? latestUpdates.available : latestUpdates.staged;
-    if (name === 'approve' && !confirm(`Godkend ${reviewed.version} (${reviewed.sha}) til senere installation? Installation kræver fortsat særskilt godkendelse.`)) return;
+    if (name === 'approve' && !confirm(`Godkend ${reviewed.version} (${reviewed.sha}), testet ${new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23' }).format(new Date(reviewed.testedAt))} (dansk tid), til senere installation? Installation kræver fortsat særskilt godkendelse.`)) return;
     // Bind the actual click to what was displayed, not to a future poll's version.
-    attempt = { name, version: reviewed?.version, sha: reviewed?.sha,
+    attempt = { name, version: reviewed?.version, sha: reviewed?.sha, testedAt: reviewed?.testedAt,
       previousId: latestUpdates[name === 'stage' ? 'stageOperation' : 'checkOperation']?.id };
     actionPending = true; actionNotice = 'Behandler opdatering …'; ++refreshSequence; renderUpdates();
     try {
       const result = await api('/api/updates/action', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action: name, ...(name !== 'check' ? { version: reviewed.version, expectedSha: reviewed.sha } : {}) }) });
+        body: JSON.stringify({ action: name, ...(name !== 'check' ? { version: reviewed.version, expectedSha: reviewed.sha } : {}),
+          ...(name === 'approve' ? { expectedTestedAt: reviewed.testedAt } : {}) }) });
       if (!current(captured)) return;
       attempt = null; actionNotice = ''; ++refreshSequence; acceptUpdates(result);
       try { await refreshSystem(); }

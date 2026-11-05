@@ -1800,6 +1800,7 @@ mealEl('meal-google-calendar-form').addEventListener('submit', async event => {
   } catch (error) { mealEl('meal-google-status').textContent = `Kalendervalget blev ikke gemt: ${error.message}`; }
 });
 mealEl('meal-google-load').addEventListener('click', async () => {
+  if (typeof JarvisCalendar === 'object') { await JarvisCalendar.load(); return; }
   const root = mealEl('meal-google-events'); root.replaceChildren();
   try {
     const { events } = await mealApi('/api/google/calendar/events?days=7');
@@ -1889,6 +1890,7 @@ document.addEventListener('jarvis:refreshed', () => {
 });
 document.addEventListener('jarvis:view-changed', event => {
   if (event.detail?.view === 'meals' && localStorage.getItem('jarvisAccessToken')) refreshMeals().catch(error => toast(error.message));
+  else if (event.detail?.primaryView === 'settings' && event.detail?.section === 'integrations' && localStorage.getItem('jarvisAccessToken')) refreshGoogle().catch(error => toast(error.message));
 });
 window.addEventListener('beforeunload', event => {
   if (!mealDirty.size && !mealEl('meal-recipe-text').value.trim() && !mealEl('meal-recipe-urls').value.trim()) return;

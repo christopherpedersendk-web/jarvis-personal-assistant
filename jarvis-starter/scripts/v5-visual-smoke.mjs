@@ -14,6 +14,7 @@ import { renderedAccessibilityReport } from './ui-accessibility.mjs';
 import { STATE_SCHEMA_VERSION } from '../state-schema.mjs';
 import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
 import { buildTodayOverview } from '../planning-advisor.mjs';
+import { guiIdentity } from './gui-evidence.mjs';
 
 const { chromium, webkit } = createRequire(import.meta.url)('playwright');
 const token = 'v5-local-visual-smoke-synthetic-access';
@@ -45,6 +46,7 @@ async function publicAssetHashes() {
     createHash('sha256').update(await readFile(join(app, 'public', name))).digest('hex')])));
 }
 const initialAssetHashes = await publicAssetHashes();
+const candidateIdentity = await guiIdentity();
 const accessibilityReports = [];
 const todayReports = [];
 const serverSocket = createServer();
@@ -86,10 +88,29 @@ async function openDetails(details) {
 }
 
 async function navigate(page, view) {
-  const link = page.locator(`.tab-nav > a[data-tab="${view}"]`);
-  if (await link.isVisible()) await link.click();
-  else { await page.locator('#more-toggle').click(); await page.locator(`#more-menu a[data-tab="${view}"]`).click(); }
-  await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
+  // Exercise the redesigned navigation through its actual controls. The deep
+  // assertions below still cover the original objects, writes and draft guards.
+  if (await page.locator('#global-chat-panel').isVisible()) await page.locator('#global-chat-close').click();
+  if (view === 'knowledge') {
+    if (!await page.locator('#tab-knowledge').isVisible()) await page.locator('#global-search-open').click();
+    await page.locator('#knowledge-query').waitFor({ state: 'visible' }); return;
+  }
+  if (await page.locator('#tab-knowledge').isVisible()) await page.locator('#global-search-close').click();
+  const route = ({
+    meals: ['plan', 'meals'], notes: ['plan', 'notes'], projects: ['plan', 'tasks', 'projects'],
+    agent: ['plan', 'tasks', 'agent'], plan: ['plan', 'tasks', 'personal'], calendar: ['plan', 'calendar'],
+    memory: ['settings', 'profile'], settings: ['settings', 'profile'],
+    automations: ['settings', 'automations'], system: ['settings', 'system'],
+  })[view] || [view];
+  await page.locator(`a[data-tab="${route[0]}"]:visible`).first().click();
+  if (route[1]) await page.locator(`button[data-${route[0] === 'plan' ? 'plan' : 'settings'}-tab="${route[1]}"]`).click();
+  if (route[2]) await page.locator(`[data-task-filter="${route[2]}"]`).click();
+  await page.locator(`#tab-${route[0]}`).waitFor({ state: 'visible' });
+  if (view === 'meals' || view === 'projects') await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
+  const editors = ({ plan: ['personal-task-create', 'follow-up-create'], calendar: ['capacity-create'],
+    agent: ['task-editor-shell'], projects: ['project-create-details'], system: ['code-create-details'],
+    meals: ['meal-family-preferences', 'meal-profile-preferences', 'meal-recipe-create'] })[view] || [];
+  for (const id of editors) await openDetails(page.locator(`#${id}`));
 }
 
 async function waitForTodayCards(page, label) {
@@ -218,7 +239,9 @@ async function verifyTodaySources(page, label, task, followUp) {
     assert.equal(await detail.getAttribute('data-calendar-source-id'), null, `${label}: a copied old cache URL cannot select a newer observation`);
     assert.doesNotMatch(await detail.innerText(), new RegExp(`Syntetisk kalenderobservation ${label}`));
     assert.equal(await page.locator('#message').inputValue(), draft, `${label}: ordinary chat draft survives an actual copied-source document reload`);
+    await page.locator('#global-chat-open').click();
     await page.locator('#message').fill('');
+    await page.locator('#global-chat-close').click();
     assert.deepEqual(writes, [], `${label}: Today polling and source navigation are read-only`);
     assert.deepEqual(upstream, [], `${label}: Today does not request Google reads or retailer actions`);
     evidence.taskSource = taskUrl.href; evidence.calendarSource = copiedUrl;
@@ -242,6 +265,7 @@ async function refreshClaims(page, id) {
 }
 
 async function verifyClaimCorrection(page, originalId, label) {
+  await navigate(page, 'memory');
   const original = (await fixtureRead(page, '/api/personal-claims')).claims.find(item => item.id === originalId);
   const correctedValue = `Syntetisk rettet personligt faktum ${label}`;
   await page.locator(`[data-claim-id="${originalId}"]`).getByRole('button', { name: 'Ret oplysning', exact: true }).click();
@@ -253,9 +277,9 @@ async function verifyClaimCorrection(page, originalId, label) {
   await refreshClaims(page, originalId);
   assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticClaimField,
     selection: [window.syntheticClaimField.selectionStart, window.syntheticClaimField.selectionEnd] })), { same: true, selection: [3, 10] });
-  await navigate(page, 'home'); await navigate(page, 'knowledge');
+  await navigate(page, 'home'); await navigate(page, 'memory');
   assert.equal(await page.locator('#claim-value').inputValue(), correctedValue);
-  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#settings-profile').waitFor({ state: 'visible' });
   await refreshClaims(page, originalId);
   assert.equal(await page.locator('#claim-value').inputValue(), correctedValue);
   assert.match(await page.locator('#claim-draft-status').innerText(), new RegExp(`basisrevision ${original.revision}`));
@@ -289,6 +313,7 @@ async function verifyClaimCorrection(page, originalId, label) {
   const changed = await fixtureRead(page, '/api/personal-claims');
   assert.equal(changed.claims.find(item => item.id === originalId).status, 'superseded');
   assert.equal(changed.claims.find(item => item.id === proposalId).status, 'confirmed');
+  await navigate(page, 'knowledge');
   await page.locator('#knowledge-query').fill(correctedValue); await page.locator('#knowledge-search-form button').click();
   const result = page.locator('.knowledge-result').filter({ hasText: correctedValue }).first();
   await result.getByRole('button', { name: 'Åbn kilde', exact: true }).click();
@@ -305,6 +330,7 @@ async function verifyClaimCorrection(page, originalId, label) {
 }
 
 async function verifyOrganizerDraft(page, label) {
+  await navigate(page, 'notes');
   await page.locator('#collection-type').selectOption('notes');
   await page.locator('#collection-title').fill(`Syntetisk kladdeliste ${label}`);
   const created = await uiWrite(page, 'POST', '/api/organizer', () => page.locator('#collection-form [type="submit"]').click(), [201]);
@@ -323,8 +349,8 @@ async function verifyOrganizerDraft(page, label) {
   await page.evaluate(() => refreshOrganizer());
   assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticOrganizerNotes,
     selection: [window.syntheticOrganizerNotes.selectionStart, window.syntheticOrganizerNotes.selectionEnd] })), { same: true, selection: [2, 9] });
-  await navigate(page, 'home'); await navigate(page, 'knowledge'); assert.equal(await notes.inputValue(), draft);
-  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await navigate(page, 'home'); await navigate(page, 'notes'); assert.equal(await notes.inputValue(), draft);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#plan-notes').waitFor({ state: 'visible' });
   await item.waitFor({ state: 'visible' }); assert.equal(await notes.inputValue(), draft);
   assert.equal(await item.locator('details.collection-edit').evaluate(element => element.open), true);
   const concurrent = await page.request.patch(`${origin}/api/organizer/${collectionId}/items/${itemId}`, {
@@ -343,13 +369,14 @@ async function verifyOrganizerDraft(page, label) {
 }
 
 async function verifySettingsDraft(page, label) {
+  await navigate(page, 'automations');
   await page.evaluate(() => refreshSettings());
   const before = await fixtureRead(page, '/api/settings'), draft = before.maxRunsPerDay === 20 ? 21 : 20;
   await page.locator('#max-runs').fill(String(draft)); await page.locator('#max-runs').focus();
   await page.evaluate(() => refreshSettings());
   assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'max-runs');
-  await navigate(page, 'home'); await navigate(page, 'settings');
+  await navigate(page, 'home'); await navigate(page, 'automations');
   assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
   await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-settings').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
@@ -379,6 +406,7 @@ async function refreshNotes(page) {
 }
 
 async function verifyNoteDraft(page, label) {
+  await navigate(page, 'memory');
   const unsent = await page.locator('#memory-workbench-text').inputValue();
   await page.locator('#memory-editor-mode').selectOption('note');
   await page.locator('#memory-workbench-text').fill(`Syntetisk gemt note ${label}`);
@@ -391,8 +419,8 @@ async function verifyNoteDraft(page, label) {
   await refreshNotes(page);
   assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticNoteInput,
     selection: [window.syntheticNoteInput.selectionStart, window.syntheticNoteInput.selectionEnd] })), { same: true, selection: [2, 8] });
-  await navigate(page, 'home'); await navigate(page, 'knowledge'); assert.equal(await input.inputValue(), draft);
-  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await navigate(page, 'home'); await navigate(page, 'memory'); assert.equal(await input.inputValue(), draft);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#settings-profile').waitFor({ state: 'visible' });
   await refreshNotes(page); assert.equal(await input.inputValue(), draft); assert.equal(await page.locator('#memory-workbench-text').inputValue(), unsent);
   assert.equal(await card.locator('details.memory-v49-editor').evaluate(element => element.open), true);
   const concurrent = await page.request.put(`${origin}/api/memories/${id}`, { headers: { Authorization: `Bearer ${token}` },
@@ -706,12 +734,15 @@ async function verifyProjectDrafts(page, label) {
   { same: true, connected: true, selection: [2, 8] }, `${label}: project polling preserves the focused input and selection`);
   await page.locator('#project-title').fill(`Næste usendte projekt ${label}`);
   await page.locator('#project-description').fill('Ufuldstændig formularkladde må ikke oprette et projekt.');
+  await navigate(page, 'system');
   await page.locator('#code-file').selectOption('public/styles.css');
   await page.locator('#code-request').fill(`Usendt kodeanmodning ${label}`);
   await navigate(page, 'home'); await page.goBack();
   assert.equal(await request.inputValue(), draft); assert.equal(await page.locator('#code-request').inputValue(), `Usendt kodeanmodning ${label}`);
+  await navigate(page, 'projects');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-projects').waitFor({ state: 'visible' }); await page.evaluate(() => refreshProjects());
+  await openDetails(page.locator('#project-create-details'));
   assert.equal(await request.inputValue(), draft); assert.equal(await page.locator('#project-title').inputValue(), `Næste usendte projekt ${label}`);
   assert.equal(await page.locator('#code-file').inputValue(), 'public/styles.css');
   assert.equal(await page.locator('#code-request').inputValue(), `Usendt kodeanmodning ${label}`);
@@ -790,7 +821,7 @@ async function verifyProjectDrafts(page, label) {
 }
 
 async function verifyPausedJob(page, label) {
-  await navigate(page, 'plan');
+  await navigate(page, 'agent');
   await page.locator('#task-title').fill(`Syntetisk pauset job ${label}`);
   await page.locator('#task-prompt').fill('Læs kun den syntetiske testkilde. Denne test aktiverer aldrig jobbet.');
   await page.locator('#task-repeat').selectOption('60');
@@ -816,6 +847,7 @@ async function verifyPausedJob(page, label) {
   assert.equal(await page.locator('#task-title').inputValue(), title); assert.equal(await page.locator('#task-retry-count').inputValue(), '0');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-plan').waitFor({ state: 'visible' }); await page.evaluate(() => refreshTasks());
+  await openDetails(page.locator('#task-editor-shell'));
   assert.equal(await page.locator('#task-title').inputValue(), title);
   const edited = await uiWrite(page, 'PATCH', `/api/tasks/${task.id}`, () => page.locator('#task-submit').click());
   assert.equal(edited.input.expectedRevision, task.revision); assert.equal(edited.input.activation, 'paused');
@@ -908,6 +940,7 @@ async function verifyPlanning(page, label, task, followUp) {
   { same: true, connected: true, selection: [2, 8] }, `${label}: planning refresh preserves the exact focused edit and caret`);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-plan').waitFor({ state: 'visible' }); await refreshPlanning(page);
+  await openDetails(page.locator('#personal-task-create'));
   assert.equal(await page.locator('#personal-task-title').inputValue(), editedTitle);
   assert.match(await page.locator('#personal-task-form').innerText(), new RegExp(`Redigerer revision ${task.revision}`),
     `${label}: recovered task edit stays bound to the original revision`);
@@ -930,6 +963,7 @@ async function verifyPlanning(page, label, task, followUp) {
   const second = await uiWrite(page, 'POST', '/api/personal-tasks',
     () => page.locator('#personal-task-form button[type="submit"]').click(), [201]);
   const secondId = second.body.task.id;
+  await navigate(page, 'calendar');
   await page.locator('#capacity-start').fill('2030-11-06T09:00');
   await page.locator('#capacity-end').fill('2030-11-06T12:00');
   await openDetails(page.locator('#capacity-form details').first());
@@ -967,6 +1001,7 @@ async function verifyPlanning(page, label, task, followUp) {
   assert.match(await page.locator('#capacity-status').textContent(), /Ingen kalenderaftale/);
   await page.locator('#tab-plan').screenshot({ path: join(screenshotDir, `${label}-planning.png`), animations: 'disabled' });
 
+  await navigate(page, 'plan');
   const followCard = page.locator(`[data-follow-up-id="${followUp.id}"]`);
   await followCard.getByRole('button', { name: 'Udskyd / registrér observation', exact: true }).click();
   assert.equal(await page.locator('#follow-up-awaiting').evaluate(element => element.readOnly), true);
@@ -986,6 +1021,7 @@ async function verifyPlanning(page, label, task, followUp) {
   assert.equal(await page.locator('#follow-observation-source').inputValue(), unknownSource);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-plan').waitFor({ state: 'visible' }); await refreshPlanning(page);
+  await openDetails(page.locator('#follow-up-create'));
   assert.equal(await page.locator('#follow-observation-status').inputValue(), 'unknown');
   assert.equal(await page.locator('#follow-observation-source').inputValue(), unknownSource);
   const observed = await uiWrite(page, 'PATCH', `/api/follow-ups/${followUp.id}`,
@@ -1015,30 +1051,22 @@ async function verifyPlanning(page, label, task, followUp) {
 async function verifyAccessibility(page, width, height, label) {
   const evidence = { label, viewport: { width, height }, status: 'running', keyboard: [], reflow: [] };
   accessibilityReports.push(evidence);
-  const desktop = width > 850;
-  assert.equal(await page.locator('.tab-nav > a[data-tab="meals"] .nav-title:visible').innerText(), desktop ? 'Mad og indkøb' : 'Mad');
-  assert.equal(await page.locator('.tab-nav > a[data-tab="knowledge"] .nav-title:visible').innerText(), desktop ? 'Min viden' : 'Viden');
-  await page.locator('.tab-nav > a[data-tab="home"]').focus();
-  for (const view of (desktop ? ['plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings'] : ['plan', 'meals', 'knowledge'])) {
+  const desktop = width >= 768;
+  const primary = [['home', 'I dag'], ['plan', 'Planlægning'], ['smart-home', 'Hjem'], ['watches', 'Overvågninger']];
+  for (const [view, title] of primary) assert.equal(await page.locator(`.tab-nav a[data-tab="${view}"]:visible .nav-label`).innerText(), title);
+  assert.equal(await page.locator('#more-toggle').isVisible(), false, 'settings remains directly reachable without More');
+  await page.locator('.tab-nav a[data-tab="home"]:visible').focus();
+  for (const view of ['plan', 'smart-home', 'watches']) {
     await page.keyboard.press('Tab');
-    assert.equal(await page.locator(`.tab-nav > a[data-tab="${view}"]`).evaluate(element => document.activeElement === element), true,
-      `${label}: keyboard navigation must reach ${view} in visible sidebar order`);
+    assert.equal(await page.locator(`.tab-nav a[data-tab="${view}"]:visible`).evaluate(element => document.activeElement === element), true,
+      `${label}: keyboard navigation must reach ${view} in the same primary order`);
     evidence.keyboard.push(view);
   }
-  if (!desktop) {
-    await page.keyboard.press('Tab');
-    assert.equal(await page.locator('#more-toggle').evaluate(element => document.activeElement === element), true);
-    await page.keyboard.press('Space');
-    assert.equal(await page.locator('#more-toggle').getAttribute('aria-expanded'), 'true');
-    await page.keyboard.press('Tab');
-    assert.equal(await page.locator('#more-menu a[data-tab="smart-home"]').evaluate(element => document.activeElement === element), true,
-      `${label}: the expanded More menu must be keyboard reachable`);
-    await page.locator('#more-toggle').focus(); await page.keyboard.press('Space');
-    assert.equal(await page.locator('#more-toggle').getAttribute('aria-expanded'), 'false');
-    evidence.keyboard.push('more-open', 'more-first-link', 'more-close');
-  }
-  await page.locator('.tab-nav > a[data-tab="meals"]').focus(); await page.keyboard.press('Enter');
-  assert.equal(new URL(page.url()).searchParams.get('view'), 'meals', `${label}: Enter activates the real meals route`);
+  await navigate(page, 'plan');
+  await page.locator('[data-plan-tab="meals"]').focus(); await page.keyboard.press('Enter');
+  assert.equal(new URL(page.url()).searchParams.get('view'), 'plan');
+  assert.equal(new URL(page.url()).searchParams.get('section'), 'meals', `${label}: Enter activates the real meals subroute`);
+  for (const id of ['meal-family-preferences', 'meal-profile-preferences', 'meal-recipe-create']) await openDetails(page.locator(`#${id}`));
   await page.evaluate(() => refreshMeals());
   await page.getByLabel('Voksne som standard', { exact: true }).focus(); await page.keyboard.press('Tab');
   assert.equal(await page.locator('#meal-adult-portion').evaluate(element => document.activeElement === element), true);
@@ -1051,7 +1079,7 @@ async function verifyAccessibility(page, width, height, label) {
     { name: 'Feltlabel', selector: '#meal-family-form label[for="meal-adults"]', kind: 'text' },
     { name: 'Gemmeknap', selector: '#meal-family-form button[type="submit"]', kind: 'text' },
     { name: 'Gemmedialogstatus', selector: '#meal-family-status', kind: 'text' },
-    { name: 'Aktiv navigation', selector: '.tab-nav > a[data-tab="meals"]', kind: 'text' },
+    { name: 'Aktiv navigation', selector: '.tab-nav a[data-tab="plan"]', kind: 'text' },
     { name: 'Sidefod', selector: 'footer', kind: 'text' },
   ]);
   for (const check of evidence.contrast.checks) {
@@ -1079,22 +1107,22 @@ async function verifyAccessibility(page, width, height, label) {
     await page.setViewportSize(reduced);
     for (const [view, control, labelText] of [
       ['home', '#message', 'Besked til JARVIS'], ['plan', '#personal-task-title', 'Hvad vil du nå?'], ['meals', '#meal-adults', 'Voksne som standard'],
-      ['knowledge', '#knowledge-query', 'Hvad vil du finde?'], ['smart-home', '#smart-home-load-hue', 'Opdater Hue-lys'],
-      ['projects', '#project-title', 'Nyt projekt'], ['settings', '#preferences', 'Hukommelsesnoter'],
+      ['knowledge', '#knowledge-query', 'Hvad vil du finde?'], ['projects', '#project-title', 'Nyt projekt'], ['memory', '#preferences', 'Hukommelsesnoter'],
+      ['smart-home', '#smart-home-load-hue', 'Opdater Hue-lys'],
     ]) {
       await navigate(page, view);
-      await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
-      const accessibleControl = view === 'smart-home'
-        ? page.getByRole('button', { name: labelText, exact: true })
-        : page.getByLabel(labelText, { exact: true });
-      assert.equal(await accessibleControl.isVisible(), true,
+      await page.locator(control).waitFor({ state: 'visible' });
+      const accessible = view === 'smart-home' ? page.getByRole('button', { name: labelText, exact: true }) : page.getByLabel(labelText, { exact: true });
+      assert.equal(await accessible.isVisible(), true,
         `${label}: the reflowed ${view} control retains its exact accessible label`);
       const input = page.locator(control); await input.scrollIntoViewIfNeeded(); await input.focus();
       const layout = await page.evaluate(selector => {
         const input = document.querySelector(selector); const rect = input.getBoundingClientRect();
         const bar = document.querySelector('.tab-nav').getBoundingClientRect();
-        return { width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth,
+        const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        return { width: document.documentElement.clientWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth,
           input: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, navTop: bar.top,
+          unobscured: hit === input || input.contains(hit),
           overflow: [...document.querySelectorAll('body *')].filter(node => node.getClientRects().length)
             .map(node => ({ tag: node.tagName, id: node.id, className: String(node.className), right: node.getBoundingClientRect().right }))
             .filter(node => node.right > document.documentElement.clientWidth + 2).slice(0, 15) };
@@ -1102,8 +1130,8 @@ async function verifyAccessibility(page, width, height, label) {
       evidence.reflow.push({ view, labelText, ...reduced, ...layout });
       assert.ok(layout.scrollWidth <= layout.width + 2,
         `${label}: ${evidence.reflowMethod} overflows in ${view}: ${JSON.stringify(layout)}`);
-      assert.ok(layout.input.left >= -1 && layout.input.right <= layout.width + 1 && layout.input.top >= -1 && layout.input.bottom <= layout.navTop + 1,
-        `${label}: ${control} must remain reachable and not obscured by mobile navigation`);
+      assert.ok(layout.input.left >= -1 && layout.input.right <= layout.width + 1 && layout.input.top >= -1 && layout.input.bottom <= layout.height + 1 && layout.unobscured,
+        `${label}: ${control} must remain reachable and not obscured by navigation or an overlay`);
       if (view === 'meals') await page.locator('#meal-family-days').screenshot({
         path: join(screenshotDir, `${label}-reflow-household.png`), animations: 'disabled' });
     }
@@ -1117,7 +1145,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   const day = ({ desktop: '2026-12-07', mobile: '2026-12-14', 'webkit-desktop': '2026-12-21', 'webkit-mobile': '2026-12-28' })[label];
   const tomorrow = new Date(`${day}T12:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const absentDay = tomorrow.toISOString().slice(0, 10);
-  await page.locator('[data-tab="meals"]').first().click();
+  await navigate(page, 'meals');
   await page.evaluate(() => refreshMeals());
   const household = page.locator('#meal-family-form');
   await household.getByRole('button', { name: 'Kassér husstandskladde og hent gemte oplysninger', exact: true }).click();
@@ -1283,9 +1311,10 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   assert.equal((await fixtureRead(page, '/api/meals')).household.days[day].adults, 4,
     `${label}: discarding a local draft must not remove the saved date exception`);
 
-  await page.locator('[data-tab="knowledge"]').first().click();
+  await navigate(page, 'memory');
   await page.locator('#memory-editor-mode').selectOption('note');
   const memoryDraft = await page.locator('#memory-workbench-text').inputValue();
+  await navigate(page, 'knowledge');
   await page.locator('#knowledge-query').fill(`Husstand ${day}`);
   await page.locator('#knowledge-search-form button[type="submit"]').click();
   const householdSource = page.locator('.knowledge-result').filter({ hasText: day }).first();
@@ -1294,7 +1323,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await page.locator(`[data-household-date="${day}"].source-target`).waitFor({ state: 'visible' });
   assert.equal(await page.locator('#meal-family-start').inputValue(), day);
   await page.goBack();
-  assert.equal(new URL(page.url()).searchParams.get('view'), 'knowledge');
+  assert.equal(new URL(page.url()).searchParams.get('panel'), 'search');
   assert.equal(new URL(page.url()).searchParams.get('source'), null);
   assert.equal(await page.locator('#memory-workbench-text').inputValue(), memoryDraft,
     `${label}: opening and returning from a household date keeps the memory editor draft`);
@@ -1316,11 +1345,11 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   assert.equal(await ingredients.getByLabel('Mængde', { exact: true }).last().inputValue(), '');
   await recipeCard.screenshot({ path: join(screenshotDir, `${label}-recipe-draft.png`), animations: 'disabled' });
   await page.goBack();
-  assert.equal(new URL(page.url()).searchParams.get('view'), 'knowledge');
+  assert.equal(new URL(page.url()).searchParams.get('panel'), 'search');
   assert.equal(await page.locator('#knowledge-query').inputValue(), recipeTitle,
     `${label}: returning after a source reload restores the original search context`);
   assert.equal(await page.locator('#memory-workbench-text').inputValue(), memoryDraft);
-  await page.locator('[data-tab="meals"]').first().click();
+  await navigate(page, 'meals');
   await page.evaluate(() => refreshMeals());
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
   assert.equal(horizontalOverflow, false, `${label}: structured editors must fit the ${width} × ${height} viewport`);
@@ -1346,30 +1375,23 @@ async function runDevice(type, width, height, label) {
   });
   page.on('pageerror', error => errors.push(`${label}: ${error.message}`));
   await signIn(page);
-  for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings']) {
+  for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'watches', 'settings']) {
     assert.equal(await page.locator(`#tab-${view}`).count(), 1, `${label}: missing view ${view}`);
   }
   await page.locator('#tab-home .chat-panel').waitFor({ state: 'visible' });
   await waitForTodayCards(page, label);
-  assert.match(await page.locator('#tab-home .hero-panel h1').innerText(), /dig, Christopher/,
+  assert.match(await page.locator('#tab-home .hero-panel h1').innerText(), /Christopher/,
     `${label}: the Danish greeting lost its word spacing`);
-  const moreDetails = page.locator('#home-more-details');
-  assert.equal(await moreDetails.evaluate(element => element.open), false, `${label}: detailed status must not crowd the initial Today view`);
-  assert.equal(await page.locator('#home-system-health').isVisible(), false);
-  await openDetails(moreDetails);
-  await page.locator('#home-system-health p').filter({ hasText: 'JARVIS online' }).waitFor({ state: 'visible' });
-  assert.equal(await page.locator('#home-system-health h2').textContent(), 'Systemtilstand');
-  await page.locator('#home-smart-home h3').waitFor({ state: 'visible' });
-  assert.match(await page.locator('#home-smart-home h3').textContent(), /Smart hjem/);
-  await moreDetails.locator(':scope > summary').click();
-  assert.equal(await moreDetails.evaluate(element => element.open), false);
+  assert.equal(await page.locator('#system-health-details').isVisible(), false,
+    `${label}: normal technical system details must not crowd Today`);
   assert.equal(await page.locator('#message').isVisible(), true, `${label}: message input hidden`);
   const composerBottom = await page.locator('#message').evaluate(el => el.getBoundingClientRect().bottom);
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-initial-home.png`), animations: 'disabled' });
   assert.ok(composerBottom < height, `${label}: chat input below first screen (${composerBottom}px)`);
   await verifyHistory(page, label);
-  const topNav = page.locator('.tab-nav > a[data-tab="plan"]');
+  const topNav = page.locator('.tab-nav a[data-tab="plan"]:visible');
   await topNav.click();
+  for (const id of ['personal-task-create', 'follow-up-create']) await openDetails(page.locator(`#${id}`));
   assert.equal(new URL(page.url()).searchParams.get('view'), 'plan');
   await page.goBack();
   assert.equal(new URL(page.url()).searchParams.get('view'), 'home');
@@ -1395,12 +1417,12 @@ async function runDevice(type, width, height, label) {
   const pausedJobId = await verifyPausedJob(page, label);
   await verifyProjectDrafts(page, label);
 
-  if (width > 850) await page.locator('.tab-nav > a[data-tab="settings"]').click();
-  else {
-    await page.locator('#more-toggle').click();
-    await page.locator('#more-menu a[data-tab="settings"]').click();
-  }
+  await navigate(page, 'system');
+  await page.locator('#system-health-details .system-health-card').first().waitFor({ state: 'visible' });
+  assert.match(await page.locator('#system-health-details').innerText(), /Lager/,
+    `${label}: technical status remains reachable in its canonical settings category`);
   await verifySettingsDraft(page, label);
+  await navigate(page, 'memory');
   await page.locator('#preferences').fill('Lokalt udkast: mine noter må ikke forsvinde');
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde');
@@ -1435,15 +1457,15 @@ async function runDevice(type, width, height, label) {
     `${label}: conflict mismatch; before=${JSON.stringify(beforeEdit)} after=${JSON.stringify(afterEdit)} saved=${JSON.stringify(savedServerText)}`);
 
   await page.locator('#tab-settings').screenshot({ path: join(screenshotDir, `${label}-settings.png`), animations: 'disabled' });
-  await page.locator('[data-tab="knowledge"]').first().click();
-  await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await navigate(page, 'memory');
+  await page.locator('#settings-profile').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#memory-workbench-form').isVisible(), true,
     `${label}: the unified knowledge editor must open with legacy notes available`);
   assert.equal(await page.locator('#personal-claim-form').isVisible(), false,
     `${label}: there must not be two simultaneously visible memory creation forms`);
   await page.locator('#memory-workbench-text').fill(`Syntetisk ugemt hukommelseskladde ${label}`);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await page.locator('#settings-profile').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#memory-workbench-text').inputValue(), `Syntetisk ugemt hukommelseskladde ${label}`,
     `${label}: unsaved memory creation draft must recover after reload`);
   await page.locator('#memory-editor-mode').selectOption('claim');
@@ -1467,6 +1489,7 @@ async function runDevice(type, width, height, label) {
     () => createdClaim.getByRole('button', { name: 'Bekræft oplysning', exact: true }).click());
   assert.equal(claimConfirmed.input.expectedRevision, claimCreated.body.claim.revision);
   await createdClaim.getByText('Bekræftet af dig').waitFor({ state: 'visible' });
+  await navigate(page, 'knowledge');
   await page.locator('#knowledge-query').fill(value);
   await page.locator('#knowledge-search-form button').click();
   const exactClaimResult = page.locator('.knowledge-result').filter({ hasText: subject }).first();
@@ -1497,7 +1520,7 @@ async function runDevice(type, width, height, label) {
   await verifyClaimCorrection(page, selectedId, label);
   await verifyOrganizerDraft(page, label);
   await verifyNoteDraft(page, label);
-  await page.locator('#tab-knowledge').screenshot({ path: join(screenshotDir, `${label}-knowledge.png`), animations: 'disabled' });
+  await page.locator('#settings-profile').screenshot({ path: join(screenshotDir, `${label}-memory.png`), animations: 'disabled' });
   await verifyHouseholdAndSources(page, width, height, label);
   await verifyAccessibility(page, width, height, label);
   assert.deepEqual(basketMutations, [], `${label}: planning, imports, polling and source/draft navigation must request zero basket writes or transfer intents`);
@@ -1507,7 +1530,7 @@ async function runDevice(type, width, height, label) {
   ], `${label}: the additional job-editor flow may only create/edit its one synthetic paused job`);
   assert.deepEqual(projectWrites, [{ path: '/api/projects', method: 'POST' }], `${label}: project draft review may only create its one empty synthetic local project`);
   assert.deepEqual(prohibitedCodeActions, [], `${label}: project/approval views cannot generate code, run an installer/test or apply code`);
-  await page.locator('[data-tab="home"]').first().click();
+  await navigate(page, 'home');
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });
   await context.close();
   return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts and dependency review without model/installer activity, field-bound settings drafts, claim correction/replacement/history, lazy legacy-note history/read-only archive, organizer drafts/conflicts, household precedence/guests/holiday/absence/portions, explicit revision-bound planned leftovers/unlink/unknown pricing, manual shopping quantities/basis review/reset/exclusion without retailer activity, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
@@ -1543,7 +1566,7 @@ try {
   try {
     const finalAssetHashes = await publicAssetHashes();
     await writeFile(join(screenshotDir, 'accessibility-report.json'), JSON.stringify({
-      generatedAt: new Date().toISOString(), candidateRevision: process.env.GITHUB_SHA || null,
+      generatedAt: new Date().toISOString(), ...candidateIdentity, candidateRevision: candidateIdentity.candidateCommit,
       publicAssetHashes: initialAssetHashes, assetsUnchangedDuringRun: JSON.stringify(initialAssetHashes) === JSON.stringify(finalAssetHashes),
       reports: accessibilityReports, today: todayReports, limitations: ['Selected computed-style checks are not a full accessibility certification.',
         'Calendar browser evidence uses synthetic HTTP cache responses and the real card projection; it is not a live Google or production check.',

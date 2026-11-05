@@ -56,6 +56,8 @@ const JarvisSettings = (() => {
       const config = definitions[kind], form = byId(config.form), status = byId(config.status), submit = byId(config.submit), reload = byId(config.reload);
       const fieldMap = Object.fromEntries(Object.entries(config.fields).map(([name, [id, type, label]]) =>
         [name, { node: byId(id), type, label }]));
+      const scopedFields = () => kind === 'system' && typeof form.dataset?.scopeFields === 'string'
+        ? form.dataset.scopeFields.split(',').filter(name => Object.hasOwn(fieldMap, name)) : Object.keys(fieldMap);
       const draftKey = `jarvis:v5:settings-draft:${kind}`;
       let owner = getToken(), generation = 0, request = 0, latest = null, loaded = false, saving = false;
       let storageReady = storageAccessible, lastError = '', lastSuccess = '', basis = {}, dirty = new Set(), conflicts = new Set(), deferred = new Set();
@@ -86,19 +88,20 @@ const JarvisSettings = (() => {
         } catch { storageReady = false; }
       }
       function message(text = '') {
-        const secrets = Object.keys(fieldMap).filter(name => fieldMap[name].type === 'secret' && String(raw(name)).trim());
-        const blocked = Object.keys(fieldMap).some(nonSecretUnsafe);
-        const missingBasis = [...dirty].some(name => typeof basis[name]?.hash !== 'string');
-        const conflictText = conflicts.size ? `Ændret et andet sted: ${[...conflicts].map(name => fieldMap[name].label).join(', ')}. Din kladde er bevaret. Gennemgå de gemte værdier før en ny ændring.` : '';
-        const next = [text || lastError || conflictText || lastSuccess || (dirty.size ? 'Ugemte ændringer. Opdateringer og navigation erstatter ikke din kladde.' : 'Ingen ugemte ændringer.'),
+        const scopeFields = scopedFields(), scopeDirty = [...dirty].filter(name => scopeFields.includes(name)), scopeConflicts = [...conflicts].filter(name => scopeFields.includes(name));
+        const secrets = scopeFields.filter(name => fieldMap[name].type === 'secret' && String(raw(name)).trim());
+        const blocked = scopeFields.some(nonSecretUnsafe);
+        const missingBasis = scopeDirty.some(name => typeof basis[name]?.hash !== 'string');
+        const conflictText = scopeConflicts.length ? `Ændret et andet sted: ${scopeConflicts.map(name => fieldMap[name].label).join(', ')}. Din kladde er bevaret. Gennemgå de gemte værdier før en ny ændring.` : '';
+        const next = [text || lastError || conflictText || lastSuccess || (scopeDirty.length ? 'Ugemte ændringer. Opdateringer og navigation erstatter ikke din kladde.' : 'Ingen ugemte ændringer i denne kategori.'),
           deferred.size ? 'Et fokuseret felt har nye serverværdier. Visningen opdateres, når du forlader feltet, medmindre du redigerer det.' : '',
           !loaded || missingBasis ? 'Hent indstillingerne, før du gemmer. Et manglende grundlag må ikke gættes.' : '',
           secrets.length ? 'Nye nøgler findes kun i hukommelsen i denne fane. De mistes ved genindlæsning og gemmes aldrig som browserkladde.' : '',
           blocked ? 'Følsomme oplysninger i almindelige felter gemmes ikke som browserkladde. Fjern dem før gemning.' : '',
           !storageReady && dirty.size ? 'Browseren afviser kladdelagring. Kopiér almindelig tekst før siden lukkes.' : ''].filter(Boolean).join(' ');
         if (status.textContent !== next) status.textContent = next;
-        status.classList.toggle('v5-error', Boolean(lastError || conflicts.size || blocked));
-        submit.disabled = saving || !loaded || missingBasis || conflicts.size > 0 || blocked;
+        status.classList.toggle('v5-error', Boolean(lastError || scopeConflicts.length || blocked));
+        submit.disabled = saving || !loaded || missingBasis || scopeConflicts.length > 0 || blocked;
         reload.disabled = saving;
       }
       function mark(name) {
@@ -173,17 +176,20 @@ const JarvisSettings = (() => {
       async function save(event) {
         event.preventDefault(); if (saving) return;
         const currentOwner = getToken(), scope = generation;
+        const selectedFields = new Set(scopedFields());
         try {
           if (!currentOwner || !loaded) throw new Error('Hent et verificeret indstillingsgrundlag før gemning.');
           // Password managers may fill without an input event. An explicit form
           // submission still compares every control with its original basis.
           for (const [name, field] of Object.entries(fieldMap)) {
+            if (!selectedFields.has(name)) continue;
             if (field.type === 'secret') { if (String(raw(name)).trim()) dirty.add(name); else dirty.delete(name); }
             else if (!basis[name] || !same(name, raw(name), basis[name].value)) dirty.add(name);
           }
-          if (conflicts.size) throw new Error('Et eller flere felter er ændret et andet sted. Gennemgå de gemte værdier først.');
+          if ([...conflicts].some(name => selectedFields.has(name))) throw new Error('Et eller flere felter er ændret et andet sted. Gennemgå de gemte værdier først.');
           const patch = {}, expectedBasis = {}, submitted = {}, versions = {};
           for (const name of dirty) {
+            if (!selectedFields.has(name)) continue;
             if (nonSecretUnsafe(name)) throw new Error('Fjern følsomme oplysninger fra almindelige indstillingsfelter.');
             if (!basis[name]?.hash) throw new Error('Et ændret felt mangler revisionsgrundlag. Hent indstillingerne igen.');
             patch[name] = validate(name, raw(name), fieldMap[name].type);
@@ -215,10 +221,21 @@ const JarvisSettings = (() => {
         });
       }
       reload.addEventListener('click', async () => {
-        if ((dirty.size || Object.keys(fieldMap).some(name => fieldMap[name].type === 'secret' && raw(name))) &&
-            !confirm('Kassér denne formulars uafsluttede ændringer, inklusive nye nøgleindtastninger, og hent de gemte værdier?')) return;
-        reset(); owner = getToken(); await refresh();
+        const selected = scopedFields();
+        if ((selected.some(name => dirty.has(name)) || selected.some(name => fieldMap[name].type === 'secret' && raw(name))) &&
+            !confirm('Kassér denne formulars aktive kategori, inklusive nye nøgleindtastninger, og hent de gemte værdier?')) return;
+        if (selected.length === Object.keys(fieldMap).length) reset();
+        else {
+          request++;
+          for (const name of selected) {
+            edits[name]++; dirty.delete(name); conflicts.delete(name); deferred.delete(name); delete basis[name];
+            put(name, fieldMap[name].type === 'checkbox' ? false : '');
+          }
+          lastError = ''; lastSuccess = ''; persist(); message();
+        }
+        owner = getToken(); await refresh();
       });
+      document.addEventListener?.('jarvis:view-changed', () => { if (kind === 'system') { lastError = ''; lastSuccess = ''; message(); } });
       byId('logout').addEventListener('click', () => { reset(); owner = ''; });
       globalThis.addEventListener?.('beforeunload', event => {
         if (Object.keys(fieldMap).some(name => fieldMap[name].type === 'secret' && raw(name)) ||

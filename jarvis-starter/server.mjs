@@ -1107,7 +1107,7 @@ async function route(req, res) {
           return json(res, 409, { error: 'Genindlæs og gennemgå den præcise version og commit før handlingen.', code: 'UPDATE_REVIEW_REQUIRED' });
         const result = input.action === 'check' ? await updates.check()
           : input.action === 'stage' ? await updates.stage(input.version, input.expectedSha)
-            : input.action === 'approve' ? await updates.approve(input.version, input.expectedSha) : null;
+            : input.action === 'approve' ? await updates.approve(input.version, input.expectedSha, input.expectedTestedAt) : null;
         if (!result) return json(res, 400, { error: 'Ukendt opdateringshandling.' });
         return json(res, 200, result);
       } catch (error) { return json(res, error.status || 409, { error: error.message, code: error.code }); }
@@ -1522,6 +1522,7 @@ async function route(req, res) {
   files['/v5-projects.js'] = 'v5-projects.js';
   files['/settings-drafts.js'] = 'settings-drafts.js';
   files['/chat-draft.js'] = 'chat-draft.js';
+  for (const asset of ['gui-navigation.js', 'gui-shell.js', 'gui-watches.js', 'gui-today.js', 'gui-calendar.js', 'gui.css']) files[`/${asset}`] = asset;
   const file = files[path];
   if (!file) return json(res, 404, { error: 'Siden findes ikke.' });
   const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';

@@ -23,14 +23,19 @@ function report(target, kind = 'text', { focus = false } = {}) {
   return renderedAccessibilityReport([{ name: 'sample', selector: '#sample', kind }], document).checks[0];
 }
 
-test('K1 exact desktop labels and compact mobile labels have mutually exclusive responsive variants', async () => {
+test('K1 GUI navigation retains all four visible labels and switches to four mobile columns with secondary settings', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /class="nav-title nav-desktop-title">Mad og indkøb<\/span><span class="nav-title nav-mobile-title">Mad<\/span>/);
-  assert.match(html, /class="nav-title nav-desktop-title">Min viden<\/span><span class="nav-title nav-mobile-title">Viden<\/span>/);
-  assert.match(css, /\.tab-button \.nav-mobile-title \{ display: none; \}/);
-  const mobile = css.slice(css.indexOf('@media (max-width: 850px)'));
-  assert.match(mobile, /\.tab-button \.nav-desktop-title \{ display: none; \}/);
-  assert.match(mobile, /\.tab-button \.nav-mobile-title \{ display: inline; \}/);
+  const gui = await readFile(new URL('../public/gui.css', import.meta.url), 'utf8');
+  const primary = html.match(/<div class="gui-nav-primary">([\s\S]*?)<\/div>/)?.[1];
+  assert.ok(primary, 'primary navigation is distinct from secondary settings');
+  assert.deepEqual([...primary.matchAll(/class="nav-label">([^<]+)<\/span>/g)].map(match => match[1]),
+    ['I dag', 'Planlægning', 'Hjem', 'Overvågninger']);
+  assert.equal([...primary.matchAll(/data-tab=/g)].length, 4);
+  assert.match(gui, /\.gui-nav-primary \{ display: flex; flex-direction: column;/);
+  const mobile = gui.slice(gui.indexOf('@media (max-width: 767px)'));
+  assert.match(mobile, /\.gui-nav-primary \{ display: grid; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(mobile, /\.gui-nav-secondary \{ display: none; \}/);
+  assert.match(html, /class="gui-mobile-settings[^"\n]*"[^>]*data-tab="settings"[^>]*aria-label="Indstillinger"/);
 });
 
 test('K5 contrast math keeps full precision and detects low-contrast text rather than rounding a pass', () => {

@@ -12,7 +12,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((yes, 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 class Field {
-  constructor() { this.value = ''; this.checked = false; this.events = new Map(); this.textContent = ''; this.disabled = false; }
+  constructor() { this.value = ''; this.checked = false; this.events = new Map(); this.textContent = ''; this.disabled = false; this.dataset = {}; }
   classList = { toggle() {} };
   addEventListener(name, handler) { if (!this.events.has(name)) this.events.set(name, []); this.events.get(name).push(handler); }
   async emit(name) { for (const handler of this.events.get(name) || []) await handler({ preventDefault() {} }); }
@@ -85,6 +85,54 @@ test('R02/R03 settings preserve typed drafts and post only edited fields with ma
   assert.equal(f.state.system.httpsUrl, 'https://another-synthetic.invalid');
   assert.equal(f.state.system.pushToken, 'old-synthetic-push-token');
   assert.equal(f.state.system.discordAlertsEnabled, false);
+});
+
+test('GUI-T11 saving one settings category leaves other categories and secret drafts untouched', async () => {
+  const f = fixture(); await f.ui.refresh();
+  await f.change('max-runs', '7'); await f.change('https-url', 'https://unsaved-gui.invalid');
+  await f.change('push-token', 'synthetic-unsent-push-value');
+  f.nodes.get('settings-form').dataset.scopeFields = 'maxRunsPerDay';
+  await f.save('system');
+  const writes = f.requests.filter(item => item.method === 'POST');
+  assert.equal(writes.length, 1); assert.deepEqual(JSON.parse(writes[0].body).patch, { maxRunsPerDay: 7 });
+  assert.equal(f.state.system.httpsUrl, 'https://synthetic.invalid');
+  assert.equal(f.state.system.pushToken, 'old-synthetic-push-token');
+  assert.equal(f.nodes.get('https-url').value, 'https://unsaved-gui.invalid');
+  assert.equal(f.nodes.get('push-token').value, 'synthetic-unsent-push-value');
+  assert.equal(JSON.stringify([...f.storage.values()]).includes('synthetic-unsent-push-value'), false);
+  f.nodes.get('settings-form').dataset.scopeFields = 'httpsUrl';
+  await f.save('system');
+  assert.deepEqual(JSON.parse(f.requests.filter(item => item.method === 'POST')[1].body).patch,
+    { httpsUrl: 'https://unsaved-gui.invalid' });
+  assert.equal(f.nodes.get('push-token').value, 'synthetic-unsent-push-value');
+});
+
+test('GUI-T11 discarding one settings category keeps unrelated unsaved values and their basis', async () => {
+  const f = fixture(); await f.ui.refresh();
+  await f.change('max-runs', '7'); await f.change('https-url', 'https://keep-gui-draft.invalid');
+  f.nodes.get('settings-form').dataset.scopeFields = 'maxRunsPerDay';
+  await f.nodes.get('settings-reload').emit('click');
+  assert.equal(f.nodes.get('max-runs').value, '10');
+  assert.equal(f.nodes.get('https-url').value, 'https://keep-gui-draft.invalid');
+  assert.equal(f.requests.filter(item => item.method === 'POST').length, 0);
+  f.nodes.get('settings-form').dataset.scopeFields = 'httpsUrl';
+  await f.save('system');
+  assert.deepEqual(JSON.parse(f.requests.find(item => item.method === 'POST').body).patch,
+    { httpsUrl: 'https://keep-gui-draft.invalid' });
+});
+
+test('GUI-T11 a conflict in another category cannot be silently saved or discarded by the active category', async () => {
+  const f = fixture(); await f.ui.refresh();
+  await f.change('https-url', 'https://local-gui-draft.invalid');
+  f.outside('system', 'httpsUrl', 'https://remote-gui-change.invalid'); await f.ui.refresh();
+  await f.change('max-runs', '8'); f.nodes.get('settings-form').dataset.scopeFields = 'maxRunsPerDay';
+  await f.save('system');
+  assert.deepEqual(JSON.parse(f.requests.find(item => item.method === 'POST').body).patch, { maxRunsPerDay: 8 });
+  assert.equal(f.nodes.get('https-url').value, 'https://local-gui-draft.invalid');
+  assert.equal(f.state.system.httpsUrl, 'https://remote-gui-change.invalid');
+  f.nodes.get('settings-form').dataset.scopeFields = 'httpsUrl'; await f.save('system');
+  assert.equal(f.requests.filter(item => item.method === 'POST').length, 1);
+  assert.match(f.nodes.get('settings-draft-status').textContent, /ændret et andet sted/);
 });
 
 test('R02 settings same-field conflict never overwrites the draft or uses a new basis without review', async () => {
