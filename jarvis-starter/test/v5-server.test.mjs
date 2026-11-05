@@ -122,7 +122,7 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
   const f = await fixture(t, { legacy: { preferences: 'syntetisk', extraLegacy: { manual: true } } });
   for (const path of ['/api/overview', '/api/personal-tasks', '/api/personal-claims', '/api/follow-ups'])
     await f.api('GET', path, undefined, 401, false);
-  assert.equal((await f.api('GET', '/health')).data.version, '5.0.0');
+  assert.equal((await f.api('GET', '/health')).data.version, '5.0.1');
   assert.equal((await f.api('GET', '/ready')).data.storage.ready, true);
   const state = (await f.api('GET', '/api/state')).data;
   assert.equal(state.preferences, 'syntetisk');
