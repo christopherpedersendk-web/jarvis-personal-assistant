@@ -54,6 +54,11 @@ footer { color: #a3bac8; }
 .home-more-details .panel { padding: 18px; }
 .time-pair { flex-wrap: wrap; }
 .time-pair > div { min-width: 0; flex: 1 1 180px; }
+/* Existing one-column settings forms also contain intrinsic-width time inputs
+   and long checkboxes. Keep their column and children shrinkable at 320px. */
+#tab-settings .task-form { grid-template-columns: minmax(0, 1fr); }
+#tab-settings .task-form > * { min-width: 0; max-width: 100%; }
+#tab-settings .task-form .inline-check { white-space: normal; overflow-wrap: anywhere; }
 .draft-status { min-height: 18px; color: #9bd3e9; margin: 7px 0 11px; }
 .draft-status.draft-conflict, .source-open-status { color: #ffd3a4; }
 .source-open-status { background: #4c2d20; border: 1px solid #bf906c; border-radius: 10px; padding: 12px 14px; }
