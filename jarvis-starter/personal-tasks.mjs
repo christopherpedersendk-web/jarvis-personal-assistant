@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { planningInstant } from './capacity-planner.mjs';
 
 // Personal work is intentionally kept separate from TaskEngine's automated jobs.
 // Calendar coverage is never inferred from these records.
@@ -6,25 +7,12 @@ const ACTIVE = new Set(['pending', 'in_progress', 'blocked']);
 const SOURCES = new Set(['user', 'manual', 'project', 'organizer', 'memory', 'discord']);
 const CREATE_FIELDS = new Set(['title', 'purpose', 'expectedOutcome', 'durationMinutes',
   'durationUncertaintyMinutes', 'earliestStart', 'deadline', 'priority', 'dependencies',
-  'allowedWindows', 'source', 'projectId', 'lockedStart', 'nextFollowUpAt']);
+  'allowedWindows', 'source', 'projectId', 'lockedStart', 'plannedStart', 'nextFollowUpAt']);
 const UPDATE_FIELDS = new Set([...CREATE_FIELDS, 'status']);
-const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 
 function timestamp(value, label) {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') throw new Error(`${label} kræver et ISO-tidspunkt med tidszone.`);
-  const match = INSTANT.exec(value);
-  if (!match) throw new Error(`${label} kræver et ISO-tidspunkt med tidszone.`);
-  const [, year, month, day, hour, minute, second = '00', offset] = match;
-  const civil = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  if (civil.toISOString().slice(0, 10) !== `${year}-${month}-${day}` ||
-      Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59 ||
-      offset !== 'Z' && (Number(offset.slice(1, 3)) > 14 || Number(offset.slice(4, 6)) > 59 ||
-        Number(offset.slice(1, 3)) === 14 && Number(offset.slice(4, 6)) !== 0))
-    throw new Error(`Ugyldig dato i ${label}.`);
-  const milliseconds = Date.parse(value);
-  if (!Number.isFinite(milliseconds)) throw new Error(`Ugyldig dato i ${label}.`);
-  return new Date(milliseconds).toISOString();
+  return new Date(planningInstant(value, label)).toISOString();
 }
 
 function limitedText(value, label, max, required = true) {
@@ -107,20 +95,21 @@ function validated(input, id, tasks) {
   const earliestStart = timestamp(input.earliestStart, 'Tidligste start');
   const deadline = timestamp(input.deadline, 'Deadline');
   const lockedStart = timestamp(input.lockedStart, 'Låst starttid');
+  const plannedStart = timestamp(input.plannedStart, 'Lokalt planlagt starttid');
   const nextFollowUpAt = timestamp(input.nextFollowUpAt, 'Næste opfølgning');
   if (earliestStart && deadline && earliestStart > deadline) throw new Error('Tidligste start er efter deadline.');
   if (lockedStart && (earliestStart && lockedStart < earliestStart ||
-      deadline && Date.parse(lockedStart) + durationMinutes * 60_000 > Date.parse(deadline)))
+      deadline && Date.parse(lockedStart) + (durationMinutes + durationUncertaintyMinutes) * 60_000 > Date.parse(deadline)))
     throw new Error('Låst starttid er uden for opgavens tidsgrænser.');
   const allowedWindows = checkedWindows(input.allowedWindows);
   if (lockedStart && allowedWindows.length && !allowedWindows.some(window =>
-    lockedStart >= window.start && Date.parse(lockedStart) + durationMinutes * 60_000 <= Date.parse(window.end)))
+    lockedStart >= window.start && Date.parse(lockedStart) + (durationMinutes + durationUncertaintyMinutes) * 60_000 <= Date.parse(window.end)))
     throw new Error('Låst opgave ligger uden for tilladte tidsvinduer.');
   const projectId = input.projectId === null || input.projectId === undefined ? null
     : limitedText(input.projectId, 'Projekt-ID', 120);
   return { title, purpose, expectedOutcome, durationMinutes, durationUncertaintyMinutes,
     earliestStart, deadline, priority, dependencies: checkedDependencies(input.dependencies, id, tasks),
-    allowedWindows, source: taskSource(input.source), projectId, lockedStart, nextFollowUpAt };
+    allowedWindows, source: taskSource(input.source), projectId, lockedStart, plannedStart, nextFollowUpAt };
 }
 
 export class PersonalTasks {
@@ -162,7 +151,8 @@ export class PersonalTasks {
     delete changes.status;
     const fields = validated(Object.fromEntries([...CREATE_FIELDS].map(key =>
       [key, changes[key] === undefined ? task[key] : changes[key]])), task.id, this.state.personalTasks);
-    if (JSON.stringify(fields) === JSON.stringify(Object.fromEntries(Object.keys(fields).map(key => [key, task[key]]))) && status === task.status)
+    if (JSON.stringify(fields) === JSON.stringify(Object.fromEntries(Object.keys(fields).map(key =>
+      [key, key === 'plannedStart' ? task[key] ?? null : task[key]]))) && status === task.status)
       return structuredClone(task);
     const previous = structuredClone(task);
     Object.assign(task, fields, { status, revision: task.revision + 1, updatedAt: this.now().toISOString() });
@@ -205,28 +195,51 @@ export class PersonalTasks {
       durationMinutes: task.durationMinutes, durationUncertaintyMinutes: task.durationUncertaintyMinutes,
       earliestStart: task.earliestStart, deadline: task.deadline, priority: task.priority,
       dependencies: task.dependencies.filter(dep => ids.has(dep)), allowedWindows: structuredClone(task.allowedWindows),
-      lockedStart: task.lockedStart, source: { kind: 'personal-task', id: task.id, revision: task.revision },
+      lockedStart: task.lockedStart, preferredStart: task.plannedStart || null,
+      source: { kind: 'personal-task', id: task.id, revision: task.revision },
       projectId: task.projectId, nextFollowUpAt: task.nextFollowUpAt }));
   }
 
-  /** Postcondition until the shared capacity planner enforces per-task windows. */
+  /** Independent postcondition, including source revision and local hard constraints. */
   validateProposals(proposals) {
     if (!Array.isArray(proposals)) throw new Error('Ugyldige planforslag.');
     const tasks = new Map(this.toPlanningTasks().map(task => [task.id, task]));
-    const conflicts = [];
+    const conflicts = [], seen = new Set(), spans = new Map();
     for (const proposal of proposals) {
       const task = tasks.get(proposal.taskId);
       if (!task) { conflicts.push({ taskId: proposal.taskId, code: 'unknown-task' }); continue; }
+      if (seen.has(task.id)) { conflicts.push({ taskId: task.id, code: 'duplicate-task' }); continue; }
+      seen.add(task.id);
+      if (proposal.source && (proposal.source.kind !== 'personal-task' || proposal.source.id !== task.id ||
+          proposal.source.revision !== task.source.revision)) {
+        conflicts.push({ taskId: task.id, code: 'source-revision-conflict' }); continue;
+      }
       const start = timestamp(proposal.start, 'Planlagt start');
       const end = timestamp(proposal.end, 'Planlagt slut');
       if (!start || !end || Date.parse(end) - Date.parse(start) !== task.durationMinutes * 60_000) {
         conflicts.push({ taskId: task.id, code: 'duration-conflict' }); continue;
       }
+      const buffer = proposal.bufferMinutes ?? 0;
+      if (!Number.isInteger(buffer) || buffer < 0 || buffer > 180) {
+        conflicts.push({ taskId: task.id, code: 'buffer-conflict' }); continue;
+      }
+      const reservedUntil = new Date(Date.parse(end) + (task.durationUncertaintyMinutes + buffer) * 60_000).toISOString();
+      if (proposal.reservedUntil && timestamp(proposal.reservedUntil, 'Reserveret til') !== reservedUntil)
+        conflicts.push({ taskId: task.id, code: 'duration-uncertainty-conflict' });
       if (task.lockedStart && task.lockedStart !== start) {
         conflicts.push({ taskId: task.id, code: 'locked-conflict' }); continue;
       }
-      if (task.allowedWindows.length && !task.allowedWindows.some(window => start >= window.start && end <= window.end))
+      if (task.earliestStart && start < task.earliestStart || task.deadline && reservedUntil > task.deadline)
+        conflicts.push({ taskId: task.id, code: 'task-time-bound-conflict' });
+      if (task.allowedWindows.length && !task.allowedWindows.some(window => start >= window.start && reservedUntil <= window.end))
         conflicts.push({ taskId: task.id, code: 'personal-window-conflict' });
+      spans.set(task.id, { start, end: reservedUntil });
+    }
+    for (const [id, span] of spans) {
+      for (const dependency of tasks.get(id).dependencies) if (!spans.has(dependency) || spans.get(dependency).end > span.start)
+        conflicts.push({ taskId: id, code: 'dependency-conflict' });
+      for (const [other, otherSpan] of spans) if (id < other && span.start < otherSpan.end && otherSpan.start < span.end)
+        conflicts.push({ taskId: id, otherTaskId: other, code: 'task-overlap' });
     }
     return { valid: conflicts.length === 0, conflicts };
   }

@@ -1,16 +1,19 @@
+import { IntegrationHealth } from './integration-health.mjs';
 const API = 'https://api.ws.sonos.com/control/api/v1';
 
 export class SmartHome {
-  constructor({ state, save }) {
+  constructor({ state, save, fetcher = fetch, now }) {
     this.state = state;
     this.save = save;
+    this.fetcher = fetcher;
+    this.health = new IntegrationHealth({ now });
     if (!Array.isArray(state.homeEvents)) state.homeEvents = [];
   }
 
   snapshot(config = {}) {
     return {
-      sonos: { configured: Boolean(config.sonosToken), connected: false, mode: 'Sonos Control API', tokenExpires: 'Token kan udløbe; OAuth-opdatering er endnu ikke implementeret' },
-      google: { configured: false, status: 'Afventer enhedstype og Google-godkendelse' },
+      sonos: { ...this.health.snapshot(config, Boolean(config.sonosToken)), mode: 'Sonos Control API', tokenExpires: 'Token kan udløbe; OAuth-opdatering er endnu ikke implementeret' },
+      google: { configured: false, status: 'Batteridrevet Nest: live-hændelser er ikke understøttet i v5' },
       events: this.state.homeEvents.slice(-40).reverse(),
     };
   }
@@ -30,22 +33,26 @@ export class SmartHome {
     if (!/^[A-Za-z0-9_-]{1,120}$/.test(action.groupId || '')) throw new Error('Ugyldigt Sonos-gruppe-ID.');
     const allowed = { play: 'play', pause: 'pause', skip: 'skipToNextTrack', previous: 'skipToPreviousTrack' };
     if (!allowed[action.command]) throw new Error('Ukendt afspilningskommando.');
-    const response = await fetch(`${API}/groups/${action.groupId}/playback/${allowed[action.command]}`, {
+    return this.health.check(config, async () => {
+    const response = await this.fetcher(`${API}/groups/${action.groupId}/playback/${allowed[action.command]}`, {
       method: 'POST', headers: { Authorization: `Bearer ${config.sonosToken}`, 'Content-Type': 'application/json' },
       body: '{}', signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) throw new Error(`Sonos afviste handlingen (${response.status}). Kontrollér token, gruppe-ID og tilladelser.`);
+    if (!response.ok) throw Object.assign(new Error(`Sonos afviste handlingen (${response.status}). Kontrollér token, gruppe-ID og tilladelser.`), { status: response.status });
     return { ok: true };
+    });
   }
 
   async sonosGroups(config) {
     if (!config.sonosToken || !config.sonosHouseholdId) return { groups: [], message: 'Angiv et gyldigt Sonos-token og household-ID under Indstillinger.' };
     if (!/^[A-Za-z0-9_-]{1,120}$/.test(config.sonosHouseholdId)) throw new Error('Ugyldigt household-ID.');
-    const response = await fetch(`${API}/households/${config.sonosHouseholdId}/groups`, {
+    return this.health.check(config, async () => {
+    const response = await this.fetcher(`${API}/households/${config.sonosHouseholdId}/groups`, {
       headers: { Authorization: `Bearer ${config.sonosToken}` }, signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) throw new Error(`Sonos kunne ikke hente rum (${response.status}).`);
+    if (!response.ok) throw Object.assign(new Error(`Sonos kunne ikke hente rum (${response.status}).`), { status: response.status });
     const data = await response.json();
     return { groups: Array.isArray(data.groups) ? data.groups.map(x => ({ id: x.id, name: x.name })).filter(x => x.id && x.name) : [] };
+    });
   }
 }

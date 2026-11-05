@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
 
 // Illustrative recipes, never retailer prices or claims about allergen safety.
@@ -16,6 +17,7 @@ const RECIPES = Object.freeze([
 
 const DIETS = ['omnivore', 'vegetarian', 'vegan'];
 export const MEAL_THEMES = Object.freeze(['everyday', 'child_friendly', 'vegan', 'vegetarian', 'date', 'party', 'quick']);
+export const HOUSEHOLD_OCCASIONS = Object.freeze(['ordinary', 'holiday', 'absence']);
 const baseProfile = Object.freeze({ householdSize: 2, diet: 'omnivore', avoid: [], pantry: [], budgetDkk: null });
 const normalize = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('da-DK');
 const clone = value => structuredClone(value);
@@ -68,27 +70,46 @@ function validateTheme(theme = 'everyday') {
 // particular dish is suitable for a child's age. The owner can override them.
 function estimatedChildPortion(age) { return age <= 5 ? 0.5 : age <= 12 ? 0.75 : 1; }
 
+function validatePortion(value = 1) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.25 || value > 3) throw new Error('Portionsfaktor skal være 0,25–3.');
+  return round(value);
+}
+
 function validateChildren(value) {
   if (!Array.isArray(value) || value.length > 24) throw new Error('Angiv højst 24 børn med alder og portionsfaktor.');
   return value.map(item => {
     if (!isObject(item) || !Number.isInteger(item.age) || item.age < 0 || item.age > 17) throw new Error('Børns alder skal være et helt tal fra 0 til 17.');
-    const portion = item.portion ?? estimatedChildPortion(item.age);
-    if (typeof portion !== 'number' || !Number.isFinite(portion) || portion < 0.25 || portion > 3) throw new Error('Portionsfaktor skal være 0,25–3.');
-    return { age: item.age, portion: round(portion) };
+    const portion = validatePortion(item.portion ?? estimatedChildPortion(item.age));
+    // Only a user-supplied date records when an age was checked. Historic ages
+    // remain undated; neither migration nor saving another field renews them.
+    if (item.ageRecordedAt !== undefined && item.ageRecordedAt !== null) parseDay(item.ageRecordedAt);
+    return { age: item.age, portion,
+      ...(item.ageRecordedAt ? { ageRecordedAt: item.ageRecordedAt } : {}) };
   });
 }
 
 function validateAttendance(value) {
   if (!isObject(value) || !Number.isInteger(value.adults) || value.adults < 0 || value.adults > 24) throw new Error('Antal voksne skal være 0–24.');
   const children = validateChildren(value.children);
+  const adultPortion = validatePortion(value.adultPortion ?? 1);
   if (value.adults + children.length > 24) throw new Error('Højst 24 personer pr. dag.');
-  return { adults: value.adults, children };
+  return { adults: value.adults, children, ...(adultPortion !== 1 ? { adultPortion } : {}) };
 }
 
 function validateDay(value) {
   const attendance = validateAttendance(value);
+  const guests = value.guests === undefined ? null : validateAttendance(value.guests);
+  const occasion = value.occasion ?? 'ordinary';
+  if (!HOUSEHOLD_OCCASIONS.includes(occasion)) throw new Error('Vælg almindelig dag, ferie eller fravær.');
+  if (attendance.adults + attendance.children.length + (guests?.adults || 0) + (guests?.children.length || 0) > 24)
+    throw new Error('Højst 24 personer pr. dag, inklusive gæster.');
   if (value.skip !== undefined && typeof value.skip !== 'boolean') throw new Error('Spring dag over skal være sand eller falsk.');
-  return { ...attendance, theme: validateTheme(value.theme), skip: Boolean(value.skip) || attendance.adults + attendance.children.length === 0 };
+  const theme = validateTheme(value.theme);
+  if (occasion === 'absence') return { adults: 0, children: [], theme, skip: true, occasion };
+  return { ...attendance, theme,
+    skip: Boolean(value.skip) || attendance.adults + attendance.children.length + (guests?.adults || 0) + (guests?.children.length || 0) === 0,
+    ...(guests && (guests.adults || guests.children.length) ? { guests } : {}),
+    ...(occasion !== 'ordinary' ? { occasion } : {}) };
 }
 
 function validateDays(value) {
@@ -123,11 +144,62 @@ function rhythmDay(household, date) {
   return rhythm.weeks[week][weekday] || null;
 }
 
-function sameValue(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function sameValue(a, b) { return isDeepStrictEqual(a, b); }
+
+function checkHouseholdRevision(current, expected) {
+  // Optional only for compatibility with existing in-process v4 callers. The
+  // owner UI always supplies the revision it actually displayed.
+  if (expected === undefined) return;
+  if (!Number.isInteger(expected) || expected !== (current.revision || 1)) {
+    const error = new Error('Husstanden er ændret et andet sted. Dine rettelser er ikke gemt; genindlæs det aktuelle grundlag først.');
+    error.code = 'REVISION_CONFLICT';
+    throw error;
+  }
+}
+
+function checkProfileRevision(current, expected) {
+  if (expected === undefined) return;
+  if (!Number.isInteger(expected) || expected !== (current.revision || 1)) {
+    const error = new Error('Madpræferencerne er ændret et andet sted. Dine rettelser er ikke gemt; genindlæs før du gemmer.');
+    error.code = 'REVISION_CONFLICT'; throw error;
+  }
+}
 
 function attendanceMeaning(value) {
-  return { adults: value.adults, children: value.children, theme: value.theme, skip: value.skip,
+  const children = items => (items || []).map(({ age, portion }) => ({ age, portion }));
+  return { adults: value.adults, adultPortion: value.adultPortion ?? 1, children: children(value.children),
+    guests: { adults: value.guests?.adults || 0, adultPortion: value.guests?.adultPortion ?? 1, children: children(value.guests?.children) },
+    occasion: value.occasion || 'ordinary', theme: value.theme, skip: value.skip,
     servings: value.servings, householdConfirmed: value.householdConfirmed };
+}
+
+function householdSourceRef(attendance, date) {
+  return { kind: attendance.attendanceSource === 'day-override' ? 'household-day' :
+    attendance.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date };
+}
+
+// One read-only rule resolver for meals, memory and other local planning.
+// Unknown attendance is not a zero-person household and not calendar evidence.
+// Only MealPlanner passes the old profile's provisional portion estimate.
+export function resolveHouseholdAttendance(household, date, { fallbackServings = null } = {}) {
+  parseDay(date);
+  const override = household?.days?.[date];
+  const repeating = override || !household ? null : rhythmDay(household, date);
+  if (override || repeating || household?.configured) {
+    const attendance = validateDay(override || repeating || { adults: household.adults,
+      adultPortion: household.adultPortion ?? 1, children: household.children, theme: 'everyday', skip: false });
+    const guests = attendance.guests || { adults: 0, children: [] };
+    const servings = round(attendance.adults * (attendance.adultPortion ?? 1) +
+      attendance.children.reduce((sum, child) => sum + child.portion, 0) +
+      guests.adults * (guests.adultPortion ?? 1) + guests.children.reduce((sum, child) => sum + child.portion, 0));
+    const skip = Boolean(attendance.skip) || attendance.occasion === 'absence' || servings === 0;
+    return { ...attendance, adultPortion: attendance.adultPortion ?? 1, guests,
+      occasion: attendance.occasion || 'ordinary', servings: skip ? 0 : servings,
+      skip, householdConfirmed: true,
+      attendanceSource: override ? 'day-override' : repeating ? 'recurring-rhythm' : 'household-defaults' };
+  }
+  return { adults: null, adultPortion: 1, children: [], guests: { adults: 0, children: [] }, occasion: 'ordinary',
+    theme: 'everyday', skip: false, servings: fallbackServings, householdConfirmed: false, attendanceSource: 'legacy-unconfirmed' };
 }
 
 function validateInventoryItems(value, timestamp) {
@@ -378,15 +450,20 @@ export class MealPlanner {
   async setProfile(input) {
     const next = validateMealProfile(input);
     const current = this.profile();
+    checkProfileRevision(current, input.expectedRevision);
     if (sameValue(next, Object.fromEntries(Object.keys(next).map(key => [key, current[key]])))) return current;
-    this.state.mealProfile = { ...next, updatedAt: this.now().toISOString(), source: 'user-entered' };
+    this.state.mealProfile = { ...next, revision: (current.revision || 1) + 1, updatedAt: this.now().toISOString(), source: 'user-entered' };
     this.invalidatePlans('Madpræferencer eller lager er ændret. Gennemgå madplanen igen.', { profile: true });
     await this.save();
     return this.profile();
   }
 
-  async resetProfile() {
-    this.state.mealProfile = { ...baseProfile, avoid: [], pantry: [] };
+  async resetProfile({ expectedRevision } = {}) {
+    const current = this.profile();
+    checkProfileRevision(current, expectedRevision);
+    const next = { ...baseProfile, avoid: [], pantry: [] };
+    if (sameValue(next, Object.fromEntries(Object.keys(next).map(key => [key, current[key]])))) return current;
+    this.state.mealProfile = { ...next, revision: (current.revision || 1) + 1 };
     this.invalidatePlans('Madpræferencer er nulstillet. Gennemgå madplanen igen.', { profile: true });
     await this.save();
     return this.profile();
@@ -395,11 +472,12 @@ export class MealPlanner {
   async setHousehold(input) {
     if (!isObject(input)) throw new Error('Ugyldige husstandsoplysninger.');
     const previous = this.household();
-    const attendance = validateAttendance(input);
+    checkHouseholdRevision(previous, input.expectedRevision);
+    const attendance = validateAttendance({ adultPortion: previous.adultPortion, ...input });
     const days = input.days === undefined ? previous.days : validateDays(input.days);
     const rhythm = input.rhythm === undefined ? previous.rhythm || null : validateRhythm(input.rhythm);
     if (previous.configured && sameValue({ ...attendance, days, rhythm },
-      { adults: previous.adults, children: previous.children, days: previous.days, rhythm: previous.rhythm || null })) return previous;
+      { ...validateAttendance(previous), days: previous.days, rhythm: previous.rhythm || null })) return previous;
     const dates = [...new Set(this.state.mealPlans.flatMap(plan => plan.dishes.map(dish => dish.date)))];
     const before = new Map(dates.map(date => [date, attendanceMeaning(this.attendanceFor(date))]));
     this.state.mealHousehold = { configured: true, ...attendance, days, rhythm,
@@ -414,6 +492,7 @@ export class MealPlanner {
     parseDay(date);
     if (!isObject(input)) throw new Error('Ugyldigt dagsvalg.');
     const current = this.household();
+    checkHouseholdRevision(current, input.expectedRevision);
     const defaults = current.days[date] || (current.configured ? this.attendanceFor(date) : {});
     const day = validateDay({ ...defaults, ...input });
     if (!Object.hasOwn(current.days, date) && Object.keys(current.days).length >= 180) throw new Error('Husstandskalenderen kan have højst 180 dagsvalg.');
@@ -428,8 +507,9 @@ export class MealPlanner {
     return this.household();
   }
 
-  async removeDay(date) {
+  async removeDay(date, { expectedRevision } = {}) {
     parseDay(date);
+    checkHouseholdRevision(this.state.mealHousehold, expectedRevision);
     if (Object.hasOwn(this.state.mealHousehold.days, date)) {
       const before = attendanceMeaning(this.attendanceFor(date));
       delete this.state.mealHousehold.days[date];
@@ -443,19 +523,7 @@ export class MealPlanner {
   }
 
   attendanceFor(date) {
-    parseDay(date);
-    const household = this.household();
-    const override = household.days[date];
-    const repeating = override ? null : rhythmDay(household, date);
-    if (override || repeating || household.configured) {
-      const attendance = override || repeating || { adults: household.adults, children: household.children, theme: 'everyday', skip: false };
-      const servings = round(attendance.adults + attendance.children.reduce((sum, child) => sum + child.portion, 0));
-      return { ...clone(attendance), servings: attendance.skip ? 0 : servings,
-        skip: Boolean(attendance.skip) || servings === 0, householdConfirmed: true,
-        attendanceSource: override ? 'day-override' : repeating ? 'recurring-rhythm' : 'household-defaults' };
-    }
-    return { adults: null, children: [], theme: 'everyday', skip: false, servings: this.profile().householdSize,
-      householdConfirmed: false, attendanceSource: 'legacy-unconfirmed' };
+    return resolveHouseholdAttendance(this.state.mealHousehold, date, { fallbackServings: this.profile().householdSize });
   }
 
   assertRecipeSources(dishes) {
@@ -484,7 +552,8 @@ export class MealPlanner {
       const attendance = this.attendanceFor(day);
       if (attendance.skip) return { date: day, recipeId: null, title: 'Ingen mad hjemme', minutes: 0,
         diet: profile.diet, ...attendance, busyDay: shortEvening, ingredients: [], ingredientBasis: [], baseServings: 1,
-        reasons: ['Dagen er fravalgt eller ingen er registreret hjemme.'], sourceRefs: [{ kind: 'household-day', date: day }] };
+        householdBasis: attendanceMeaning(attendance), manualServings: false, manualTheme: false, manualSkip: false,
+        reasons: ['Dagen er fravalgt eller ingen er registreret hjemme.'], sourceRefs: [householdSourceRef(attendance, day)] };
       const choices = catalog.filter(recipe => !recipe.doNotSuggest && compatible(recipe, profile, attendance.theme));
       if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${day}. Tilføj en gennemgået opskrift, som opfylder kostvalget og undgå-listen.`);
       const scored = choices.map((recipe, order) => ({ recipe, score:
@@ -508,9 +577,9 @@ export class MealPlanner {
         date: day, recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
         locked: false,
         ...attendance, busyDay: shortEvening, ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
+        householdBasis: attendanceMeaning(attendance), manualServings: false, manualTheme: false, manualSkip: false,
         ingredients: scaleIngredients(recipe.ingredients, recipe.servings, attendance.servings), reasons,
-        sourceRefs: [clone(recipe.sourceRef), { kind: attendance.attendanceSource === 'day-override' ? 'household-day' :
-          attendance.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: day }, { kind: 'meal-profile' }],
+        sourceRefs: [clone(recipe.sourceRef), householdSourceRef(attendance, day), { kind: 'meal-profile' }],
       };
     });
     const plan = {
@@ -540,8 +609,17 @@ export class MealPlanner {
     const profile = this.profile();
     const dishes = plan.dishes.map(previous => {
       const patch = byDate.get(previous.date);
-      const attendance = input.refreshHousehold ? this.attendanceFor(previous.date) : {
+      const previousBasis = previous.householdBasis || attendanceMeaning(previous);
+      const refreshed = input.refreshHousehold ? this.attendanceFor(previous.date) : null;
+      const basis = refreshed ? attendanceMeaning(refreshed) : previousBasis;
+      const basisChanged = refreshed && !sameValue(previousBasis, basis);
+      const attendance = refreshed ? { ...refreshed,
+        servings: previous.manualServings && !refreshed.skip ? previous.servings : refreshed.servings,
+        theme: previous.manualTheme ? previous.theme : refreshed.theme,
+        skip: refreshed.skip || (previous.manualSkip ? previous.skip : false),
+      } : {
         adults: previous.adults, children: clone(previous.children), householdConfirmed: previous.householdConfirmed,
+        adultPortion: previous.adultPortion ?? 1, guests: clone(previous.guests || { adults: 0, children: [] }), occasion: previous.occasion || 'ordinary',
         attendanceSource: previous.attendanceSource, servings: previous.servings, theme: previous.theme, skip: previous.skip,
       };
       const theme = validateTheme(patch.theme ?? attendance.theme);
@@ -582,17 +660,29 @@ export class MealPlanner {
         patch.minutes !== undefined && patch.minutes !== previous.minutes ||
         patch.diet !== undefined && patch.diet !== previous.diet ||
         patch.ingredients !== undefined && !sameIngredients(patch.ingredients, previous.ingredients));
+      // An edit to one day must not rewrite the explanations, snapshots or
+      // manual choices of every other day in the same weekly plan.
+      const explicitChange = ['servings', 'theme', 'skip', 'locked'].some(key =>
+        patch[key] !== undefined && patch[key] !== previous[key]);
+      if (!basisChanged && !changedRecipe && !manuallyReplacedRecipe && !explicitChange) {
+        assertCompatible(previous, profile);
+        return clone(previous);
+      }
       if (!skip && (!ingredientBasis.length || !baseServings)) throw new Error('Tilføj konkrete ingredienser til retten, før der oprettes indkøbsliste.');
       const ingredients = skip ? [] : scaleIngredients(ingredientBasis, baseServings, servings);
-      const manual = patch.servings !== undefined && servings !== attendance.servings;
+      const manual = patch.servings !== undefined ? servings !== basis.servings : Boolean(previous.manualServings);
       const dish = { ...previous, ...attendance, theme, skip, locked: patch.locked ?? Boolean(previous.locked), servings: skip ? 0 : round(servings), title: title.trim(), minutes, diet,
+        householdBasis: clone(basis), manualServings: manual,
+        manualTheme: patch.theme !== undefined ? theme !== basis.theme : Boolean(previous.manualTheme),
+        manualSkip: patch.skip !== undefined ? Boolean(patch.skip) !== basis.skip : Boolean(previous.manualSkip),
         recipeId: changedRecipe ? source.id : manuallyReplacedRecipe ? `custom:${previous.date}` : previous.recipeId || (!skip && patch.ingredients ? `custom:${previous.date}` : null),
         baseServings, ingredientBasis, ingredients,
-        sourceRefs: changedRecipe ? [clone(source.sourceRef), { kind: previous.attendanceSource === 'day-override' ? 'household-day' :
-          previous.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: previous.date }, { kind: 'meal-profile' }] :
-          manuallyReplacedRecipe ? [{ kind: 'owner-meal', date: previous.date }, { kind: 'household', date: previous.date }, { kind: 'meal-profile' }] : clone(previous.sourceRefs || []),
-        reasons: [input.refreshHousehold ? 'Portioner og tema opdateret fra den aktuelle husstand.' : 'Forslaget er tilrettet af dig.',
-          ...(manual ? ['Portionsantal er manuelt tilrettet i forhold til husstandsoplysningerne.'] : []),
+        sourceRefs: changedRecipe ? [clone(source.sourceRef), householdSourceRef(attendance, previous.date), { kind: 'meal-profile' }] :
+          manuallyReplacedRecipe ? [{ kind: 'owner-meal', date: previous.date }, householdSourceRef(attendance, previous.date), { kind: 'meal-profile' }] :
+          basisChanged ? [...clone(previous.sourceRefs || []).filter(ref => !['household', 'household-day', 'household-rhythm'].includes(ref.kind)),
+            householdSourceRef(attendance, previous.date)] : clone(previous.sourceRefs || []),
+        reasons: [input.refreshHousehold ? 'Husstandsgrundlaget er opdateret; dine retter og manuelle valg er bevaret.' : 'Forslaget er tilrettet af dig.',
+          ...(manual ? ['Portionsantal er manuelt tilrettet og bevares ved husstandsopdatering; kontrollér det mod dagens fremmøde.'] : []),
           'Kostvalg og undgå-liste er kontrolleret; vareetiketter skal stadig gennemgås.'],
       };
       assertCompatible(dish, profile);
@@ -674,8 +764,7 @@ export class MealPlanner {
         ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
         ingredients: scaleIngredients(recipe.ingredients, recipe.servings, previous.servings),
         reasons: ['Nyt forslag til en ulåst dag ud fra din registrerede husstand, dagens tema og kostvalg.'],
-        sourceRefs: [clone(recipe.sourceRef), { kind: previous.attendanceSource === 'day-override' ? 'household-day' :
-          previous.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household', date: previous.date }, { kind: 'meal-profile' }] };
+        sourceRefs: [clone(recipe.sourceRef), householdSourceRef(previous, previous.date), { kind: 'meal-profile' }] };
     });
     this.assertRecipeSources(dishes);
     plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
@@ -704,7 +793,7 @@ export class MealPlanner {
       reasons: ['Retten er flyttet manuelt fra en anden dag; portioner er tilpasset dagens registrerede husstand.'],
       sourceRefs: (source.sourceRefs || []).filter(ref => !['household', 'household-day', 'household-rhythm', 'meal-profile'].includes(ref.kind))
         .map(ref => ref.kind === 'owner-meal' ? { ...ref, date: target.date } : ref)
-        .concat([{ kind: 'household', date: target.date }, { kind: 'meal-profile' }]) });
+        .concat([householdSourceRef(target, target.date), { kind: 'meal-profile' }]) });
     const movedFirst = move(second, first);
     const movedSecond = move(first, second);
     assertCompatible(movedFirst, this.profile()); assertCompatible(movedSecond, this.profile());

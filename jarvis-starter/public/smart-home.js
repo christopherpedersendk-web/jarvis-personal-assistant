@@ -9,14 +9,40 @@
     return n;
   };
 
+  async function sendHomeAction(path, payload, control, success) {
+    if (control.disabled) return;
+    control.disabled = true;
+    // Keep the same intent after a lost HTTP response; a second click must not
+    // repeat a possibly executed skip/scene command. Nothing auto-retries.
+    control.dataset.actionId ||= crypto.randomUUID();
+    let feedback = control.parentElement.querySelector('[data-action-feedback]');
+    if (!feedback) { feedback = node('p', '', 'small-text'); feedback.dataset.actionFeedback = 'true'; feedback.setAttribute('role', 'status'); control.parentElement.append(feedback); }
+    feedback.textContent = 'Handlingen afventer et bekræftet resultat …';
+    try {
+      await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Action-Id': control.dataset.actionId }, body: JSON.stringify(payload) });
+      delete control.dataset.actionId;
+      feedback.textContent = success;
+      toast(success);
+      await refreshHome();
+    } catch (error) {
+      feedback.textContent = `${error.message} Kontrollér enheden eller handlingsjournalen før en ny handling.`;
+      toast(error.message);
+    } finally { control.disabled = false; }
+  }
+
   async function refreshHome() {
     const data = await api('/api/smart-home');
     const hueSettings = await api('/api/smart-home/hue/settings');
     clear('smart-home-status'); clear('smart-home-events'); clear('home-smart-home');
+    const connectionLabel = status => {
+      const label = ({ not_configured: 'Ikke konfigureret', not_verified: 'Konfigureret · endnu ikke kontrolleret', connected: 'Forbundet',
+        stale: 'Seneste forbindelse er ikke længere aktuel', expired_login: 'Login udløbet · kræver kontrol', unavailable: 'Midlertidigt utilgængelig' })[status.connectionState] || 'Forbindelse ukendt';
+      return label + (status.lastCheckedAt ? ` · kontrolleret ${new Date(status.lastCheckedAt).toLocaleString('da-DK')}` : '');
+    };
     for (const [title, subtitle] of [
-      ['Sonos', data.sonos.configured ? 'Token gemt · forbindelse ikke verificeret' : 'Ikke forbundet'],
-      ['Philips Hue', hueSettings.paired ? 'Parret · klar til lokal styring' : 'Afventer parring med Hue Bridge'],
-      ['Nest-dørklokke', 'Afventer Device Access og hændelsesabonnement'],
+      ['Sonos', connectionLabel(data.sonos)],
+      ['Philips Hue', connectionLabel(hueSettings)],
+      ['Nest-dørklokke', data.google.status],
     ]) {
       const card = node('div', '', 'home-device-card');
       card.append(node('strong', title), node('p', subtitle, 'muted small-text'));
@@ -49,16 +75,14 @@
       for (const [on, label] of [[true, 'Tænd'], [false, 'Sluk']]) {
         const button = node('button', label, 'secondary'); button.type = 'button';
         button.addEventListener('click', async () => {
-          try { await api('/api/smart-home/hue/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'grouped_light', id: grouped.rid, on }) }); toast(`Hue-kommando sendt: ${room.metadata?.name}.`); }
-          catch (error) { toast(error.message); }
+          await sendHomeAction('/api/smart-home/hue/control', { kind: 'grouped_light', id: grouped.rid, on }, button, `Hue-kommando bekræftet: ${room.metadata?.name}.`);
         });
         row.append(button);
       }
       const slider = document.createElement('input'); slider.type = 'range'; slider.min = '1'; slider.max = '100'; slider.value = String(Math.round(groups.get(grouped.rid).dimming?.brightness || 75));
       slider.setAttribute('aria-label', `Lysstyrke ${room.metadata?.name || 'rum'}`);
       slider.addEventListener('change', async () => {
-        try { await api('/api/smart-home/hue/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'grouped_light', id: grouped.rid, brightness: Number(slider.value), on: true }) }); toast('Lysstyrke opdateret.'); }
-        catch (error) { toast(error.message); }
+        await sendHomeAction('/api/smart-home/hue/control', { kind: 'grouped_light', id: grouped.rid, brightness: Number(slider.value), on: true }, slider, 'Lysstyrke opdateret.');
       });
       row.append(slider); el('smart-home-hue').append(row);
     }
@@ -66,8 +90,7 @@
     for (const scene of data.scene || []) {
       const b = node('button', scene.metadata?.name || 'Scene', 'secondary'); b.type = 'button';
       b.addEventListener('click', async () => {
-        try { await api('/api/smart-home/hue/scene', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: scene.id }) }); toast('Hue-scenen er aktiveret.'); }
-        catch (error) { toast(error.message); }
+        await sendHomeAction('/api/smart-home/hue/scene', { id: scene.id }, b, 'Hue-scenen er aktiveret.');
       });
       el('smart-home-scenes').append(b);
     }
@@ -84,8 +107,7 @@
         const b = node('button', label, 'secondary');
         b.type = 'button'; b.setAttribute('aria-label', `${label} ${group.name}`);
         b.addEventListener('click', async () => {
-          try { await api('/api/smart-home/sonos/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ groupId: group.id, command }) }); toast('Kommando sendt til Sonos.'); }
-          catch (error) { toast(error.message); }
+          await sendHomeAction('/api/smart-home/sonos/action', { groupId: group.id, command }, b, 'Kommando bekræftet af Sonos.');
         });
         row.append(b);
       }

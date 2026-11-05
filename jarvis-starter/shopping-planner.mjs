@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { createJobTransitions } from './job-state-transition.mjs';
 import { foodWords, ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
 
 const normal = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase('da-DK');
@@ -127,8 +128,9 @@ function matchScore(ingredient, product) {
 }
 
 export class ShoppingPlanner {
-  constructor({ state, meals, nemlig, save = async () => {}, now = () => new Date() }) {
+  constructor({ state, meals, nemlig, save = async () => {}, transact, now = () => new Date() }) {
     this.state = state; this.meals = meals; this.nemlig = nemlig; this.save = save; this.now = now;
+    this.transact = transact || createJobTransitions(state);
     this.state.shoppingDrafts ||= [];
     this.preparing = new Set();
   }
@@ -202,10 +204,13 @@ export class ShoppingPlanner {
     this.current(draft); // Plan may have been edited while lookups were running.
     this.estimate(draft);
     draft.priceCheckedAt = this.now().toISOString();
-    this.state.shoppingDrafts.unshift(draft);
-    this.state.shoppingDrafts = this.state.shoppingDrafts.slice(0, 12);
-    await this.save();
-    return clone(draft);
+    return this.transact(['shoppingDrafts'], async () => {
+      this.current(draft);
+      this.state.shoppingDrafts.unshift(draft);
+      this.state.shoppingDrafts = this.state.shoppingDrafts.slice(0, 12);
+      await this.save();
+      return clone(draft);
+    });
   }
 
   estimate(draft) {
@@ -222,6 +227,7 @@ export class ShoppingPlanner {
   }
 
   async update(id, { expectedRevision, items } = {}, { reviewedByOwner = false } = {}) {
+    return this.transact(['shoppingDrafts', 'nemligProposals'], async () => {
     const draft = this.get(id); const plan = this.current(draft);
     if (this.preparing.has(id)) throw new Error('Forslaget behandles. Vent et øjeblik.');
     if (!Number.isInteger(expectedRevision) || expectedRevision !== draft.revision) throw new Error('Forslaget blev ændret. Genindlæs før du gemmer.');
@@ -251,10 +257,11 @@ export class ShoppingPlanner {
     for (const proposal of this.state.nemligProposals || []) if (proposal.status === 'pending' && proposal.sourceDraft?.id === id) proposal.status = 'superseded';
     await this.save();
     return clone(draft);
+    });
   }
 
   async propose(id, { expectedRevision } = {}) {
-    const draft = this.get(id); this.current(draft);
+    const draft = clone(this.get(id)); this.current(draft);
     if (expectedRevision !== draft.revision || !Number.isInteger(expectedRevision)) throw new Error('Forslaget blev ændret. Genindlæs før du fortsætter.');
     if (draft.status !== 'draft' || this.preparing.has(id)) throw new Error('Kurvforslaget er allerede oprettet eller behandles.');
     if (draft.items.some(x => x.needsReview)) throw new Error('Vælg eller udelad først alle uafklarede varelinjer og gem forslaget.');
@@ -293,7 +300,12 @@ export class ShoppingPlanner {
       if (draft.revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
       if (refreshed) {
         draft.revision++; draft.updatedAt = this.now().toISOString(); this.estimate(draft);
-        await this.save();
+        await this.transact(['shoppingDrafts'], async () => {
+          if (this.get(id).revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
+          this.current(draft);
+          this.state.shoppingDrafts[this.state.shoppingDrafts.findIndex(item => item.id === id)] = draft;
+          await this.save();
+        });
         throw new Error(conflict ? 'Friske Nemlig-oplysninger viste en kostkonflikt. Ingen kurvændring. Genindlæs og vælg andre varer.' :
           'Vareoplysningerne blev opdateret. Genindlæs, gennemgå og gem varevalgene igen før kurvforslaget oprettes.');
       }
@@ -301,8 +313,6 @@ export class ShoppingPlanner {
         sourcePlan: { id: draft.planId, revision: draft.planRevision }, sourceDraft: { id, revision: draft.revision },
         expectedBasketFingerprint: draft.basketFingerprint,
       });
-      draft.status = 'proposed'; draft.proposalId = proposal.id;
-      await this.save();
       return proposal;
     } finally { this.preparing.delete(id); }
   }

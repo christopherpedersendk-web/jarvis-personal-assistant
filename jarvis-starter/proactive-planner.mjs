@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { buildPlanningSuggestions } from './planning-advisor.mjs';
+import { createJobTransitions } from './job-state-transition.mjs';
 export { buildPlanningSuggestions } from './planning-advisor.mjs';
 
 export const DEFAULT_PROACTIVE_SETTINGS = Object.freeze({
@@ -97,34 +98,92 @@ function formatDigest(kind, agenda) {
 }
 
 export class ProactivePlanner {
-  constructor({ state, organizer, save, notify = async () => false, now = () => new Date() }) {
+  constructor({ state, organizer, save, notify = async () => false, now = () => new Date(), transact = null }) {
     this.state = state;
     this.organizer = organizer;
     this.save = save;
     this.notify = notify;
     this.now = now;
+    this.transact = transact || createJobTransitions(state);
     this.state.settings ||= {};
     this.state.proactiveDigests ||= [];
     this.running = false;
+    this.pendingDeliveries = new Map();
+    this.recoveryPending = false;
+    for (const record of this.state.proactiveDigests) if (record.discordDelivery?.status === 'sending') {
+      record.discordDelivery = { ...record.discordDelivery, status: 'unknown',
+        note: 'Leveringen blev afbrudt. Ingen automatisk genafsendelse.' };
+      record.discordDelivered = false;
+      this.recoveryPending = true;
+    }
   }
 
   settings() { return validateProactiveSettings({}, this.state.settings.proactive || {}); }
 
   async configure(changes) {
-    const next = validateProactiveSettings(changes, this.settings());
-    this.state.settings.proactive = next;
-    await this.save();
-    return next;
+    return this.transact(['settings'], async () => {
+      const next = validateProactiveSettings(changes, this.settings());
+      this.state.settings.proactive = next;
+      await this.save();
+      return next;
+    });
   }
 
   preview(now = this.now()) { return buildPersonalAgenda({ state: this.state, organizer: this.organizer, now }); }
 
   history() { return this.state.proactiveDigests.slice(0, 20); }
 
+  async recover() {
+    if (!this.recoveryPending) return;
+    await this.transact(['proactiveDigests'], () => this.save());
+    this.recoveryPending = false;
+  }
+
+  async #saveDelivery(key, outcome) {
+    const apply = () => this.transact(['proactiveDigests'], async () => {
+      const record = this.state.proactiveDigests.find(item => item.key === key);
+      if (record?.discordDelivery?.status !== 'sending') return;
+      record.discordDelivery = { ...record.discordDelivery, ...outcome };
+      record.discordDelivered = outcome.status === 'delivered';
+      await this.save();
+    });
+    try { await apply(); this.pendingDeliveries.delete(key); }
+    catch (error) { this.pendingDeliveries.set(key, apply); throw error; }
+  }
+
+  async #deliver(key) {
+    const candidate = this.state.proactiveDigests.find(item => item.key === key);
+    if (candidate?.discordDelivery?.status !== 'pending') return;
+    const sending = await this.transact(['proactiveDigests'], async () => {
+      const record = this.state.proactiveDigests.find(item => item.key === key);
+      if (record?.discordDelivery?.status !== 'pending') return null;
+      const now = this.now();
+      const settings = this.settings();
+      const inbox = this.state.inbox?.find(item => item.id === record.inboxId);
+      if (!settings.discordEnabled || this.state.settings.discordAlertsEnabled !== true || !inbox ||
+          now.getTime() - Date.parse(record.at) > 120 * 60_000) {
+        record.discordDelivery = { status: 'skipped', note: 'Ikke længere tilladt eller for gammelt til ekstern levering.' };
+        await this.save(); return null;
+      }
+      if (withinQuietHours(localClock(now), settings)) return null;
+      record.discordDelivery = { status: 'sending', attemptedAt: now.toISOString() };
+      await this.save();
+      return { title: inbox.title, text: inbox.text };
+    });
+    if (!sending) return;
+    let outcome;
+    try { outcome = { status: await this.notify(sending.title, sending.text) === true ? 'delivered' : 'not_delivered' }; }
+    catch { outcome = { status: 'unknown', note: 'Discord-leveringen kunne ikke bekræftes. Ingen automatisk genafsendelse.' }; }
+    await this.#saveDelivery(key, { ...outcome, endedAt: this.now().toISOString() });
+  }
+
   async tick() {
     if (this.running) return [];
     this.running = true;
     try {
+      await this.recover();
+      for (const [key, apply] of [...this.pendingDeliveries]) { await apply(); this.pendingDeliveries.delete(key); }
+      for (const record of this.state.proactiveDigests.filter(item => item.discordDelivery?.status === 'pending')) await this.#deliver(record.key);
       const now = this.now();
       const clock = localClock(now);
       const settings = this.settings();
@@ -138,25 +197,30 @@ export class ProactivePlanner {
         const elapsed = clock.minutes - minutes(time);
         if (!enabled || elapsed < 0 || elapsed > 120) continue; // Ingen forsinkede nattelige eller flere dage gamle beskeder.
         const key = `${kind}:${clock.date}`;
-        if (this.state.proactiveDigests.some(x => x.key === key)) continue;
-        const { entries, text } = formatDigest(kind, this.preview(now));
-        const title = kind === 'daily' ? 'JARVIS · Dagens overblik' : 'JARVIS · Ugens overblik';
-        const record = { key, kind, at: now.toISOString(), itemCount: entries.length,
-          sourceRefs: entries.map(x => x.source).slice(0, 7), discordDelivered: false };
-        this.state.proactiveDigests.unshift(record);
-        this.state.proactiveDigests = this.state.proactiveDigests.slice(0, 90);
-        if (entries.length) {
-          this.state.inbox ||= [];
-          this.state.inbox.unshift({ id: randomUUID(), title, text, kind: 'proactive', taskId: null,
-            read: false, at: now.toISOString(), sourceRefs: record.sourceRefs });
-          this.state.inbox = this.state.inbox.slice(0, 100);
-        }
-        await this.save(); // Gem deduplikation og indbakke samlet før eventuel ekstern notifikation.
-        if (entries.length && settings.discordEnabled && this.state.settings.discordAlertsEnabled === true) {
-          try { record.discordDelivered = await this.notify(title, text) === true; await this.save(); }
-          catch (error) { console.error('Proaktiv Discord-fejl:', error.message); }
-        }
-        sent.push(record);
+        const record = await this.transact(['proactiveDigests', 'inbox'], async () => {
+          const currentSettings = this.settings();
+          if (this.state.proactiveDigests.some(x => x.key === key) || !currentSettings[`${kind}Enabled`] ||
+              currentSettings[`${kind}Time`] !== time || withinQuietHours(localClock(this.now()), currentSettings)) return null;
+          const { entries, text } = formatDigest(kind, this.preview(now));
+          const title = kind === 'daily' ? 'JARVIS · Dagens overblik' : 'JARVIS · Ugens overblik';
+          const inboxId = entries.length ? randomUUID() : null;
+          const next = { key, kind, at: now.toISOString(), itemCount: entries.length, inboxId,
+            sourceRefs: entries.map(x => x.source).slice(0, 7), discordDelivered: false,
+            discordDelivery: { status: entries.length && currentSettings.discordEnabled && this.state.settings.discordAlertsEnabled === true ? 'pending' : 'skipped' } };
+          this.state.proactiveDigests.unshift(next);
+          this.state.proactiveDigests = this.state.proactiveDigests.slice(0, 90);
+          if (entries.length) {
+            this.state.inbox ||= [];
+            this.state.inbox.unshift({ id: inboxId, title, text, kind: 'proactive', taskId: null,
+              read: false, at: now.toISOString(), sourceRefs: next.sourceRefs });
+            this.state.inbox = this.state.inbox.slice(0, 100);
+          }
+          await this.save(); // Deduplication and inbox publish in one local transaction.
+          return next;
+        });
+        if (!record) continue;
+        await this.#deliver(key);
+        sent.push(this.state.proactiveDigests.find(item => item.key === key));
       }
       return sent;
     } finally { this.running = false; }

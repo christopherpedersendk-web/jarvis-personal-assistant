@@ -3,8 +3,14 @@ let intelligenceCatalogLoaded = false;
 const sourceKinds = Object.freeze({
   organizer: 'knowledge', memory: 'knowledge', claim: 'knowledge', task: 'plan',
   'personal-task': 'plan', 'follow-up': 'plan', project: 'projects',
-  household: 'meals', recipe: 'meals', 'meal-profile': 'meals', 'meal-plan': 'meals',
+  household: 'meals', 'household-day': 'meals', 'household-rhythm': 'meals',
+  recipe: 'meals', 'meal-profile': 'meals', 'meal-plan': 'meals',
 });
+let sourceNavigationSequence = 0;
+
+function sourceRequestCurrent(sequence, sourceId) {
+  return sequence === sourceNavigationSequence && new URL(window.location.href).searchParams.get('source') === sourceId;
+}
 
 function sourceStatus(view, message) {
   const root = document.getElementById(`tab-${view}`);
@@ -19,18 +25,34 @@ function sourceStatus(view, message) {
 }
 
 async function focusRecordedSource(sourceId) {
+  const sequence = ++sourceNavigationSequence;
   if (typeof sourceId !== 'string' || sourceId.length > 200) return;
   const parts = sourceId.split(':');
   const kind = parts[0];
   const view = sourceKinds[kind];
   if (!view) return;
   sourceStatus(view, '');
+  const householdSource = ['household', 'household-day', 'household-rhythm'].includes(kind);
+  const householdDate = householdSource && parts[1] && parts[1] !== 'default' ? parts[1] : null;
   if (view === 'meals') {
-    if (kind === 'household' && parts[1] && parts[1] !== 'default') {
-      document.getElementById('meal-family-start').value = parts[1];
+    if (householdDate) {
+      const parsedDate = new Date(`${householdDate}T12:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(householdDate) || !Number.isFinite(parsedDate.getTime()) ||
+          parsedDate.toISOString().slice(0, 10) !== householdDate) {
+        sourceStatus(view, 'Kilden har en ugyldig dato. Ingen anden dato er åbnet, og ingen ændringer er foretaget.');
+        return;
+      }
+      document.getElementById('meal-family-start').value = householdDate;
     }
     await refreshMeals();
-    if (kind === 'household' && parts[1] !== 'default') document.getElementById('meal-family-show').click();
+    if (!sourceRequestCurrent(sequence, sourceId)) return;
+    // Render the requested date after the awaited domain refresh. A synthetic
+    // button click could race a second async refresh and replace the highlight.
+    // showHousehold reconciles cards in place and preserves drafts on other dates.
+    if (householdDate) {
+      document.getElementById('meal-family-start').value = householdDate;
+      showHousehold(mealData.household);
+    }
   } else if (kind === 'organizer') await refreshOrganizer();
   else if (kind === 'memory') document.dispatchEvent(new CustomEvent('jarvis:memories-changed'));
   else if (kind === 'claim' || kind === 'personal-task' || kind === 'follow-up') {
@@ -53,7 +75,9 @@ async function focusRecordedSource(sourceId) {
     'personal-task': `[data-personal-task-id="${CSS.escape(parts[1] || '')}"]`,
     'follow-up': `[data-follow-up-id="${CSS.escape(parts[1] || '')}"]`,
     project: `[data-project-id="${CSS.escape(parts[1] || '')}"]`,
-    household: parts[1] === 'default' ? '#meal-family-form' : `[data-record-key="${CSS.escape(`family-day:${parts[1] || ''}`)}"]`,
+    household: householdDate ? `[data-household-date="${CSS.escape(householdDate)}"]` : '#meal-family-form',
+    'household-day': `[data-household-date="${CSS.escape(householdDate || '')}"]`,
+    'household-rhythm': `[data-household-date="${CSS.escape(householdDate || '')}"]`,
     recipe: `[data-record-key="${CSS.escape(`recipe:${parts[1] || ''}`)}"]`,
     'meal-profile': '#meal-profile-form',
     'meal-plan': `[data-record-key="${CSS.escape(`plan:${parts[1] || ''}`)}"]`,
@@ -61,10 +85,12 @@ async function focusRecordedSource(sourceId) {
   // The reviewed-memory editor finishes its own guarded refresh asynchronously.
   let target;
   for (let attempt = 0; attempt < (['memory','claim','personal-task','follow-up'].includes(kind) ? 12 : 2); attempt++) {
+    if (!sourceRequestCurrent(sequence, sourceId)) return;
     target = document.querySelector(selectors[kind]);
     if (target) break;
     await new Promise(resolve => setTimeout(resolve, 80));
   }
+  if (!sourceRequestCurrent(sequence, sourceId)) return;
   document.querySelectorAll('.source-target').forEach(node => node.classList.remove('source-target'));
   if (!target) {
     sourceStatus(view, 'Kilden kan ikke åbnes i den aktuelle oversigt. Den kan være arkiveret, slettet eller utilgængelig. Ingen ændringer er foretaget.');
@@ -78,6 +104,19 @@ document.addEventListener('jarvis:source-route', event => {
   if (event.detail?.id) {
     const view = sourceKinds[event.detail.id.split(':')[0]] || 'knowledge';
     focusRecordedSource(event.detail.id).catch(error => sourceStatus(view, `Kilden kunne ikke åbnes: ${error.message}`));
+  } else {
+    sourceNavigationSequence++;
+    document.querySelectorAll('.source-target').forEach(node => node.classList.remove('source-target'));
+    const query = window.history?.state?.knowledgeQuery;
+    if (new URL(window.location.href).searchParams.get('view') === 'knowledge' && typeof query === 'string' && query.length <= 240) {
+      const input = document.getElementById('knowledge-query');
+      if (input) {
+        input.value = query;
+        // Returning after a source-page reload restores the original local
+        // search as well as the URL. This performs a read, never an editor save.
+        document.getElementById('knowledge-search-form')?.requestSubmit();
+      }
+    }
   }
 });
 
@@ -86,7 +125,7 @@ const initialSource = new URL(window.location.href).searchParams.get('source');
 if (initialSource) {
   let opened = false;
   document.addEventListener('jarvis:refreshed', () => {
-    if (opened) return;
+    if (opened || new URL(window.location.href).searchParams.get('source') !== initialSource) return;
     opened = true;
     const view = sourceKinds[initialSource.split(':')[0]] || 'knowledge';
     selectTab(view, { fromHistory: true });
@@ -113,7 +152,7 @@ async function refreshIntelligenceCatalog() {
       knowledgeElement('span', `Udløsere: ${skill.triggers.join(' · ')}`, 'micro muted'));
     skillsRoot.append(card);
   }
-  const labels = { connected: 'Forbundet', configured: 'Konfigureret – endnu ikke verificeret',
+  const labels = { connected: 'Forbundet', configured: 'Konfigureret – endnu ikke verificeret', stale: 'Forældet forbindelsesstatus',
     not_configured: 'Ikke forbundet', expired: 'Login udløbet', unavailable: 'Midlertidigt utilgængelig' };
   const policies = { 'owner-opt-in': 'Notifikationer: kun ejer og opt-in', 'approval-before-write': 'Ændringer: godkendelse påkrævet',
     'explicit-request': 'Styring: kræver konkret anmodning', 'read-only': 'Kun hændelser / læsning' };
@@ -125,7 +164,7 @@ async function refreshIntelligenceCatalog() {
     if (connector.lastCheckedAt) card.append(knowledgeElement('span', `Senest kontrolleret: ${new Date(connector.lastCheckedAt).toLocaleString('da-DK')}`, 'micro muted'));
     if (connector.lastError) card.append(knowledgeElement('span', `Seneste fejl: ${connector.lastError}`, 'micro muted'));
     card.append(knowledgeElement('span', policies[connector.outboundPolicy] || 'Rettigheder afventer', 'micro muted'));
-    card.append(knowledgeElement('span', connector.capabilities.join(' · '), 'micro muted'));
+    card.append(knowledgeElement('span', 'Tekniske muligheder – ikke automatisk aktive rettigheder: ' + connector.capabilities.join(' · '), 'micro muted'));
     integrationRoot.append(card);
   }
   intelligenceCatalogLoaded = true;
@@ -149,6 +188,7 @@ document.getElementById('knowledge-search-form').addEventListener('submit', asyn
       button.type = 'button';
       button.addEventListener('click', () => {
         const view = sourceKinds[match.id.split(':')[0]] || 'knowledge';
+        history.replaceState({ ...(history.state || {}), knowledgeQuery: query }, '', window.location.href);
         selectTab(view, { sourceId: match.id });
         focusRecordedSource(match.id).catch(error => sourceStatus(view, `Kilden kunne ikke åbnes: ${error.message}`));
       });

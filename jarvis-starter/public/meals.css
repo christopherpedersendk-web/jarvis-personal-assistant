@@ -16,6 +16,7 @@
 .meal-search input, .meal-product input, .meal-field input, .meal-field select, .meal-field textarea { width: 100%; min-width: 0; max-width: 100%; }
 .meal-form > p, .meal-form > button { grid-column: 1 / -1; }
 .meal-form > .meal-structured-group { grid-column: 1 / -1; }
+.meal-form > .meal-field { grid-column: 1 / -1; }
 .meal-form > button { justify-self: start; }
 .meals-panel [hidden] { display: none !important; }
 .meal-v5-panel { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid #3b6679; border-radius: 12px; background: #0c2637; }
@@ -26,6 +27,11 @@
 .meal-structured-rows { display: grid; gap: .5rem; min-width: 0; }
 .meal-structured-row { display: grid; grid-template-columns: minmax(125px, 2fr) minmax(80px, 1fr) minmax(75px, 105px) auto; gap: .45rem; align-items: center; }
 .meal-child-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 1fr) auto; gap: .45rem; align-items: center; }
+.meal-child-row > .meal-child-age-status { grid-column: 1 / -1; line-height: 1.5; }
+.meal-child-row > .meal-age-confirm { grid-column: 1 / -1; justify-self: start; font-size: .75rem; }
+.meal-guests-editor { min-width: 0; }
+.meal-guests-editor > p { margin-top: 0; }
+.meal-portions-preview { min-height: 2.8em; line-height: 1.5; color: #d0e4ed; }
 .meal-inventory-row { display: grid; grid-template-columns: minmax(110px, 2fr) minmax(80px, 1fr) minmax(65px, 95px) minmax(110px, 1fr) auto; gap: .45rem; align-items: center; }
 .meal-structured-row > *, .meal-child-row > *, .meal-inventory-row > * { min-width: 0; width: 100%; margin: 0; }
 .meal-structured-row input, .meal-structured-row select, .meal-child-row input,
@@ -39,6 +45,7 @@
 .meal-rhythm-day { padding: .7rem 0; border-bottom: 1px solid #31556b; }
 .meal-rhythm-day-fields { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(170px, 2fr) minmax(120px, 1fr); gap: .45rem .8rem; align-items: start; }
 .meal-rhythm-day-fields > .inline-check { grid-column: 1 / -1; }
+.meal-rhythm-day-fields > .meal-structured-group { grid-column: 1 / -1; }
 .meal-swap { margin: .8rem 0; }
 .meal-swap > .meal-field { display: inline-flex; vertical-align: bottom; width: min(100%, 215px); margin-right: .6rem; }
 .meal-plan-controls, .meal-search, .meal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; margin: 1rem 0; }
@@ -60,6 +67,8 @@
 .meal-family-editor { margin-top: .6rem; padding-bottom: 0; }
 .meal-family-day .meal-actions { margin: .65rem 0 0; gap: .45rem; }
 .meal-family-day .meal-actions button { flex: 1 1 100px; font-size: .78rem; padding: .6rem .5rem; }
+.meal-family-day .meal-child-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.meal-family-day .meal-child-row > button[aria-label="Fjern barn"] { grid-column: 1 / -1; justify-self: start; }
 .meal-card { min-width: 0; background: rgba(40, 66, 85, .29); border: 1px solid rgba(160, 194, 217, .24); border-radius: 14px; padding: 1rem; margin: .7rem 0; }
 .meal-card > h3:first-child, .meal-card > h4:first-child { margin-top: 0; }
 .meal-card ul { margin: .5rem 0 1rem; padding-left: 1.4rem; line-height: 1.65; }
@@ -111,6 +120,8 @@
   .meal-structured-row { grid-template-columns: minmax(0, 1fr) 95px; }
   .meal-structured-row select { grid-column: 1; }
   .meal-structured-row button { grid-column: 2; }
+  .meal-child-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meal-child-row > button[aria-label="Fjern barn"] { grid-column: 1 / -1; justify-self: start; }
   .meal-inventory-row { grid-template-columns: minmax(0, 1fr) minmax(70px, 95px); }
   .meal-inventory-row select { grid-column: 1; }
   .meal-inventory-row input[type="date"] { grid-column: 1; }

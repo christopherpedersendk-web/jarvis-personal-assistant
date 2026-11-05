@@ -21,8 +21,11 @@ test('Hue device controls only accept known resource types, UUIDs, and brightnes
   await assert.rejects(hue.control({}, { kind: 'door_lock', id, on: true }), /Kun lys/);
   await assert.rejects(hue.control({}, { kind: 'light', id: '../oops', on: true }), /Hue-ID/);
   await assert.rejects(hue.control({}, { kind: 'light', id, brightness: 0 }), /Lysstyrke/);
-  await hue.control({}, { kind: 'grouped_light', id, on: false, brightness: 30 });
+  const paired = { bridgeIp: '192.168.1.2', applicationKey: 'synthetic-test-key', certificateFingerprint: 'AA:BB' };
+  await assert.rejects(hue.control({}, { kind: 'grouped_light', id, on: false, brightness: 30 }), /ikke parret/);
+  await hue.control(paired, { kind: 'grouped_light', id, on: false, brightness: 30 });
   assert.deepEqual(calls.at(-1), { method: 'PUT', path: `/clip/v2/resource/grouped_light/${id}`, body: { on: { on: false }, dimming: { brightness: 30 } } });
-  await hue.scene({}, id);
+  await assert.rejects(hue.scene({}, id), /ikke parret/);
+  await hue.scene(paired, id);
   assert.deepEqual(calls.at(-1).body, { recall: { action: 'active' } });
 });

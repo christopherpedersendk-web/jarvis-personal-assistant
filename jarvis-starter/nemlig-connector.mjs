@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
+import { createJobTransitions } from './job-state-transition.mjs';
 
 const READ_TOOLS = new Set(['search_products', 'get_product_details', 'get_basket']);
 const WRITE_TOOL = 'set_basket_quantities';
@@ -115,8 +116,9 @@ function fingerprint(basket) {
 }
 
 export class NemligShopping {
-  constructor({ state, save = async () => {}, callTool = callLocalNemligMcp, now = () => new Date(), validateSourcePlan = () => {} }) {
+  constructor({ state, save = async () => {}, transact, callTool = callLocalNemligMcp, now = () => new Date(), validateSourcePlan = () => {} }) {
     this.state = state; this.save = save; this.callTool = callTool; this.now = now;
+    this.transact = transact || createJobTransitions(state);
     this.validateSourcePlan = validateSourcePlan;
     this.state.nemligProposals ||= [];
     for (const proposal of this.state.nemligProposals) if (proposal.status === 'applying') {
@@ -129,7 +131,8 @@ export class NemligShopping {
 
   enabled() { return this.callTool !== callLocalNemligMcp || (process.env.NEMLIG_ENABLE_LIVE === 'yes' && Boolean(process.env.NEMLIG_MCP_DIR && process.env.NEMLIG_MCP_UV)); }
   status() { return { configured: this.enabled(), canPlaceOrder: false, approvalRequired: true,
-    proposals: this.state.nemligProposals.slice(0, 10).map(x => ({ ...x, revision: x.revision || 1 })) }; }
+    proposals: this.state.nemligProposals.slice(0, 10).map(x => ({ ...x, revision: x.revision || 1,
+      ...(x.status === 'applying' && !this.applying ? { status: 'unknown', result: { message: 'Slutstatus mangler. Kontrollér kurven; overførslen gentages ikke.' } } : {}) })) }; }
 
   async search(query, limit = 10) {
     if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100) throw new Error('Skriv et konkret varenavn.');
@@ -204,10 +207,17 @@ export class NemligShopping {
       expiresAt: new Date(this.now().getTime() + 15 * 60_000).toISOString(),
       basketFingerprint: fingerprint(before), additions, revision: 1, ...source,
     };
-    this.state.nemligProposals.unshift(proposal);
-    this.state.nemligProposals = this.state.nemligProposals.slice(0, 20);
-    await this.save();
-    return proposal;
+    return this.transact(['nemligProposals', 'shoppingDrafts'], async () => {
+      this.assertSourceCurrent(source);
+      this.state.nemligProposals.unshift(proposal);
+      this.state.nemligProposals = this.state.nemligProposals.slice(0, 20);
+      if (sourceDraft) {
+        const draft = this.state.shoppingDrafts.find(item => item.id === sourceDraft.id);
+        draft.status = 'proposed'; draft.proposalId = proposal.id;
+      }
+      await this.save();
+      return proposal;
+    });
   }
 
   async revise(id, { expectedRevision, items } = {}) {
@@ -221,9 +231,11 @@ export class NemligShopping {
       const originalIds = new Set(proposal.additions.map(x => x.productId));
       if (!Array.isArray(items) || items.some(x => !originalIds.has(String(x?.productId)))) throw new Error('Vælg nye varer i indkøbsforslaget, før et nyt kurvforslag oprettes.');
       const additions = this.additions(items, basket);
-      proposal.additions = additions; proposal.revision = expectedRevision + 1; proposal.updatedAt = this.now().toISOString();
-      await this.save();
-      return proposal;
+      return await this.transact(['nemligProposals'], async () => {
+        const current = this.pending(id, expectedRevision);
+        current.additions = additions; current.revision = expectedRevision + 1; current.updatedAt = this.now().toISOString();
+        await this.save(); return current;
+      });
     } finally { this.applying = false; }
   }
 
@@ -248,10 +260,20 @@ export class NemligShopping {
       const actual = await this.basket();
       this.pending(id, expectedRevision); // Sources/revision can change while the read is pending.
       if (fingerprint(actual) !== proposal.basketFingerprint) throw new Error('Nemlig-kurven blev ændret siden forslaget. Opret et nyt forslag.');
-      proposal.status = 'applying'; proposal.approvedAt = this.now().toISOString();
-      await this.save(); // Mark single-use BEFORE external mutation.
+      await this.transact(['nemligProposals'], async () => {
+        const current = this.pending(id, expectedRevision);
+        current.status = 'applying'; current.approvedAt = this.now().toISOString();
+        await this.save();
+      }); // Durably single-use BEFORE external mutation.
       try { this.assertSourceCurrent(proposal); }
-      catch (error) { proposal.status = 'superseded'; await this.save(); throw error; }
+      catch (error) {
+        await this.transact(['nemligProposals'], async () => {
+          const current = this.state.nemligProposals.find(item => item.id === id);
+          current.status = 'superseded'; await this.save();
+        });
+        throw error;
+      }
+      let status; let recordedResult;
       try {
         const result = await this.callTool(WRITE_TOOL, { items: proposal.additions.map(x => ({ product_id: x.productId, quantity: x.target })) });
         const outcomes = Array.isArray(result.results) ? result.results : [];
@@ -262,24 +284,31 @@ export class NemligShopping {
         const complete = outcomes.length === expectedIds.size && new Set(outcomeIds).size === expectedIds.size &&
           outcomes.every(x => x.status === 'ok' && expectedIds.has(String(x.product_id))) &&
           (!returnedBasket || proposal.additions.every(x => returnedQuantities.get(x.productId) === x.target));
-        proposal.status = complete ? 'completed' : 'partial';
-        proposal.result = { outcomes: outcomes.map(x => ({ productId: String(x.product_id), status: x.status === 'ok' ? 'ok' : 'failed' })),
+        status = complete ? 'completed' : 'partial';
+        recordedResult = { outcomes: outcomes.map(x => ({ productId: String(x.product_id), status: x.status === 'ok' ? 'ok' : 'failed' })),
           basket: returnedBasket, hasBasketError: Boolean(result.basket_error) };
       } catch {
-        proposal.status = 'unknown';
-        proposal.result = { message: 'Kurven kan være delvist opdateret. Kontroller den på Nemlig før et nyt forsøg.' };
+        status = 'unknown';
+        recordedResult = { message: 'Kurven kan være delvist opdateret. Kontroller den på Nemlig før et nyt forsøg.' };
       }
-      await this.save();
-      return proposal;
+      try { return await this.transact(['nemligProposals'], async () => {
+        const current = this.state.nemligProposals.find(item => item.id === id);
+        current.status = status; current.result = recordedResult; current.finishedAt = this.now().toISOString();
+        await this.save(); return current;
+      }); } catch (error) {
+        throw new Error('Kurvændringen kan være udført, men slutstatus kunne ikke gemmes. Kontrollér Nemlig; prøv ikke overførslen igen.', { cause: error });
+      }
     } finally { this.applying = false; }
   }
 
   async decline(id) {
     if (this.applying) throw new Error('Der behandles allerede en kurv. Vent et øjeblik.');
+    return this.transact(['nemligProposals'], async () => {
     const proposal = this.state.nemligProposals.find(x => x.id === id);
     if (!proposal || proposal.status !== 'pending') throw new Error('Forslaget kan ikke afvises.');
     proposal.status = 'declined';
     await this.save();
     return proposal;
+    });
   }
 }

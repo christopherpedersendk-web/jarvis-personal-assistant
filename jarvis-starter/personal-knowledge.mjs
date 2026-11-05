@@ -1,7 +1,10 @@
 // Lokal, kildebevidst retrieval over JARVIS' allerede gemte personlige data.
-// Ingen embeddings, netværkskald eller lagring af et sekundært indeks som standard.
+// Ingen modeldownload, ekstern indeksering eller diskbaseret sekundært indeks.
+// En eksplicit valgt lokal model kan supplere den altid tilgængelige ordsøgning.
 import { activePersonalMemory } from './secretary-core.mjs';
 import { currentClaim, claimConflicts } from './personal-claims.mjs';
+import { containsSecret } from './privacy.mjs';
+import { resolveHouseholdAttendance } from './meal-planner.mjs';
 
 const STOP = new Set('jeg mig min mine mit du din dine dit det den der de er var har havde kan skal vil hvad hvem hvor hvornår hvordan og eller af fra for med som til på om i at en et også lige noget nogle hos'.split(' '));
 
@@ -22,7 +25,14 @@ function makeDocument(id, type, label, text, source, updatedAt = '') {
 
 function childSummary(children) {
   const list = Array.isArray(children) ? children : [];
-  return `${list.length} børn${list.length ? ` (aldre: ${list.map(x => Number.isInteger(x.age) ? x.age : 'ikke oplyst').join(', ')})` : ''}`;
+  return `${list.length} børn${list.length ? ` (${list.map(x => `${Number.isInteger(x.age) ? `${x.age} år` : 'alder ikke oplyst'}${x.ageRecordedAt ? ` registreret ${x.ageRecordedAt}` : ''}; portionsfaktor ${x.portion ?? 'ikke oplyst'}`).join(', ')})` : ''}`;
+}
+
+function attendanceSummary(attendance) {
+  const guests = attendance.guests || { adults: 0, children: [] };
+  return `${attendance.adults} voksne × ${attendance.adultPortion ?? 1} · ${childSummary(attendance.children)}` +
+    `${guests.adults || guests.children.length ? ` · Gæster: ${guests.adults} voksne × ${guests.adultPortion ?? 1} og ${childSummary(guests.children)}` : ''}` +
+    `${attendance.occasion === 'holiday' ? ' · Ferie' : attendance.occasion === 'absence' ? ' · Fravær' : ''}`;
 }
 
 function checkedTypes(types) {
@@ -49,9 +59,26 @@ export function getRecordedHouseholdDay(state, date) {
     return { date: key, recorded: false, source: null,
       note: 'Fremmøde er ikke registreret for denne dato. Husstandens standard er ikke bevis for dagens fremmøde.' };
   }
-  return { date: key, recorded: true, adults: day.adults, children: structuredClone(day.children),
-    skip: Boolean(day.skip), theme: day.theme || 'everyday',
+  const attendance = resolveHouseholdAttendance(household, key);
+  return { date: key, recorded: true, adults: attendance.adults, children: structuredClone(attendance.children),
+    adultPortion: attendance.adultPortion, guests: structuredClone(attendance.guests),
+    occasion: attendance.occasion, servings: attendance.servings, skip: attendance.skip, theme: attendance.theme,
+    meaning: 'Brugerregistreret planlægningsgrundlag; ikke bevis for faktisk tilstedeværelse eller spiste måltider.',
     source: { kind: 'household-day', date: key, revision: household.revision || 1 } };
+}
+
+/** Effective explicit planning basis; kept separate from the exact-date API. */
+export function getEffectiveHouseholdDay(state, date) {
+  const key = checkedDate(date);
+  const attendance = resolveHouseholdAttendance(state.mealHousehold, key);
+  const known = attendance.householdConfirmed;
+  return { date: key, known, ...structuredClone(attendance),
+    authority: known ? attendance.attendanceSource : null,
+    source: known ? { kind: attendance.attendanceSource === 'day-override' ? 'household-day'
+      : attendance.attendanceSource === 'recurring-rhythm' ? 'household-rhythm' : 'household',
+      date: key, revision: state.mealHousehold.revision || 1 } : null,
+    meaning: known ? 'Eksplicit registreret planlægningsgrundlag, ikke observeret tilstedeværelse. Dato undtager rytme, som undtager standard.'
+      : 'Husstanden er ikke oplyst. Ingen fremmødeantagelse ud fra kalenderen.' };
 }
 
 function relevantHouseholdDates(days, now, max = 90) {
@@ -124,13 +151,13 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
   const household = state.mealHousehold;
   if (household?.configured === true && Number.isInteger(household.adults)) {
     documents.push({ ...makeDocument('household:default', 'household', 'Husstandens standard',
-      `${household.adults} voksne · ${childSummary(household.children)}. Dette er brugerens standard; konkrete datoer kan have andet fremmøde. Børneportioner er redigerbare planlægningsskøn.`,
+      `${attendanceSummary(household)}. Dette er brugerens standard; konkrete datoer kan have andet planlagt fremmøde. Portionsfaktorer er brugerens redigerbare planlægningsskøn, ikke forbrug.`,
       { kind: 'household', revision: household.revision || 1 }, household.updatedAt), confirmation: 'user-confirmed' });
   }
   for (const [date, day] of relevantHouseholdDates(household?.days, now)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !day || !Number.isInteger(day.adults) || !Array.isArray(day.children)) continue;
     documents.push({ ...makeDocument(`household:${date}`, 'household', 'Husstand på dato',
-      `${date}: ${day.adults} voksne · ${childSummary(day.children)} · Tema: ${day.theme || 'everyday'}${day.skip ? ' · Spiser ikke hjemme' : ''}. Registreret af brugeren, ikke udledt af kalenderaftaler.`,
+      `${date}: ${attendanceSummary(day)} · Tema: ${day.theme || 'everyday'}${day.skip ? ' · Spiser ikke hjemme' : ''}. Registreret af brugeren, ikke udledt af kalenderaftaler eller observeret forbrug.`,
       { kind: 'household-day', date, revision: household.revision || 1 }, household.updatedAt), confirmation: 'user-confirmed' });
   }
   for (const recipe of (state.recipes || []).filter(x => x && !x.archived && x.status === 'confirmed' && x.confirmed !== false).slice(0, 200)) {
@@ -152,9 +179,12 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
       { kind: 'meal-plan', id: plan.id, revision: plan.revision || 1 }, plan.updatedAt || plan.createdAt));
   }
   // Samtalehistorik, logfiler, .env, kalenderdetaljer, rå websider og
-  // ubekræftede opskrifter bliver ikke indekseret. Intet sekundært indeks
-  // betyder at en rettelse/arkivering virker allerede ved næste søgning.
-  return documents;
+  // ubekræftede opskrifter bliver ikke indekseret. Kilder genvalideres også
+  // efter asynkron søgning, så en rettelse/arkivering gælder med det samme.
+  // Legacy records were not all created through today's validation. Exclude the
+  // whole source (including labels/provenance) before either ranking path; never
+  // silently rewrite stored material or embed a redacted-but-misleading fragment.
+  return documents.filter(document => !containsSecret(JSON.stringify(document)));
 }
 
 function lexicalResults(query, documents) {
@@ -198,40 +228,83 @@ export class PersonalKnowledge {
   }
 
   householdDay(date) { return getRecordedHouseholdDay(this.state, date); }
+  effectiveHouseholdDay(date) { return getEffectiveHouseholdDay(this.state, date); }
 
-  // Et fremtidigt embeddings-adapter kan levere scores for de SAMME godkendte dokument-ID'er.
-  // Adapteren må ikke tilføje dokumenter, og fraværet af adapter er aldrig en fejl.
-  async searchHybrid(query, options = {}) {
+  // Scores can only rank current, permitted source IDs. Retrieval candidates are
+  // not factual answers, and similarity is never a confidence/probability of truth.
+  async retrieve(query, options = {}) {
     const boundedLimit = checkedSearch(query, options.limit);
     const allowedTypes = checkedTypes(options.types);
-    const documents = indexPersonalKnowledge(this.state, { now: this.now() }).filter(doc => !allowedTypes || allowedTypes.includes(doc.type));
-    const lexical = lexicalResults(query, documents);
-    if (!this.semanticScorer) return lexical.slice(0, boundedLimit);
+    const getDocuments = () => indexPersonalKnowledge(this.state, { now: this.now() });
+    const select = docs => docs.filter(doc => !allowedTypes || allowedTypes.includes(doc.type));
+    const fallback = (status, documents = getDocuments()) => ({
+      matches: lexicalResults(query, select(documents)).slice(0, boundedLimit),
+      mode: 'local-lexical', semantic: { status }, answerability: 'sources-only',
+    });
+    const documents = getDocuments();
+    if (!this.semanticScorer) return fallback('disabled', documents);
+    if (documents.length > 2000) return fallback('index-limit', documents);
+    const signature = doc => JSON.stringify([doc.text, doc.source, doc.updatedAt, doc.confirmation, doc.expiresAt]);
+    const before = new Map(documents.map(doc => [doc.id, signature(doc)]));
     let semantic;
     const timeoutMs = Math.max(50, Math.min(10_000, Number(options.semanticTimeoutMs) || 1500));
-    let timeout;
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    if (options.signal?.aborted) return fallback('cancelled');
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    let timeout, rejectAbort, timedOut = false;
     try {
       semantic = await Promise.race([
         Promise.resolve().then(() => this.semanticScorer(query, documents.map(({ id, text, source, updatedAt }) =>
-          ({ id, text, revision: source?.revision || 0, updatedAt })))),
-        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Semantisk søgning fik timeout.')), timeoutMs); }),
+          ({ id, text, revision: source?.revision || 0, updatedAt })), { signal: controller.signal })),
+        new Promise((_, reject) => { timeout = setTimeout(() => {
+          timedOut = true; controller.abort(); reject(new Error('Semantisk søgning fik timeout.'));
+        }, timeoutMs); }),
+        new Promise((_, reject) => { rejectAbort = () => reject(new Error('Semantisk søgning blev afbrudt.'));
+          controller.signal.addEventListener('abort', rejectAbort, { once: true }); }),
       ]);
     } catch {
-      // An unavailable embedding provider never blocks valid local results.
-      return lexical.slice(0, boundedLimit);
-    } finally { clearTimeout(timeout); }
-    if (!semantic || typeof semantic !== 'object') return lexical.slice(0, boundedLimit);
-    const byId = new Map(lexical.map(doc => [doc.id, doc.score]));
-    const best = documents.map(doc => {
-      const boundedSemantic = Math.max(0, Math.min(1, Number(semantic[doc.id]) || 0));
-      return { ...doc, score: Number(((byId.get(doc.id) || 0) + boundedSemantic * 2).toFixed(3)) };
-    }).filter(doc => doc.score > 0).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-    return best.slice(0, boundedLimit);
+      // Never return a pre-inference snapshot after a correction/expiry.
+      return fallback(timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'unavailable');
+    } finally { clearTimeout(timeout); options.signal?.removeEventListener('abort', onAbort);
+      controller.signal.removeEventListener('abort', rejectAbort); }
+    if (controller.signal.aborted) return fallback('cancelled');
+    if (!semantic || typeof semantic !== 'object' || Array.isArray(semantic)) return fallback('invalid-result');
+    const current = select(getDocuments());
+    const lexical = lexicalResults(query, current);
+    const lexicalRanks = new Map(lexical.map((doc, index) => [doc.id, index + 1]));
+    const semanticOrder = current.filter(doc => before.get(doc.id) === signature(doc) && Object.hasOwn(semantic, doc.id) &&
+      typeof semantic[doc.id] === 'number' && Number.isFinite(semantic[doc.id]) && semantic[doc.id] > 0 && semantic[doc.id] <= 1)
+      .sort((a, b) => semantic[b.id] - semantic[a.id] || a.id.localeCompare(b.id));
+    const semanticRanks = new Map(semanticOrder.map((doc, index) => [doc.id, index + 1]));
+    // Reciprocal-rank fusion avoids mixing uncalibrated BM25-like scores with
+    // E5 cosine values, whose absolute values commonly lie around 0.7–1.0.
+    const matches = current.map(doc => {
+      const lexicalRank = lexicalRanks.get(doc.id), semanticRank = semanticRanks.get(doc.id);
+      return { ...doc,
+        score: (lexicalRank ? 0.4 / (60 + lexicalRank) : 0) + (semanticRank ? 0.6 / (60 + semanticRank) : 0),
+        retrieval: { lexicalRank: lexicalRank || null, semanticRank: semanticRank || null,
+          semanticSimilarity: semanticRank ? semantic[doc.id] : null },
+      };
+    }).filter(doc => doc.score > 0).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, boundedLimit);
+    return { matches, mode: semanticOrder.length ? 'local-hybrid' : 'local-lexical',
+      semantic: { status: current.some(doc => before.get(doc.id) !== signature(doc)) ? 'source-changed' : 'ready' },
+      answerability: 'sources-only' };
+  }
+
+  async searchHybrid(query, options = {}) { return (await this.retrieve(query, options)).matches; }
+
+  async contextAsync(query, options = {}) {
+    const { matches } = await this.retrieve(query, { ...options, limit: 6 });
+    return this.formatContext(matches);
+  }
+
+  formatContext(matches) {
+    return matches.map(doc => `[${doc.id} · ${doc.label}${doc.source.revision ? ` · revision ${doc.source.revision}` : ''}${doc.updatedAt ? ` · opdateret ${doc.updatedAt}` : ''}] ${doc.text}`)
+      .join('\n').slice(0, 5200);
   }
 
   context(query) {
-    return this.search(query, { limit: 6 })
-      .map(doc => `[${doc.id} · ${doc.label}${doc.source.revision ? ` · revision ${doc.source.revision}` : ''}${doc.updatedAt ? ` · opdateret ${doc.updatedAt}` : ''}] ${doc.text}`)
-      .join('\n').slice(0, 5200);
+    return this.formatContext(this.search(query, { limit: 6 }));
   }
 }

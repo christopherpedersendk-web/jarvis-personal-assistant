@@ -3,6 +3,9 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { discordImageAttachment, fetchRecipeResource, imageMatchesType, MAX_RECIPE_IMAGE_BYTES, recipeUrl } from './recipe-fetch.mjs';
+import { createJobTransitions } from './job-state-transition.mjs';
+import { BoundedJobQueue } from './bounded-queue.mjs';
+import { rejectSecrets } from './privacy.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SNOWFLAKE = /^\d{15,22}$/;
@@ -15,9 +18,7 @@ const copy = value => structuredClone(value);
 const plain = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
 
 function noSecrets(value) {
-  if (/\bsk-[A-Za-z0-9_-]{16,}|\b(?:authorization|bearer|password|passwd|api[_ -]?key|api-nøgle|adgangskode)\s*[:=]\s*\S+/iu.test(value)) {
-    throw new Error('Gem ikke adgangskoder, tokens eller API-nøgler som en opskrift.');
-  }
+  rejectSecrets(value);
 }
 
 export function isRecipeCaptureRequest(text) { return typeof text === 'string' && CAPTURE_PREFIX.test(text); }
@@ -155,18 +156,27 @@ function publicRecipe(recipe) {
 }
 
 export class RecipeMemory {
-  constructor({ state, save = async () => {}, now = () => new Date(), dataDirectory, extractor = null, fetchResource = fetchRecipeResource } = {}) {
+  constructor({ state, save = async () => {}, transact, now = () => new Date(), dataDirectory, extractor = null, fetchResource = fetchRecipeResource,
+    onChanged = async () => {}, queue = new BoundedJobQueue({ concurrency: 1, maxWaiting: 8 }) } = {}) {
     if (!state || typeof state !== 'object') throw new Error('Opskriftshukommelsen mangler tilstand.');
     this.state = state; this.save = save; this.now = now; this.extractor = extractor; this.fetchResource = fetchResource;
+    this.transact = transact || createJobTransitions(state);
     this.mediaDirectory = dataDirectory ? join(resolve(dataDirectory), 'recipe-media') : null;
-    this.state.recipes ||= []; this.queue = Promise.resolve();
+    this.state.recipes ||= []; this.queue = queue; this.onChanged = onChanged;
+    for (const recipe of this.state.recipes) if (['received', 'processing'].includes(recipe.processingStatus)) {
+      recipe.processingStatus = 'error';
+      recipe.extraction ||= { status: 'saved-only', messages: [] };
+      recipe.extraction.messages.push('Behandlingen blev afbrudt. Originalmaterialet er bevaret; gennemgå eller genoptag udtræk.');
+    }
   }
 
   serialize(operation) {
-    const result = this.queue.then(operation);
-    this.queue = result.catch(() => {});
-    return result;
+    try { return this.queue.enqueue('Opskrift · gem eller gennemgå', operation).promise; }
+    catch (error) { return Promise.reject(error); }
   }
+
+  jobs() { return this.queue.snapshot(); }
+  cancelWaiting(id) { return this.queue.cancel(id); }
 
   list() { return this.state.recipes.filter(item => !item.archived).slice(0, 200).map(publicRecipe); }
   get(id) {
@@ -207,7 +217,42 @@ export class RecipeMemory {
       text: plain(text), instructions: '', diet: 'unknown', minutes: null, servings: null, themes: [], ingredients: [], ingredientLines: [],
       links: [], media: [], source: origin, extraction: { status: 'saved-only', messages: [] },
       processingStatus: 'received', feedback: { favorite: false, doNotSuggest: false },
+      original: { text, urls: links, attachments: images.map(({ id, filename, contentType, size }) => ({ id, filename, contentType, size })) },
       createdAt: timestamp, updatedAt: timestamp, reviewedAt: null, captureKey };
+    // Receipt is durable BEFORE any fetch/model call. A process exit cannot
+    // turn an acknowledged Discord capture into a silently lost recipe.
+    await this.transact(['recipes'], async () => { this.state.recipes.unshift(copy(recipe)); await this.save(); });
+    return this.processRecipe(recipe, { links, images, deadline });
+  }
+
+  resume(id, { expectedRevision } = {}) {
+    return this.serialize(async () => {
+      const recipe = this.get(id);
+      if (!Number.isInteger(expectedRevision) || recipe.revision !== expectedRevision) throw new Error('Opskriften er ændret. Genindlæs før du genoptager udtrækket.');
+      if (recipe.confirmed || !['error', 'received', 'processing'].includes(recipe.processingStatus))
+        throw new Error('Kun et afbrudt udtræk kan genoptages. Gennemgå eksisterende udkast manuelt.');
+      if (!recipe.original) throw new Error('Originalmaterialet mangler. Gennemgå opskriften manuelt.');
+      const extractionImages = [];
+      for (const descriptor of recipe.media || []) {
+        try { extractionImages.push({ ...await this.media(id, descriptor.id) }); }
+        catch { recipe.extraction.messages.push('Et gemt billede kunne ikke læses. Gennemgå originalkilden eller send billedet igen.'); }
+      }
+      if (recipe.original.attachments?.length > extractionImages.length)
+        recipe.extraction.messages.push('Et oprindeligt billede blev ikke gemt. Discord-linket genbruges ikke; send billedet igen.');
+      return this.processRecipe(recipe, { links: recipe.original.urls || [], images: [], extractionImages,
+        deadline: Date.now() + 45_000, resume: true });
+    });
+  }
+
+  async processRecipe(recipe, { links, images, deadline, extractionImages = [], resume = false }) {
+    const text = recipe.original.text;
+    const origin = recipe.source;
+    if (resume) { recipe.links = []; recipe.extraction.status = 'saved-only'; }
+    await this.transact(['recipes'], async () => {
+      const current = this.state.recipes.find(item => item.id === recipe.id);
+      if (!current || current.revision !== recipe.revision) throw new Error('Opskriften blev ændret før udtræk.');
+      current.processingStatus = 'processing'; await this.save();
+    });
     for (const url of links) {
       try {
         if (Date.now() >= deadline) throw new Error('Tidsgrænsen er nået.');
@@ -227,7 +272,6 @@ export class RecipeMemory {
         recipe.extraction.messages.push(error.code === 'blocked' ? 'Link gemt uden hentning: adressen er ikke tilladt af netværksbeskyttelsen.' : 'Link gemt; indholdet kunne ikke hentes. Login, video og dynamiske sider læses ikke automatisk.');
       }
     }
-    const extractionImages = [];
     let mediaSize = this.state.recipes.reduce((sum, item) => sum + (item.media || []).reduce((amount, file) => amount + Number(file.size || 0), 0), 0);
     for (const attachment of images) {
       try {
@@ -239,8 +283,17 @@ export class RecipeMemory {
         await this.ensureMediaDirectory();
         const id = randomUUID();
         const file = await open(join(this.mediaDirectory, `${id}.${IMAGE_EXTENSIONS[resource.contentType]}`), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-        try { await file.writeFile(resource.buffer); } finally { await file.close(); }
-        recipe.media.push({ id, filename: attachment.filename, contentType: resource.contentType, size: resource.buffer.length });
+        try { await file.writeFile(resource.buffer); await file.sync(); } finally { await file.close(); }
+        const descriptor = { id, filename: attachment.filename, contentType: resource.contentType, size: resource.buffer.length,
+          sha256: createHash('sha256').update(resource.buffer).digest('hex') };
+        recipe.media.push(descriptor);
+        // Persist the descriptor before calling a model. Restart can then use
+        // the original private file without a stale/signed Discord URL.
+        await this.transact(['recipes'], async () => {
+          const current = this.state.recipes.find(item => item.id === recipe.id);
+          if (!current || current.revision !== recipe.revision) throw new Error('Opskriften er ændret.');
+          current.media = copy(recipe.media); await this.save();
+        });
         mediaSize += resource.buffer.length;
         extractionImages.push({ filename: attachment.filename, contentType: resource.contentType, buffer: resource.buffer });
       } catch { recipe.extraction.messages.push('Et billede kunne ikke gemmes sikkert. Send PNG/JPEG/WebP på højst 2 MB igen, eller indsæt teksten.'); }
@@ -266,13 +319,16 @@ export class RecipeMemory {
     if (recipe.ingredientLines.length > recipe.ingredients.length) recipe.extraction.messages.push('Ikke alle ingrediensmængder kunne aflæses. Gennemgå samtlige linjer før bekræftelse.');
     recipe.extraction.messages.push('Opskriften er et uverificeret udkast og bruges først i madplaner, når du har gennemgået og bekræftet den.');
     recipe.processingStatus = 'review_required';
-    this.state.recipes.unshift(recipe);
-    await this.save();
+    await this.transact(['recipes'], async () => {
+      const index = this.state.recipes.findIndex(item => item.id === recipe.id);
+      if (index < 0 || this.state.recipes[index].revision !== recipe.revision) throw new Error('Opskriften blev ændret under udtræk. Originalmaterialet er bevaret.');
+      this.state.recipes[index] = recipe; await this.save();
+    });
     return publicRecipe(recipe);
   }
 
   update(id, input = {}) {
-    return this.serialize(async () => {
+    return this.serialize(() => this.transact(['recipes'], async () => {
       const recipe = this.state.recipes.find(item => item.id === id && !item.archived);
       if (!recipe) throw new Error('Opskriften findes ikke.');
       if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== recipe.revision) throw new Error('Opskriften er ændret. Genindlæs før du gemmer.');
@@ -297,19 +353,19 @@ export class RecipeMemory {
         processingStatus: remainsConfirmed ? 'ready' : 'review_required',
         feedback: { favorite: input.favorite ?? recipe.feedback?.favorite ?? false,
           doNotSuggest: input.doNotSuggest ?? recipe.feedback?.doNotSuggest ?? false } });
-      await this.save(); return publicRecipe(recipe);
-    });
+      await this.onChanged(id); await this.save(); return publicRecipe(recipe);
+    }));
   }
 
   archive(id) {
-    return this.serialize(async () => {
+    return this.serialize(() => this.transact(['recipes'], async () => {
       const recipe = this.state.recipes.find(item => item.id === id && !item.archived);
       if (!recipe) throw new Error('Opskriften findes ikke.');
       recipe.archived = true; recipe.status = 'archived'; recipe.confirmed = false;
       recipe.processingStatus = 'archived';
       recipe.revision++; recipe.updatedAt = this.now().toISOString();
-      await this.save(); return publicRecipe(recipe);
-    });
+      await this.onChanged(id); await this.save(); return publicRecipe(recipe);
+    }));
   }
 
   usable() {
@@ -347,6 +403,7 @@ export class RecipeMemory {
       if (!stat.isFile() || stat.size > MAX_RECIPE_IMAGE_BYTES || stat.size !== descriptor.size) throw new Error('Billedet kunne ikke verificeres.');
       const buffer = await file.readFile();
       if (!imageMatchesType(buffer, descriptor.contentType)) throw new Error('Billedet kunne ikke verificeres.');
+      if (descriptor.sha256 && createHash('sha256').update(buffer).digest('hex') !== descriptor.sha256) throw new Error('Billedets indhold er ændret siden gemning.');
       return { buffer, contentType: descriptor.contentType, filename: descriptor.filename };
     } finally { await file.close(); }
   }

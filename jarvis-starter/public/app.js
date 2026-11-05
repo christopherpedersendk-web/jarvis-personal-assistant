@@ -169,7 +169,9 @@ function renderOverview(state) {
 }
 
 initializeDashboard();
-selectTab(new URL(window.location.href).searchParams.get('view') || sessionStorage.getItem('jarvisTab') || 'home', { replace: true });
+const initialRoute = new URL(window.location.href);
+selectTab(initialRoute.searchParams.get('view') || sessionStorage.getItem('jarvisTab') || 'home',
+  { replace: true, sourceId: initialRoute.searchParams.get('source') });
 window.addEventListener('popstate', () => {
   const url = new URL(window.location.href);
   selectTab(url.searchParams.get('view') || 'home', { fromHistory: true });
@@ -920,6 +922,8 @@ async function handleVoiceTool(channel, call) {
     } else if (call.name === 'search_personal_knowledge') {
       output = await api('/api/knowledge/search', { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+    } else if (call.name === 'get_household_day') {
+      output = await api('/api/knowledge/household/' + encodeURIComponent(args.date));
     } else if (['list_collections', 'get_collection', 'search_collection_items', 'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item'].includes(call.name)) {
       output = await handleOrganizerVoice(call.name, args);
     } else if (call.name === 'list_hue_devices') {

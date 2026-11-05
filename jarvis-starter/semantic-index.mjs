@@ -16,38 +16,107 @@ function similarity(a, b) {
 }
 
 const digest = value => createHash('sha256').update(value).digest('hex');
+const aborted = () => Object.assign(new Error('Semantisk søgning blev afbrudt.'), { code: 'SEMANTIC_CANCELLED' });
 
 /**
- * Revision-aware embeddings cache. An embedding implementation must be selected
- * explicitly; by default JARVIS continues to use its local lexical search.
- * Documents passed here have already passed active-source and privacy filtering.
+ * Revision-aware, bounded, in-memory embeddings cache. Only an explicitly chosen
+ * embedding implementation is called. Personal texts/vectors are never persisted.
+ * Newer source revisions win even if an older inference finishes afterwards.
  */
 export class IncrementalSemanticIndex {
-  constructor({ embed, external = false, allowExternal = false } = {}) {
-    if (typeof embed !== 'function') throw new Error('Der er ikke valgt en embeddingmodel.');
+  constructor({ embed, embedBatch, external = false, allowExternal = false, batchSize = 8, maxPending = 4 } = {}) {
+    if (typeof embed !== 'function' && typeof embedBatch !== 'function') throw new Error('Der er ikke valgt en embeddingmodel.');
     if (external && !allowExternal) throw new Error('Ekstern indeksering kræver et eksplicit tilvalg.');
     this.embed = embed;
+    this.embedBatch = embedBatch;
     this.external = external;
-    this.cache = new Map();
+    this.batchSize = Math.max(1, Math.min(16, Number(batchSize) || 8));
+    this.maxPending = Math.max(1, Math.min(16, Number(maxPending) || 4));
+    this.cache = new Map(); this.wanted = new Map(); this.queue = []; this.running = false;
+    this.counts = { embeddedDocuments: 0, embeddedQueries: 0 };
   }
 
-  async score(query, documents) {
-    if (!Array.isArray(documents) || documents.length > 2000 || typeof query !== 'string' || query.length > 240)
-      throw new Error('Ugyldige semantiske søgeinput.');
-    const available = new Set(documents.map(item => item.id));
-    // Remove archived, expired and otherwise filtered documents immediately.
-    for (const id of this.cache.keys()) if (!available.has(id)) this.cache.delete(id);
+  score(query, documents, { signal } = {}) {
+    if (!Array.isArray(documents) || documents.length > 2000 || typeof query !== 'string' || !query.trim() || query.length > 240)
+      return Promise.reject(new Error('Ugyldige semantiske søgeinput.'));
+    if (signal?.aborted) return Promise.reject(aborted());
+    const ids = new Set();
+    const snapshot = [];
     for (const doc of documents) {
-      if (typeof doc.id !== 'string' || typeof doc.text !== 'string' || doc.text.length > 4000)
-        throw new Error('Ugyldigt indekseringsdokument.');
-      const key = `${doc.revision || 0}:${digest(doc.text)}`;
-      if (this.cache.get(doc.id)?.key === key) continue;
-      const embedding = vector(await this.embed(doc.text));
-      this.cache.set(doc.id, { key, embedding });
+      if (typeof doc?.id !== 'string' || !doc.id || doc.id.length > 240 || ids.has(doc.id) ||
+          typeof doc.text !== 'string' || !doc.text.trim() || doc.text.length > 4000)
+        return Promise.reject(new Error('Ugyldigt indekseringsdokument.'));
+      ids.add(doc.id);
+      snapshot.push({ id: doc.id, text: doc.text, key: `${doc.revision || 0}:${digest(doc.text)}` });
     }
-    const queryVector = vector(await this.embed(query));
-    return Object.fromEntries(documents.map(doc => [doc.id, similarity(queryVector, this.cache.get(doc.id).embedding)]));
+    // Prune immediately, not after an awaited inference. In-flight older work
+    // may finish but cannot repopulate a removed/revised document in the cache.
+    this.wanted = new Map(snapshot.map(doc => [doc.id, doc.key]));
+    for (const [id, cached] of this.cache) if (this.wanted.get(id) !== cached.key) this.cache.delete(id);
+    if (!snapshot.length) return Promise.resolve({});
+    if (this.queue.length >= this.maxPending) return Promise.reject(Object.assign(new Error('Semantikkøen er fuld.'), { code: 'SEMANTIC_QUEUE_FULL' }));
+    const result = new Promise((resolve, reject) => {
+      const row = { query, snapshot, signal, resolve, reject, started: false };
+      row.onAbort = () => {
+        if (row.started) return; // the running provider receives the same signal
+        this.queue = this.queue.filter(item => item !== row);
+        row.snapshot = []; reject(aborted());
+      };
+      signal?.addEventListener('abort', row.onAbort, { once: true });
+      this.queue.push(row);
+    });
+    void this.drain();
+    return result;
   }
 
-  stats() { return { cachedDocuments: this.cache.size, provider: this.external ? 'external-opt-in' : 'local' }; }
+  async embeddings(texts, kind, signal) {
+    if (signal?.aborted) throw aborted();
+    const raw = this.embedBatch ? await this.embedBatch(texts, { kind, signal })
+      : await Promise.all(texts.map(text => this.embed(text, { kind, signal })));
+    if (signal?.aborted) throw aborted();
+    if (!Array.isArray(raw) || raw.length !== texts.length) throw new Error('Modellen returnerede et forkert antal embeddings.');
+    return raw.map(vector);
+  }
+
+  async run(row) {
+    const local = new Map();
+    for (let offset = 0; offset < row.snapshot.length; offset += this.batchSize) {
+      if (row.signal?.aborted) throw aborted();
+      const batch = row.snapshot.slice(offset, offset + this.batchSize).filter(doc => this.wanted.get(doc.id) === doc.key);
+      const missing = batch.filter(doc => this.cache.get(doc.id)?.key !== doc.key);
+      if (missing.length) {
+        const values = await this.embeddings(missing.map(doc => doc.text), 'passage', row.signal);
+        this.counts.embeddedDocuments += missing.length;
+        for (let index = 0; index < missing.length; index++) {
+          const doc = missing[index];
+          if (this.wanted.get(doc.id) === doc.key) this.cache.set(doc.id, { key: doc.key, embedding: values[index] });
+        }
+      }
+      for (const doc of batch) {
+        const entry = this.cache.get(doc.id);
+        if (entry?.key === doc.key) local.set(doc.id, entry);
+      }
+    }
+    if (!local.size) return {};
+    const queryVector = (await this.embeddings([row.query], 'query', row.signal))[0];
+    this.counts.embeddedQueries++;
+    return Object.fromEntries([...local].filter(([id, entry]) => this.wanted.get(id) === entry.key)
+      .map(([id, entry]) => [id, similarity(queryVector, entry.embedding)]));
+  }
+
+  async drain() {
+    if (this.running) return;
+    this.running = true;
+    try {
+      while (this.queue.length) {
+        const row = this.queue.shift(); row.started = true;
+        try { row.resolve(await this.run(row)); }
+        catch (error) { row.reject(error); }
+        finally { row.signal?.removeEventListener('abort', row.onAbort); row.snapshot = []; }
+      }
+    } finally { this.running = false; }
+  }
+
+  stats() { return { cachedDocuments: this.cache.size, provider: this.external ? 'external-opt-in' : 'local',
+    running: this.running, queued: this.queue.length, ...this.counts }; }
 }

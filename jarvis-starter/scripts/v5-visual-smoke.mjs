@@ -44,11 +44,223 @@ async function signIn(page) {
   await page.locator('#workspace').waitFor({ state: 'visible' });
 }
 
+async function uiWrite(page, method, path, action, statuses = [200]) {
+  const waiting = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === method);
+  await action();
+  const response = await waiting;
+  const body = await response.json();
+  assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
+  await page.waitForFunction(() => !document.querySelector('.meal-family-day[aria-busy="true"], #meal-family-form[aria-busy="true"], #meal-recipe-form[aria-busy="true"]'));
+  return { body, input: response.request().postDataJSON(), status: response.status() };
+}
+
+async function fixtureRead(page, path) {
+  const response = await page.request.get(`${origin}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(response.status(), 200, path); return response.json();
+}
+
+async function openDetails(details) {
+  if (!await details.evaluate(element => element.open)) await details.locator(':scope > summary').click();
+}
+
+async function verifyHouseholdAndSources(page, width, height, label) {
+  const day = ({ desktop: '2026-12-07', mobile: '2026-12-14', 'webkit-desktop': '2026-12-21', 'webkit-mobile': '2026-12-28' })[label];
+  const tomorrow = new Date(`${day}T12:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const absentDay = tomorrow.toISOString().slice(0, 10);
+  await page.locator('[data-tab="meals"]').first().click();
+  await page.evaluate(() => refreshMeals());
+  const household = page.locator('#meal-family-form');
+  await household.getByRole('button', { name: 'Kassér husstandskladde og hent gemte oplysninger', exact: true }).click();
+  await page.evaluate(() => refreshMeals());
+  await page.getByLabel('Brug ugentlig eller flerugers rytme', { exact: true }).uncheck();
+  await household.getByLabel('Voksne som standard', { exact: true }).fill('2');
+  await household.getByLabel('Portionsfaktor for voksne', { exact: true }).fill('1.25');
+  while (await household.getByRole('button', { name: 'Fjern barn', exact: true }).count())
+    await household.getByRole('button', { name: 'Fjern barn', exact: true }).first().click();
+  await household.getByRole('button', { name: '+ Tilføj barn', exact: true }).click();
+  await household.getByLabel('Barnets alder', { exact: true }).fill('8');
+  await household.getByLabel('Portionsfaktor', { exact: true }).fill('0.75');
+  const savedHousehold = await uiWrite(page, 'PUT', '/api/meals/household',
+    () => household.locator('button[type="submit"]').click());
+  assert.equal(savedHousehold.body.household.adultPortion, 1.25);
+  assert.equal(savedHousehold.body.household.children[0].portion, 0.75);
+  assert.match(savedHousehold.body.household.children[0].ageRecordedAt, /^\d{4}-\d{2}-\d{2}$/,
+    `${label}: a user-entered age has an explicit recording date, not an invented birthday`);
+
+  await page.getByLabel('Brug ugentlig eller flerugers rytme', { exact: true }).check();
+  await page.getByLabel('Mandag hvor rytmen begynder', { exact: true }).fill('2026-12-07');
+  await openDetails(page.locator('.meal-rhythm-week').first());
+  const monday = page.locator('.meal-rhythm-day').first();
+  await monday.getByLabel('Mandag – brug særlig husstand', { exact: true }).check();
+  await monday.getByLabel('Voksne hjemme', { exact: true }).fill('1');
+  await monday.getByLabel('Portionsfaktor for voksne', { exact: true }).fill('1');
+  const rhythmSaved = await uiWrite(page, 'PUT', '/api/meals/household',
+    () => household.locator('button[type="submit"]').click());
+  assert.equal(rhythmSaved.input.expectedRevision, savedHousehold.body.household.revision);
+  assert.equal(rhythmSaved.body.household.rhythm.weeks[0]['1'].adults, 1);
+
+  await page.locator('#meal-family-start').fill(day);
+  await page.locator('#meal-family-show').click();
+  const dateCard = page.locator(`[data-household-date="${day}"]`);
+  const absentCard = page.locator(`[data-household-date="${absentDay}"]`);
+  assert.match(await dateCard.locator('.meal-status').textContent(), /Familierytme/);
+  assert.match(await absentCard.locator('.meal-status').textContent(), /Standardhusstand/);
+  assert.match(await absentCard.innerText(), /3,25 portioner/,
+    `${label}: explicit defaults supply 2 × 1.25 + 0.75 portions on an unruled day`);
+  await openDetails(dateCard.locator('.meal-family-editor'));
+  await dateCard.getByLabel('Voksne hjemme', { exact: true }).fill('2');
+  await dateCard.getByLabel('Portionsfaktor for voksne', { exact: true }).fill('1.25');
+  const residentChildren = dateCard.getByRole('group', { name: 'Børn hjemme – alder og portioner', exact: true });
+  await residentChildren.getByRole('button', { name: '+ Tilføj barn', exact: true }).click();
+  await residentChildren.getByLabel('Barnets alder', { exact: true }).fill('8');
+  await residentChildren.getByLabel('Portionsfaktor', { exact: true }).fill('0.75');
+  await dateCard.getByLabel('Voksne gæster', { exact: true }).fill('1');
+  await dateCard.getByLabel('Dagens forhold', { exact: true }).selectOption('holiday');
+  assert.match(await dateCard.locator('.meal-portions-preview').textContent(), /4,25 portioner/,
+    `${label}: guests are additional, and holiday does not invent attendance`);
+  const savedDate = await uiWrite(page, 'PUT', `/api/meals/household/days/${day}`,
+    () => dateCard.getByRole('button', { name: 'Gem dag', exact: true }).click());
+  assert.equal(savedDate.input.expectedRevision, rhythmSaved.body.household.revision);
+  assert.equal(savedDate.body.household.days[day].guests.adults, 1);
+  assert.equal(savedDate.body.household.days[day].occasion, 'holiday');
+  assert.match(await dateCard.locator('.meal-status').textContent(), /Dagsundtagelse/);
+
+  await openDetails(absentCard.locator('.meal-family-editor'));
+  await absentCard.getByLabel('Dagens forhold', { exact: true }).selectOption('absence');
+  assert.match(await absentCard.locator('.meal-portions-preview').textContent(), /^0 portioner/);
+  const savedAbsence = await uiWrite(page, 'PUT', `/api/meals/household/days/${absentDay}`,
+    () => absentCard.getByRole('button', { name: 'Gem dag', exact: true }).click());
+  assert.equal(savedAbsence.body.household.days[absentDay].adults, 0);
+  assert.deepEqual(savedAbsence.body.household.days[absentDay].children, []);
+  assert.equal(savedAbsence.body.household.days[absentDay].skip, true);
+
+  await openDetails(dateCard.locator('.meal-family-editor'));
+  await dateCard.getByLabel('Voksne hjemme', { exact: true }).fill('3');
+  await dateCard.getByLabel('Voksne hjemme', { exact: true }).focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await dateCard.getByLabel('Portionsfaktor for voksne', { exact: true }).evaluate(el => el === document.activeElement), true,
+    `${label}: keyboard tab order reaches the labelled adult portion editor`);
+  await page.keyboard.press('Shift+Tab');
+  await page.evaluate(() => { window.syntheticHouseholdFocus = document.activeElement; });
+  const draftRevision = Number(await dateCard.getAttribute('data-revision'));
+  await page.evaluate(() => refreshMeals());
+  assert.equal(await page.evaluate(() => document.activeElement === window.syntheticHouseholdFocus && window.syntheticHouseholdFocus.isConnected), true,
+    `${label}: polling must not detach the focused dirty household card`);
+  assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
+  await page.locator('#meal-family-days').screenshot({ path: join(screenshotDir, `${label}-household.png`), animations: 'disabled' });
+
+  const recipeTitle = `Syntetisk risret ${label}`;
+  await page.locator('#meal-recipe-text').fill(`${recipeTitle}\n200 g ris\nKog risene. Syntetisk testkilde uden persondata.`);
+  const captured = await uiWrite(page, 'POST', '/api/recipes',
+    () => page.locator('#meal-recipe-form button[type="submit"]').click(), [201]);
+  const recipeId = captured.body.recipe.id;
+  const recipeCard = page.locator(`[data-record-key="recipe:${recipeId}"]`);
+  await recipeCard.waitFor({ state: 'visible' });
+  await openDetails(recipeCard.locator(':scope > .meal-details'));
+  const rawTitle = `Ugemt opskriftsrettelse ${label}`;
+  await recipeCard.getByLabel('Titel', { exact: true }).fill(rawTitle);
+  const ingredients = recipeCard.getByRole('group', { name: 'Ingredienser og mængder', exact: true });
+  await ingredients.getByRole('button', { name: '+ Tilføj vare', exact: true }).click();
+  await ingredients.getByLabel('Ingrediens', { exact: true }).last().fill('Ufærdig testvare');
+  await ingredients.getByLabel('Mængde', { exact: true }).last().fill('');
+  await recipeCard.getByLabel('Titel', { exact: true }).evaluate(input => {
+    input.focus(); input.setSelectionRange(2, 8); window.syntheticRecipeFocus = input;
+  });
+  // A neighbouring durable import exercises reconciliation while this exact
+  // focused input contains an incomplete ingredient draft. Only synthetic text.
+  const imported = await page.request.post(`${origin}/api/recipes`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { text: `Syntetisk nabokilde ${label}` },
+  });
+  assert.equal(imported.status(), 201);
+  await page.evaluate(() => refreshMeals());
+  assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticRecipeFocus,
+    connected: window.syntheticRecipeFocus.isConnected,
+    selection: [window.syntheticRecipeFocus.selectionStart, window.syntheticRecipeFocus.selectionEnd] })),
+  { same: true, connected: true, selection: [2, 8] }, `${label}: imports/polling must preserve the recipe input node and caret`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#tab-meals').waitFor({ state: 'visible' });
+  await page.evaluate(() => refreshMeals());
+  await page.locator('#meal-family-start').fill(day); await page.locator('#meal-family-show').click();
+  assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
+  assert.equal(Number(await dateCard.getAttribute('data-revision')), draftRevision,
+    `${label}: a reloaded draft retains its original expected revision`);
+  assert.equal(await recipeCard.getByLabel('Titel', { exact: true }).inputValue(), rawTitle);
+  assert.equal(await ingredients.getByLabel('Ingrediens', { exact: true }).last().inputValue(), 'Ufærdig testvare');
+  assert.equal(await ingredients.getByLabel('Mængde', { exact: true }).last().inputValue(), '',
+    `${label}: reload must not coerce an incomplete ingredient quantity to zero`);
+
+  const beforeConcurrent = await fixtureRead(page, '/api/meals');
+  const changed = await page.request.put(`${origin}/api/meals/household/days/${day}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { ...beforeConcurrent.household.days[day], adults: 4, expectedRevision: beforeConcurrent.household.revision },
+  });
+  assert.equal(changed.status(), 200);
+  await page.evaluate(() => refreshMeals());
+  assert.match(await dateCard.locator('[data-edit-status]').textContent(), /ændret et andet sted/);
+  assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
+  const rejected = await uiWrite(page, 'PUT', `/api/meals/household/days/${day}`,
+    () => dateCard.getByRole('button', { name: 'Gem dag', exact: true }).click(), [400, 409]);
+  assert.equal(rejected.input.expectedRevision, draftRevision);
+  assert.match(rejected.body.error, /ændret|revision/i);
+  assert.equal((await fixtureRead(page, '/api/meals')).household.days[day].adults, 4,
+    `${label}: a stale UI save cannot replace concurrent saved attendance`);
+  await dateCard.getByRole('button', { name: 'Kassér lokale rettelser', exact: true }).click();
+  await page.evaluate(() => refreshMeals());
+  await openDetails(dateCard.locator('.meal-family-editor'));
+  assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '4');
+  assert.equal((await fixtureRead(page, '/api/meals')).household.days[day].adults, 4,
+    `${label}: discarding a local draft must not remove the saved date exception`);
+
+  await page.locator('[data-tab="knowledge"]').first().click();
+  await page.locator('#memory-editor-mode').selectOption('note');
+  const memoryDraft = await page.locator('#memory-workbench-text').inputValue();
+  await page.locator('#knowledge-query').fill(`Husstand ${day}`);
+  await page.locator('#knowledge-search-form button[type="submit"]').click();
+  const householdSource = page.locator('.knowledge-result').filter({ hasText: day }).first();
+  await householdSource.getByRole('button', { name: 'Åbn kilde', exact: true }).click();
+  assert.equal(new URL(page.url()).searchParams.get('source'), `household:${day}`);
+  await page.locator(`[data-household-date="${day}"].source-target`).waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#meal-family-start').inputValue(), day);
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('view'), 'knowledge');
+  assert.equal(new URL(page.url()).searchParams.get('source'), null);
+  assert.equal(await page.locator('#memory-workbench-text').inputValue(), memoryDraft,
+    `${label}: opening and returning from a household date keeps the memory editor draft`);
+  await page.locator('#knowledge-query').fill(recipeTitle);
+  await page.locator('#knowledge-search-form button[type="submit"]').click();
+  await page.locator('.knowledge-result').filter({ hasText: recipeTitle }).first().getByRole('button', { name: 'Åbn kilde', exact: true }).click();
+  assert.equal(new URL(page.url()).searchParams.get('source'), `recipe:${recipeId}`);
+  await page.locator(`[data-record-key="recipe:${recipeId}"].source-target`).waitFor({ state: 'visible' });
+  assert.equal(await recipeCard.getByLabel('Titel', { exact: true }).inputValue(), rawTitle,
+    `${label}: a source read must not overwrite the recipe editor draft`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator(`[data-record-key="recipe:${recipeId}"].source-target`).waitFor({ state: 'visible' });
+  assert.equal(new URL(page.url()).searchParams.get('source'), `recipe:${recipeId}`,
+    `${label}: copied/reloaded source URL keeps the exact source identity`);
+  assert.equal(await recipeCard.getByLabel('Titel', { exact: true }).inputValue(), rawTitle);
+  assert.equal(await ingredients.getByLabel('Mængde', { exact: true }).last().inputValue(), '');
+  await recipeCard.screenshot({ path: join(screenshotDir, `${label}-recipe-draft.png`), animations: 'disabled' });
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('view'), 'knowledge');
+  assert.equal(await page.locator('#knowledge-query').inputValue(), recipeTitle,
+    `${label}: returning after a source reload restores the original search context`);
+  assert.equal(await page.locator('#memory-workbench-text').inputValue(), memoryDraft);
+  await page.locator('[data-tab="meals"]').first().click();
+  await page.evaluate(() => refreshMeals());
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
+  assert.equal(horizontalOverflow, false, `${label}: structured editors must fit the ${width} × ${height} viewport`);
+}
+
 async function runDevice(type, width, height, label) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin
     ? route.continue() : route.abort('blockedbyclient'));
   const page = await context.newPage();
+  const basketMutations = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== 'GET' && path.startsWith('/api/nemlig/') && path !== '/api/nemlig/search') basketMutations.push(path);
+  });
   page.on('pageerror', error => errors.push(`${label}: ${error.message}`));
   await signIn(page);
   for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings']) {
@@ -75,12 +287,12 @@ async function runDevice(type, width, height, label) {
   await topNav.click();
   await page.locator('#personal-task-title').fill('Syntetisk personlig opgave');
   await page.locator('#personal-task-purpose').fill('Verificér den separate planlægningsarbejdsgang');
-  await page.locator('#personal-task-form button').click();
+  await page.locator('#personal-task-form button[type="submit"]').click();
   await page.locator('[data-personal-task-id]').first().waitFor({ state: 'visible' });
   await page.locator('#follow-up-awaiting').fill('Afvent syntetisk svar');
   await page.locator('#follow-up-check').fill('2026-11-07T12:00');
   await page.locator('#follow-up-stop').fill('Når svaret er modtaget');
-  await page.locator('#follow-up-form button').click();
+  await page.locator('#follow-up-form button[type="submit"]').click();
   await page.locator('[data-follow-up-id]').first().waitFor({ state: 'visible' });
 
   if (width > 850) await page.locator('.tab-nav > a[data-tab="settings"]').click();
@@ -176,10 +388,12 @@ async function runDevice(type, width, height, label) {
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'knowledge-query',
     `${label}: polling cannot steal focus from the active knowledge editor`);
   await page.locator('#tab-knowledge').screenshot({ path: join(screenshotDir, `${label}-knowledge.png`), animations: 'disabled' });
+  await verifyHouseholdAndSources(page, width, height, label);
+  assert.deepEqual(basketMutations, [], `${label}: planning, imports, polling and source/draft navigation must request zero basket writes or transfer intents`);
   await page.locator('[data-tab="home"]').first().click();
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });
   await context.close();
-  return `${label}: navigation, history, drafts and first-screen composer passed`;
+  return `${label}: navigation, history, household precedence/guests/holiday/absence/portions, structured incomplete drafts, revision conflicts, source return paths, keyboard focus and first-screen composer passed`;
 }
 
 try {
