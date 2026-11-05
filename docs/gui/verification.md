@@ -102,3 +102,18 @@ Artifacts: [unit](https://github.com/christopherpedersendk-web/jarvis-personal-a
 ## Lokal kontrol af rettelser efter CI2
 
 `npm test` med Node **24.22.1**: **988/988 bestået**, 0 fejl/skips, **29.547465024 sekunder**. De 12 ekstra cases dækker forsinkede secretary-læsninger og kalender-/opskrifts-/Nemlig-responses, ejerskift, logout, nyere kladder og bekræftet gemning efterfulgt af læsefejl. Den målrettede måltids-/kalenderregression består **34/34**. Disse tests bruger kode-/DOM-dobler og isolerede domæner; layout- og deep-browserresultater for næste kandidat afventes fortsat.
+
+## Tredje faktiske CI – d40d963
+
+[Run 42036701067](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42036701067) kørte den eksakte commit `d40d963c4d672401a04d7633e4fab9ccb831b494`, Git-træ `d0a430e563a57d9a6512cf4dc40dac6436d170eb`, app-træ `f04b9b84f86b94e36557acfc121773b6c6affadb`. Begge checkouts var rene. De offentlige assets var uændrede under browserkørslen.
+
+| Kontrol | Faktisk resultat | Miljø / begrænsning |
+|---|---|---|
+| Fuldt Node-regressionsjob | **988/988 bestået**, 0 fejl/skips, **33.916505 sekunder** | Node **24.22.2**, præcis kandidat |
+| GUI-browsertest | **36/36 bestået** | Chromium **156.0.8078.80** og WebKit **27.2**, 320/366/390/768/1024/1440 CSS-px, normal/tom/fejl, syntetiske data |
+| Dyb v5-browserregression | **1/4 bestået, 3 fejlet** | Chromium-mobil **bestod alle dybe flows**, herunder shopping, noter/hukommelse, konflikter og kladdebevaring. Chromium-desktop fejlede ved reduceret **695×475** px: et felt var tildækket. WebKit-desktop og WebKit-mobil fik ingen forventet POST fra opfølgningsformularen. |
+| Browseridentitet og sikkerhed | Ingen ændrede assets under kørslen; GUI-matrixen registrerede ingen eksterne requests eller forbudte writes | Testserver og fixtures er syntetiske, og resultatet er ikke liveintegrationsevidens |
+
+Den dybe regression beholder alle upstreams assertions og rapporterer hvert device separat med fejl og screenshot. At ét forløb består giver ikke de andre et grønt resultat. Brugeren kan gennemgå de faktiske fejl i [browserartifacts fra CI3](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42036701067/artifacts/13417754902); [Node-artifact](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42036701067/artifacts/13418812659). ZIP-SHA256: browser `cd818463088bf502601fc1693dd1483db29ec46f6fe90e0ed0c0c0c9138eb5f7`, unit `bef5c8acdedb16efee94f7525947d537544cfa07160355cd20fc0da0c1e3dd62`.
+
+Efter CI3 er den konkrete korte-skærm-fejl rettet i `gui.css`: toasten er ikke-interaktiv og flyttes til toppen ved højder på højst 640 px. Den tidligere faste bundplacering lå over det fokuserede felt under bundnavigationen på en skærm på 475 px. Den dybe regression er også udvidet med formvaliditet, submit-/kliksporing og observerede HTTP-metoder omkring WebKit-opfølgning, uden at bypass'e formvalidering eller skjule den manglende POST. **Disse to efterfølgende ændringer er endnu ikke browserverificeret.**
