@@ -109,6 +109,13 @@ async function refreshToday(page) {
   await page.waitForFunction(() => !commandLoadInProgress);
 }
 
+function isLocalNemligStatusRead(request) {
+  // This is JARVIS's own already-recorded integration state. Its GET handler
+  // calls nemlig.status() and never contacts Nemlig. Product search, basket
+  // reads, proposals and every mutation remain prohibited in these flows.
+  return request.method() === 'GET' && new URL(request.url()).pathname === '/api/nemlig/status';
+}
+
 async function verifyTodaySources(page, label, task, followUp) {
   const evidence = { label, status: 'running', sourceMode: 'real local task/case/household and seeded paused monitor history; HTTP-only synthetic calendar-cache fixture',
     activatedJobs: 0, upstreamReads: 0 };
@@ -117,7 +124,8 @@ async function verifyTodaySources(page, label, task, followUp) {
   const track = request => {
     const path = new URL(request.url()).pathname;
     if (request.method() !== 'GET') writes.push(path);
-    if (/^\/api\/google\/calendar\/(?:events|upcoming)$/.test(path) || path.startsWith('/api/nemlig/')) upstream.push(path);
+    if (/^\/api\/google\/calendar\/(?:events|upcoming)$/.test(path) ||
+        path.startsWith('/api/nemlig/') && !isLocalNemligStatusRead(request)) upstream.push(path);
   };
   page.on('request', track);
   let dashboardHandler, cacheHandler;
@@ -545,7 +553,7 @@ async function verifyShoppingChoices(page, label, previous) {
   const prohibitedReadsOrWrites = [];
   const trackRetailer = request => {
     const path = new URL(request.url()).pathname;
-    if (path.startsWith('/api/nemlig/') || path.endsWith('/nemlig-draft') ||
+    if (path.startsWith('/api/nemlig/') && !isLocalNemligStatusRead(request) || path.endsWith('/nemlig-draft') ||
         request.method() !== 'GET' && path.startsWith('/api/shopping-drafts')) prohibitedReadsOrWrites.push(path);
   };
   page.on('request', trackRetailer);
