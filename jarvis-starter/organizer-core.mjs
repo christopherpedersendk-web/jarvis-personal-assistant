@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildTodayOverview, latestMonitorObservations } from './planning-advisor.mjs';
 
 const TYPES = new Set(['list', 'dates', 'gifts', 'shopping', 'notes']);
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,6 +39,14 @@ function calendarDaysBetween(today, date) {
   return Math.round((b - a) / 86_400_000);
 }
 
+function checkUpdatedAt(record, expected, label) {
+  // Legacy tool calls may omit a revision. Interactive editors always provide
+  // the version they actually reviewed; an empty/malformed version is not an
+  // instruction to disable the check.
+  if (expected !== undefined && (typeof expected !== 'string' || !expected || expected !== record.updatedAt))
+    throw new Error(`${label} er opdateret på en anden enhed. Hent den nyeste version, før du gemmer.`);
+}
+
 export class OrganizerCore {
   constructor({ state, save, now = () => new Date() }) {
     this.state = state;
@@ -63,6 +72,13 @@ export class OrganizerCore {
     return collection;
   }
 
+  nextUpdatedAt(previous) {
+    // Two writes in the same millisecond must still have distinct optimistic
+    // versions, including a clock that moves backwards after restart.
+    const earlier = Date.parse(previous || '');
+    return new Date(Math.max(this.now().getTime(), Number.isFinite(earlier) ? earlier + 1 : 0)).toISOString();
+  }
+
   async create({ title, type }) {
     if (!TYPES.has(type)) throw new Error('Ukendt listetype.');
     if (this.list().length >= 80) throw new Error('Du kan højst have 80 lister og notesamlinger.');
@@ -72,18 +88,20 @@ export class OrganizerCore {
     return collection;
   }
 
-  async rename(id, title) {
+  async rename(id, title, { updatedAt } = {}) {
     const collection = this.findCollection(id);
+    checkUpdatedAt(collection, updatedAt, 'Listen');
     collection.title = requiredText(title, 'Titel', 100);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return collection;
   }
 
-  async archive(id) {
+  async archive(id, { updatedAt } = {}) {
     const collection = this.findCollection(id);
+    checkUpdatedAt(collection, updatedAt, 'Listen');
     collection.archived = true;
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return collection;
   }
@@ -95,7 +113,7 @@ export class OrganizerCore {
     const item = { id: randomUUID(), text: requiredText(text, 'Tekst', 350), notes, date: calendarDate(date), annual: Boolean(annual), done: false,
       createdAt: this.now().toISOString(), updatedAt: this.now().toISOString() };
     collection.items.push(item);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return item;
   }
@@ -104,7 +122,7 @@ export class OrganizerCore {
     const collection = this.findCollection(id);
     const item = collection.items.find(x => x.id === itemId);
     if (!item) throw new Error('Punktet findes ikke.');
-    if (changes.updatedAt && changes.updatedAt !== item.updatedAt) throw new Error('Punktet er opdateret på en anden enhed. Opdatér visningen, før du gemmer.');
+    checkUpdatedAt(item, changes.updatedAt, 'Punktet');
     if (changes.text !== undefined) item.text = requiredText(changes.text, 'Tekst', 350);
     if (changes.notes !== undefined) {
       if (typeof changes.notes !== 'string' || changes.notes.length > 2500) throw new Error('Noter må højst være 2.500 tegn.');
@@ -116,18 +134,19 @@ export class OrganizerCore {
       if (typeof changes.done !== 'boolean') throw new Error('Afkrydsning skal være sand/falsk.');
       item.done = changes.done;
     }
-    item.updatedAt = this.now().toISOString();
-    collection.updatedAt = item.updatedAt;
+    item.updatedAt = this.nextUpdatedAt(item.updatedAt);
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return item;
   }
 
-  async removeItem(id, itemId) {
+  async removeItem(id, itemId, { updatedAt } = {}) {
     const collection = this.findCollection(id);
     const index = collection.items.findIndex(x => x.id === itemId);
     if (index < 0) throw new Error('Punktet findes ikke.');
+    checkUpdatedAt(collection.items[index], updatedAt, 'Punktet');
     collection.items.splice(index, 1);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return { removed: true };
   }
@@ -151,13 +170,12 @@ export class OrganizerCore {
   }
 }
 
-export function buildCommandCenter({ state, organizer, now = new Date() }) {
+export function buildCommandCenter({ state, organizer, now = new Date(), calendarSnapshot = null, validateMealSources } = {}) {
   const tasks = (state.tasks || []).filter(x => !x.archived);
   const mostRecent = (filter) => tasks.filter(filter).flatMap(task => (task.runs || []).map(run => ({ ...run, taskId: task.id, taskTitle: task.title, category: task.category })))
     .filter(r => r.status === 'completed').sort((a, b) => b.at.localeCompare(a.at))[0] || null;
   const briefing = mostRecent(x => x.category === 'briefing');
-  const monitor = tasks.filter(x => x.category === 'monitor').flatMap(task => (task.runs || []).filter(run => run.status === 'completed' && /^CHANGE\b/i.test(run.result || ''))
-    .map(run => ({ ...run, taskId: task.id, taskTitle: task.title }))).sort((a,b)=>b.at.localeCompare(a.at))[0] || null;
+  const monitor = latestMonitorObservations(tasks, now)[0] || null;
   const upcoming = organizer.upcoming(30).slice(0, 8);
   const awaiting = (state.approvals || []).filter(x => x.status === 'pending').slice(0, 6);
   const unseen = (state.inbox || []).filter(x => !x.read).slice(0, 6);
@@ -171,9 +189,10 @@ export function buildCommandCenter({ state, organizer, now = new Date() }) {
   }
   if (failed.length) suggestions.push({ title: `${failed.length} opgave(r) kræver fejlgennemgang`, detail: failed.map(x=>x.title).join(', ').slice(0,180), source: { kind: 'tasks', ids: failed.map(x=>x.id) }, tab: 'tasks' });
   if (awaiting.length) suggestions.push({ title: `${awaiting.length} handling(er) afventer godkendelse`, detail: awaiting.map(x=>x.title).join(', ').slice(0,180), source: { kind: 'approvals', ids: awaiting.map(x=>x.id) }, tab: 'secretary' });
-  if (monitor) suggestions.push({ title: `Seneste registrerede ændring: ${monitor.taskTitle}`, detail: `Fra overvågning kørt ${monitor.at}. Verificér resultatet før beslutning.`,
-    source: { kind: 'task_run', taskId: monitor.taskId, at: monitor.at }, tab: 'tasks' });
+  if (monitor) suggestions.push({ title: `${monitor.status === 'unknown' ? 'Ukendt overvågningsudfald' : 'Seneste registrerede ændring'}: ${monitor.taskTitle}`,
+    detail: `${monitor.at ? `Fra kørsel ${monitor.at}. ` : 'Kørselstidspunkt ukendt. '}${monitor.note}`, source: monitor.source, tab: 'plan' });
   return { generatedAt: now.toISOString(), briefing: briefing && { taskTitle: briefing.taskTitle, at: briefing.at, result: briefing.result.slice(0, 7000), taskId: briefing.taskId },
-    monitor: monitor && { taskTitle: monitor.taskTitle, at: monitor.at, result: monitor.result.slice(0, 1800), taskId: monitor.taskId },
-    upcoming, awaiting, unseen, next, suggestions, projects: (state.projects || []).slice(0, 4).map(({ id,title,revision,lastTest,updatedAt }) => ({ id,title,revision,lastTest,updatedAt })) };
+    monitor, todayOverview: buildTodayOverview({ state, now, calendarSnapshot, validateMealSources }),
+    upcoming, awaiting, unseen, next, suggestions, projects: (state.projects || []).filter(project => !project.archived).slice(0, 4)
+      .map(({ id,title,revision,lastTest,updatedAt }) => ({ id,title,revision,lastTest,updatedAt })) };
 }

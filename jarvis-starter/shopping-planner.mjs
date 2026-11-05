@@ -1,4 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { createJobTransitions } from './job-state-transition.mjs';
+import { foodWords, ingredientIdentity, ingredientMatchesAvoid, ingredientConstraints } from './food-identity.mjs';
 
 const normal = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase('da-DK');
 const idOf = product => String(product?.Id ?? '');
@@ -25,10 +27,11 @@ const FOOD_GROUPS = [
   { names: ['nødder', 'nuts'], term: /^(?:nød(?:der|de\p{L}*)|nuts?|hasselnød\p{L}*|valnød\p{L}*|cashew\p{L}*|mandel\p{L}*|mandler|almond\p{L}*|pistacie\p{L}*|pecan\p{L}*)$/u },
   { names: ['peanut', 'peanuts', 'jordnød', 'jordnødder'], term: /^(?:peanut\p{L}*|jordnød\p{L}*)$/u },
 ];
-const evidenceKeys = ['Name', 'Unit', 'Description', 'Ingredients', 'Allergens'];
+const evidenceKeys = ['Name', 'Unit', 'Description', 'Ingredients', 'Allergens', 'Price', 'ItemPrice', 'IsAvailable', 'Availability'];
 
 function fieldText(value, depth = 0) {
   if (typeof value === 'string') return value.slice(0, 8000);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (depth >= 3 || !value || typeof value !== 'object') return '';
   return (Array.isArray(value) ? value : Object.values(value)).slice(0, 40)
     .map(item => fieldText(item, depth + 1)).join(' ').slice(0, 8000);
@@ -53,23 +56,16 @@ function includesAvoid(text, term) {
   if (!wanted.length) return false;
   const group = FOOD_GROUPS.find(item => item.names.includes(normal(term)));
   if (group) return words.some(word => group.term.test(word));
-  // Exact word/phrase boundaries avoid e.g. "ost" matching "kostfibre".
-  return words.some((_, index) => wanted.every((word, offset) => words[index + offset] === word));
+  // Shared exact word/phrase rules; "ris" must not occur inside "frisk".
+  return ingredientMatchesAvoid(text, term);
 }
 
 function constraintsFor(meals, state, plan, ingredient) {
   const profile = typeof meals.profile === 'function' ? meals.profile() : state.mealProfile || {};
-  let diet = ['vegan', 'vegetarian'].includes(profile.diet) ? profile.diet : 'omnivore';
-  for (const dish of plan.dishes || []) {
-    if (dish.skip || !(dish.ingredients || []).some(item => normal(item.name) === normal(ingredient))) continue;
-    if (dish.theme === 'vegan' || dish.diet === 'vegan') diet = 'vegan';
-    else if (diet !== 'vegan' && (dish.theme === 'vegetarian' || dish.diet === 'vegetarian')) diet = 'vegetarian';
-  }
-  return { diet, avoid: [...new Set((Array.isArray(profile.avoid) ? profile.avoid : [])
-    .filter(item => typeof item === 'string').slice(0, 20).map(item => normal(item).slice(0, 80)).filter(Boolean))].sort() };
+  return ingredientConstraints(profile, plan.dishes, ingredient);
 }
 
-export function productConstraints(product, constraints = {}) {
+export function productConflicts(product, constraints = {}) {
   const diet = constraints.diet || 'omnivore';
   const avoid = Array.isArray(constraints.avoid) ? constraints.avoid : [];
   const texts = evidence(product).filter(([key]) => key !== 'Unit');
@@ -85,7 +81,12 @@ export function productConstraints(product, constraints = {}) {
       if (words.some(word => group.term.test(word))) conflict.push(`${diet}: ${group.names[0]}`);
     }
   }
-  return { conflicts: [...new Set(conflict)], requiresReview: diet !== 'omnivore' || avoid.length > 0,
+  return [...new Set(conflict)];
+}
+
+export function productConstraints(product, constraints = {}) {
+  const diet = constraints.diet || 'omnivore', avoid = Array.isArray(constraints.avoid) ? constraints.avoid : [];
+  return { conflicts: productConflicts(product, constraints), requiresReview: diet !== 'omnivore' || avoid.length > 0,
     evidenceFingerprint: hashList(evidence(product)), constraintsFingerprint: hashList({ diet, avoid }) };
 }
 
@@ -115,17 +116,31 @@ function available(product) {
     !['unavailable', 'soldout', 'outofstock'].includes(normal(product.Availability));
 }
 
+// A timestamp belongs to the product actually read, not every candidate in its
+// containing draft. The fingerprint binds it to the retained product evidence;
+// unavailable observations remain as tombstones even if that candidate is removed.
+export function productObservation(product, observedAt) {
+  if (!validId(idOf(product)) || typeof observedAt !== 'string' || !Number.isFinite(Date.parse(observedAt)))
+    throw new Error('Ugyldig tidsstemplet vareobservation.');
+  return { productId: idOf(product), observedAt, available: available(product),
+    availabilityKnown: typeof product.IsAvailable === 'boolean' || typeof product.Availability === 'boolean' ||
+      ['available', 'instock', 'unavailable', 'soldout', 'outofstock'].includes(normal(product.Availability)),
+    evidenceFingerprint: productConstraints(product).evidenceFingerprint };
+}
+
 function matchScore(ingredient, product) {
   const query = normal(ingredient);
   const name = normal(product.Name);
+  if (ingredientIdentity(query) === ingredientIdentity(name)) return 100;
   if (name === query) return 100;
-  const words = query.match(/[\p{L}\p{N}]+/gu) || [];
-  return words.length && words.every(w => (name.match(/[\p{L}\p{N}]+/gu) || []).includes(w)) ? 80 : 0;
+  const words = foodWords(query);
+  return words.length && words.every(w => foodWords(name).includes(w)) ? 80 : 0;
 }
 
 export class ShoppingPlanner {
-  constructor({ state, meals, nemlig, save = async () => {}, now = () => new Date() }) {
+  constructor({ state, meals, nemlig, save = async () => {}, transact, now = () => new Date() }) {
     this.state = state; this.meals = meals; this.nemlig = nemlig; this.save = save; this.now = now;
+    this.transact = transact || createJobTransitions(state);
     this.state.shoppingDrafts ||= [];
     this.preparing = new Set();
   }
@@ -141,10 +156,26 @@ export class ShoppingPlanner {
   current(draft) {
     const plan = this.meals.getPlan(draft.planId);
     if (plan.status !== 'shopping_ready' || plan.revision !== draft.planRevision ||
-        plan.householdStale || plan.profileStale || plan.recipeStale || hashList(plan.shoppingList) !== draft.listFingerprint) {
+        plan.householdStale || plan.profileStale || plan.recipeStale || plan.shoppingNeedsReview || hashList(plan.shoppingList) !== draft.listFingerprint) {
       throw new Error('Madplanen eller indkøbslisten er ændret. Opret et nyt indkøbsforslag.');
     }
     this.meals.assertRecipeSources?.(plan.dishes || []);
+    this.meals.assertShoppingReviewed?.(plan);
+    return plan;
+  }
+
+  // Recheck retained proposals under the current shared rules, without an
+  // external read or write. A previously permissive match is not new approval.
+  assertReviewedConstraints(draft) {
+    const plan = this.current(draft);
+    for (const item of draft.items || []) {
+      if (!item.productId || !(item.quantity > 0)) continue;
+      const product = (item.candidates || []).find(candidate => idOf(candidate) === item.productId);
+      const assessment = productConstraints(product, constraintsFor(this.meals, this.state, plan, item.ingredient));
+      if (!product || !available(product) || item.needsReview || assessment.conflicts.length ||
+          assessment.requiresReview && !reviewed(item, assessment))
+        throw new Error('Vareforslaget kræver ny gennemgang efter aktuelle kost- og ingrediensregler. Ingen kurvændring.');
+    }
     return plan;
   }
 
@@ -161,14 +192,15 @@ export class ShoppingPlanner {
     const used = new Set();
     const draft = { id: randomUUID(), ...source, basketFingerprint: basketHash(basket), revision: 1, status: 'draft', createdAt: this.now().toISOString(),
       items: [], warnings: ['Varematch er forslag. Kontroller variant, mærkning, pakningsstørrelse og antal før overførsel.'],
-      budgetTargetDkk: plan.budgetTargetDkk ?? null, estimatedProductsDkk: null };
+      budgetTargetDkk: plan.budgetTargetDkk ?? null, estimatedProductsDkk: null, priceCheckedAt: null };
     // Two read-only lookups at a time; never start dozens of MCP subprocesses.
     for (let i = 0; i < items.length; i += 2) {
       const found = await Promise.all(items.slice(i, i + 2).map(async ingredient => {
-        try { return { ingredient, products: await this.nemlig.search(ingredient.name, 5) }; }
+        try { const products = await this.nemlig.search(ingredient.name, 5);
+          return { ingredient, products, observedAt: this.now().toISOString() }; }
         catch { return { ingredient, products: [], error: true }; }
       }));
-      for (const { ingredient, products, error } of found) {
+      for (const { ingredient, products, error, observedAt } of found) {
         const constraints = constraintsFor(this.meals, this.state, this.current(draft), ingredient.name);
         const candidates = products.filter(x => validId(idOf(x)) && available(x) && !productConstraints(x, constraints).conflicts.length)
           .sort((a, b) => matchScore(ingredient.name, b) - matchScore(ingredient.name, a)).slice(0, 5);
@@ -193,15 +225,22 @@ export class ShoppingPlanner {
         if (assessment.requiresReview) reason += ' Kostvalg eller undgå-liste kræver din gennemgang af mærkning og ingredienser; dette er ikke en allergisikkerhedskontrol.';
         draft.items.push({ lineId: randomUUID(), ingredient: ingredient.name, neededQuantity: ingredient.quantity,
           unit: ingredient.unit, candidates, productId, quantity, existingQuantity, reason,
+          productObservedAt: productId ? observedAt : null,
+          productObservations: Object.fromEntries(products.filter(product => validId(idOf(product)))
+            .map(product => [idOf(product), productObservation(product, observedAt)])),
           needsReview: !productId || assessment.requiresReview, excluded: false });
       }
     }
     this.current(draft); // Plan may have been edited while lookups were running.
     this.estimate(draft);
-    this.state.shoppingDrafts.unshift(draft);
-    this.state.shoppingDrafts = this.state.shoppingDrafts.slice(0, 12);
-    await this.save();
-    return clone(draft);
+    draft.priceCheckedAt = this.now().toISOString();
+    return this.transact(['shoppingDrafts'], async () => {
+      this.current(draft);
+      this.state.shoppingDrafts.unshift(draft);
+      this.state.shoppingDrafts = this.state.shoppingDrafts.slice(0, 12);
+      await this.save();
+      return clone(draft);
+    });
   }
 
   estimate(draft) {
@@ -218,6 +257,7 @@ export class ShoppingPlanner {
   }
 
   async update(id, { expectedRevision, items } = {}, { reviewedByOwner = false } = {}) {
+    return this.transact(['shoppingDrafts', 'nemligProposals'], async () => {
     const draft = this.get(id); const plan = this.current(draft);
     if (this.preparing.has(id)) throw new Error('Forslaget behandles. Vent et øjeblik.');
     if (!Number.isInteger(expectedRevision) || expectedRevision !== draft.revision) throw new Error('Forslaget blev ændret. Genindlæs før du gemmer.');
@@ -238,6 +278,7 @@ export class ShoppingPlanner {
       const changed = old.productId !== productId || old.quantity !== quantity;
       const needsReview = reviewedByOwner !== true && (old.needsReview || changed || assessment.requiresReview && !reviewed(old, assessment));
       return { ...old, productId, quantity, excluded: quantity === 0,
+        productObservedAt: old.productObservations?.[productId]?.observedAt || null,
         needsReview, reason: 'Antal og variant tilrettet; gennemgå mærkning og antal før overførsel. Ingen garanti for allergisikkerhed.',
         reviewedProductFingerprint: reviewedByOwner === true ? assessment.evidenceFingerprint : changed ? null : old.reviewedProductFingerprint,
         reviewedConstraintsFingerprint: reviewedByOwner === true ? assessment.constraintsFingerprint : changed ? null : old.reviewedConstraintsFingerprint };
@@ -247,10 +288,11 @@ export class ShoppingPlanner {
     for (const proposal of this.state.nemligProposals || []) if (proposal.status === 'pending' && proposal.sourceDraft?.id === id) proposal.status = 'superseded';
     await this.save();
     return clone(draft);
+    });
   }
 
   async propose(id, { expectedRevision } = {}) {
-    const draft = this.get(id); this.current(draft);
+    const draft = clone(this.get(id)); this.current(draft);
     if (expectedRevision !== draft.revision || !Number.isInteger(expectedRevision)) throw new Error('Forslaget blev ændret. Genindlæs før du fortsætter.');
     if (draft.status !== 'draft' || this.preparing.has(id)) throw new Error('Kurvforslaget er allerede oprettet eller behandles.');
     if (draft.items.some(x => x.needsReview)) throw new Error('Vælg eller udelad først alle uafklarede varelinjer og gem forslaget.');
@@ -265,8 +307,12 @@ export class ShoppingPlanner {
       let refreshed = false; let conflict = false;
       for (const productId of quantities.keys()) {
         const product = await this.nemlig.details(productId);
+        const observation = productObservation(product, this.now().toISOString());
+        if (observation.productId !== productId) throw new Error('Vareopslaget returnerede en anden vare. Ingen kurvændring.');
         const plan = this.current(draft);
         for (const item of draft.items.filter(x => x.productId === productId && x.quantity > 0)) {
+          item.productObservations = { ...item.productObservations, [productId]: observation };
+          item.productObservedAt = observation.observedAt;
           const original = item.candidates.find(x => idOf(x) === productId);
           const assessment = productConstraints(product, constraintsFor(this.meals, this.state, plan, item.ingredient));
           if (!available(product) || assessment.conflicts.length) {
@@ -284,20 +330,41 @@ export class ShoppingPlanner {
           }
         }
       }
+      draft.priceCheckedAt = this.now().toISOString();
       this.current(draft);
       if (draft.revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
       if (refreshed) {
         draft.revision++; draft.updatedAt = this.now().toISOString(); this.estimate(draft);
-        await this.save();
+        await this.transact(['shoppingDrafts'], async () => {
+          if (this.get(id).revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
+          this.current(draft);
+          this.state.shoppingDrafts[this.state.shoppingDrafts.findIndex(item => item.id === id)] = draft;
+          await this.save();
+        });
         throw new Error(conflict ? 'Friske Nemlig-oplysninger viste en kostkonflikt. Ingen kurvændring. Genindlæs og vælg andre varer.' :
           'Vareoplysningerne blev opdateret. Genindlæs, gennemgå og gem varevalgene igen før kurvforslaget oprettes.');
       }
+      // Even unchanged product data has a new *verified* read time. Publish only
+      // those observed products, never renew unread alternatives or zero-quantity
+      // items. This is a local write, not a retailer write or owner approval.
+      await this.transact(['shoppingDrafts'], async () => {
+        const current = this.get(id);
+        if (current.revision !== expectedRevision) throw new Error('Forslaget blev ændret. Genindlæs.');
+        this.current(draft);
+        for (const item of current.items) {
+          const observed = draft.items.find(row => row.lineId === item.lineId);
+          if (observed && item.productId && item.quantity > 0 && quantities.has(item.productId)) {
+            item.productObservations = clone(observed.productObservations);
+            item.productObservedAt = observed.productObservedAt;
+          }
+        }
+        current.priceCheckedAt = draft.priceCheckedAt;
+        await this.save();
+      });
       const proposal = await this.nemlig.propose([...quantities].map(([productId, quantity]) => ({ productId, quantity })), {
         sourcePlan: { id: draft.planId, revision: draft.planRevision }, sourceDraft: { id, revision: draft.revision },
         expectedBasketFingerprint: draft.basketFingerprint,
       });
-      draft.status = 'proposed'; draft.proposalId = proposal.id;
-      await this.save();
       return proposal;
     } finally { this.preparing.delete(id); }
   }

@@ -1,0 +1,292 @@
+[
+  {
+    "status": "passed",
+    "candidateCommit": "968a8dc028643f467b3af454beced449bd5803ce",
+    "applicationTree": "3ca692656b835006832e7e343e820e524533510f",
+    "workingTreeDirty": false,
+    "datasetVersion": "da-memory-v1",
+    "datasetSha256": "2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895",
+    "runtime": "v22.23.4",
+    "embeddingRuntime": "@huggingface/transformers@3.8.1",
+    "model": "Xenova/multilingual-e5-small",
+    "modelRevision": "0b7ea4d6ad2e9d527e013a65b805a4b4df72f648",
+    "modelFiles": [
+      {
+        "path": "config.json",
+        "bytes": 658,
+        "sha256": "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "bytes": 443,
+        "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b"
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 17082730,
+        "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+      },
+      {
+        "path": "onnx/model_quantized.onnx",
+        "bytes": 118308185,
+        "sha256": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+      }
+    ],
+    "synthetic": true,
+    "externalPersonalDataProcessing": false,
+    "remoteModelCalls": 0,
+    "metric": "correct-source-retrieval@5; ikke måling af genererede svars faktuelle korrekthed",
+    "threshold": 0.9,
+    "fusionStrategy": "semantic-primary-exact-lexical-4-to-1-v1",
+    "relevantQuestions": 80,
+    "safetyQuestions": 16,
+    "lexicalHits": 43,
+    "vectorHits": 75,
+    "hybridHits": 75,
+    "lexicalRecallAt5": 0.5375,
+    "vectorRecallAt5": 0.9375,
+    "hybridRecallAt5": 0.9375,
+    "invalidSourceLeaks": 0,
+    "missingEvidencePolicy": "Spørgsmål uden gyldig kilde indgår ikke i recall. Kandidater er ikke bekræftede svar; ugyldige/konfliktende kilder må aldrig genopstå.",
+    "correction": "passed",
+    "forgetting": "passed",
+    "providerUnavailableFallback": "passed",
+    "defaultDeadline": {
+      "budgetMs": 1500,
+      "coldMode": "local-lexical",
+      "coldSemanticStatus": "timeout",
+      "coldReadMs": 1533.9687230000002,
+      "providerStateAfterColdRead": "loading",
+      "warmMode": "local-hybrid",
+      "warmReadMs": 835.1732790000001
+    },
+    "measurements": {
+      "documents": 76,
+      "coldLoadMs": 2376.516471,
+      "initialIndexMs": 745.5994579999997,
+      "warmRetrievalP50Ms": 15.76709799999935,
+      "warmRetrievalP95Ms": 41.83512100000007,
+      "eventLoopP95Ms": 20.021247,
+      "startRssBytes": 60993536,
+      "peakSampledRssBytes": 96206848,
+      "childPeakSampledRssBytes": 674324480,
+      "sumOfSampledRssPeaksBytes": 770531328,
+      "memoryMetric": "Parent RSS and separately sampled local-model child RSS; their sum is not a simultaneous allocation peak or production sizing guarantee.",
+      "totalMs": 6141.907469
+    },
+    "index": {
+      "cachedDocuments": 75,
+      "provider": "local",
+      "running": false,
+      "queued": 0,
+      "embeddedDocuments": 77,
+      "embeddedQueries": 99
+    },
+    "provider": {
+      "status": "ready",
+      "provider": "local",
+      "model": "Xenova/multilingual-e5-small",
+      "modelRevision": "0b7ea4d6ad2e9d527e013a65b805a4b4df72f648",
+      "runtimeVersion": "3.8.1",
+      "manifestSha256": "28cc221f9d7adbfec09c512c6ab98f5fc2c307f507b5ddd432e89cd4abd783d7",
+      "network": "disabled",
+      "isolation": "child-process",
+      "running": false,
+      "queued": 0,
+      "failureCode": null,
+      "requests": 122,
+      "embeddedTexts": 253,
+      "completed": 121,
+      "failed": 0,
+      "cancelled": 1,
+      "totalQueueMs": 3.2614859999976034,
+      "totalInferenceMs": 2539.348217999996,
+      "maxQueueMs": 1.2570849999992788,
+      "maxInferenceMs": 104.60513600000013,
+      "peakSampledChildRssBytes": 674324480
+    },
+    "failingCases": [
+      {
+        "id": "Q04",
+        "category": "negation-or-boundary",
+        "question": "Hvilke betingelser hjælper mig med at holde fokus?",
+        "relevant": [
+          "memory:concentration"
+        ],
+        "lexicalTop5": [
+          "memory:learning-style"
+        ],
+        "vectorTop5": [
+          "memory:meetings",
+          "memory:communication",
+          "memory:hotel",
+          "memory:noise",
+          "memory:travel-train"
+        ],
+        "hybridTop5": [
+          "memory:meetings",
+          "memory:communication",
+          "memory:hotel",
+          "memory:noise",
+          "memory:travel-train"
+        ],
+        "lexicalHit": false,
+        "vectorHit": false,
+        "hybridHit": false,
+        "invalidSourceLeaks": []
+      },
+      {
+        "id": "Q34",
+        "category": "paraphrase",
+        "question": "Hvilken lille læringsvane har jeg knyttet til dagens første måltid?",
+        "relevant": [
+          "memory:learning-time"
+        ],
+        "lexicalTop5": [
+          "memory:distractor-14",
+          "memory:garden-water"
+        ],
+        "vectorTop5": [
+          "memory:garden-water",
+          "memory:meetings",
+          "memory:breakfast",
+          "memory:dinner-time",
+          "memory:concentration"
+        ],
+        "hybridTop5": [
+          "memory:garden-water",
+          "memory:meetings",
+          "memory:breakfast",
+          "memory:dinner-time",
+          "memory:concentration"
+        ],
+        "lexicalHit": false,
+        "vectorHit": false,
+        "hybridHit": false,
+        "invalidSourceLeaks": []
+      },
+      {
+        "id": "Q65",
+        "category": "paraphrase",
+        "question": "Hvornår er min ønskede periode uden forstyrrelser?",
+        "relevant": [
+          "memory:quiet"
+        ],
+        "lexicalTop5": [
+          "memory:distractor-23",
+          "memory:photo-privacy",
+          "memory:music-volume",
+          "memory:garden-water",
+          "memory:rain-packing"
+        ],
+        "vectorTop5": [
+          "memory:meetings",
+          "memory:communication",
+          "memory:reminders",
+          "memory:yoga",
+          "memory:distractor-34"
+        ],
+        "hybridTop5": [
+          "memory:meetings",
+          "memory:communication",
+          "memory:reminders",
+          "memory:yoga",
+          "memory:distractor-34"
+        ],
+        "lexicalHit": false,
+        "vectorHit": false,
+        "hybridHit": false,
+        "invalidSourceLeaks": []
+      },
+      {
+        "id": "Q66",
+        "category": "negation-or-boundary",
+        "question": "Må rutinemæssige beskeder vække mig ved midnat?",
+        "relevant": [
+          "memory:quiet"
+        ],
+        "lexicalTop5": [
+          "memory:communication",
+          "memory:distractor-21"
+        ],
+        "vectorTop5": [
+          "memory:communication",
+          "memory:rain-packing",
+          "memory:garden-water",
+          "memory:reminders",
+          "memory:meetings"
+        ],
+        "hybridTop5": [
+          "memory:communication",
+          "memory:rain-packing",
+          "memory:garden-water",
+          "memory:reminders",
+          "memory:meetings"
+        ],
+        "lexicalHit": false,
+        "vectorHit": false,
+        "hybridHit": false,
+        "invalidSourceLeaks": []
+      },
+      {
+        "id": "Q68",
+        "category": "negation-or-boundary",
+        "question": "Er en solrig vindueskarm et godt sted til den grønne stueplante?",
+        "relevant": [
+          "memory:plant"
+        ],
+        "lexicalTop5": [
+          "memory:laundry",
+          "memory:distractor-31",
+          "memory:board-games"
+        ],
+        "vectorTop5": [
+          "memory:rain-packing",
+          "memory:distractor-10",
+          "memory:garden-water",
+          "memory:laundry",
+          "memory:distractor-9"
+        ],
+        "hybridTop5": [
+          "memory:rain-packing",
+          "memory:distractor-10",
+          "memory:garden-water",
+          "memory:laundry",
+          "memory:distractor-9"
+        ],
+        "lexicalHit": false,
+        "vectorHit": false,
+        "hybridHit": false,
+        "invalidSourceLeaks": []
+      }
+    ]
+  },
+  {
+    "status": "passed-high-critical-gate",
+    "candidateCommit": "968a8dc028643f467b3af454beced449bd5803ce",
+    "applicationTree": "3ca692656b835006832e7e343e820e524533510f",
+    "node": "v22.23.4",
+    "npm": "10.9.9",
+    "runtimeManifestSha256": "a9fb4f4c9dd5c29ade576bc9c3d6d71f1f1deb92bc23c593dc36b72a9f11db73",
+    "lockSha256": "2d53dd39d9f29bf50d65d5310bbd34670fee3b454dc52cac88bb181c424057ab",
+    "policy": "No unreviewed high or critical dependency finding may pass the release gate. Audit success is not proof of absence of every vulnerability.",
+    "exactInstalledInventory": {
+      "exitCode": 0
+    },
+    "audit": {
+      "exitCode": 0,
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "findings": [],
+      "error": null
+    },
+    "personalDataSent": false,
+    "productionRuntimeModified": false
+  }
+]

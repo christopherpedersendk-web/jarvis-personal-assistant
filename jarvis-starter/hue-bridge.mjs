@@ -1,6 +1,7 @@
 import https from 'node:https';
 import tls from 'node:tls';
 import { isIP } from 'node:net';
+import { IntegrationHealth } from './integration-health.mjs';
 
 export function validBridgeIp(ip) {
   if (typeof ip !== 'string' || isIP(ip) !== 4) return false;
@@ -9,7 +10,9 @@ export function validBridgeIp(ip) {
 }
 
 export class HueBridge {
-  constructor({ request } = {}) { this.request = request || this.localRequest.bind(this); }
+  constructor({ request, now } = {}) { this.request = request || this.localRequest.bind(this); this.health = new IntegrationHealth({ now }); }
+
+  status(config) { return this.health.snapshot(config, Boolean(config.applicationKey && config.certificateFingerprint)); }
 
   async localRequest(config, method, path, body) {
     if (!validBridgeIp(config.bridgeIp)) throw new Error('Hue Bridge skal have en privat IPv4-adresse på dit hjemmenetværk.');
@@ -40,7 +43,7 @@ export class HueBridge {
         response.on('data', chunk => { length += chunk.length; if (length > 1_000_000) response.destroy(new Error('Hue-svar for stort.')); else chunks.push(chunk); });
         response.on('end', () => {
           try {
-            if (response.statusCode >= 400) throw new Error(`Hue Bridge HTTP ${response.statusCode}`);
+            if (response.statusCode >= 400) throw Object.assign(new Error(`Hue Bridge HTTP ${response.statusCode}`), { status: response.statusCode });
             const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             if (data.errors?.length) throw new Error(`Hue: ${data.errors[0].description || 'API-fejl'}`);
             resolve({ data, fingerprint: fingerprint.value });
@@ -66,6 +69,7 @@ export class HueBridge {
 
   async resources(config) {
     if (!config.applicationKey || !config.certificateFingerprint) throw new Error('Hue er ikke parret endnu.');
+    return this.health.check(config, async () => {
     const kinds = ['room','zone','grouped_light','scene','light'];
     const result = {};
     for (const kind of kinds) {
@@ -73,6 +77,7 @@ export class HueBridge {
       result[kind] = Array.isArray(data.data) ? data.data : [];
     }
     return result;
+    });
   }
 
   async control(config, { kind, id, on, brightness }) {
@@ -85,13 +90,19 @@ export class HueBridge {
       if (!Number.isFinite(brightness) || brightness < 1 || brightness > 100) throw new Error('Lysstyrke skal være mellem 1 og 100.');
       payload.dimming = { brightness };
     }
-    await this.request(config, 'PUT', `/clip/v2/resource/${kind}/${id}`, payload);
-    return { ok: true };
+    if (!config.applicationKey || !config.certificateFingerprint) throw Object.assign(new Error('Hue er ikke parret endnu.'), { noActionTaken: true });
+    return this.health.check(config, async () => {
+      await this.request(config, 'PUT', `/clip/v2/resource/${kind}/${id}`, payload);
+      return { ok: true };
+    });
   }
 
   async scene(config, id) {
     if (!/^[0-9a-f-]{36}$/.test(id || '')) throw new Error('Ugyldigt Hue-scene-ID.');
-    await this.request(config, 'PUT', `/clip/v2/resource/scene/${id}`, { recall: { action: 'active' } });
-    return { ok: true };
+    if (!config.applicationKey || !config.certificateFingerprint) throw Object.assign(new Error('Hue er ikke parret endnu.'), { noActionTaken: true });
+    return this.health.check(config, async () => {
+      await this.request(config, 'PUT', `/clip/v2/resource/scene/${id}`, { recall: { action: 'active' } });
+      return { ok: true };
+    });
   }
 }

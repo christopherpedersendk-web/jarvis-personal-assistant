@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const token = 'synthetic-v49-server-integration-access-token';
@@ -34,29 +35,6 @@ async function fixture(t) {
   let base = '';
   // Do not inherit real API credentials, Node preload hooks, update repositories
   // or integration settings from the machine running these tests.
-  const env = {
-    ...Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TEMP', 'TMP']
-      .filter(name => process.env[name]).map(name => [name, process.env[name]])),
-    TZ: 'Europe/Copenhagen',
-    JARVIS_DATA_DIR: dataDir,
-    JARVIS_PROJECT_ROOT: join(dataDir, 'projects'),
-    JARVIS_UPDATE_STAGING: join(dataDir, 'update-staging'),
-    JARVIS_UPDATE_REPO: '',
-    JARVIS_ACCESS_TOKEN: token,
-    JARVIS_HOST: '127.0.0.1',
-    OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY',
-    NEMLIG_ENABLE_LIVE: 'no',
-    NEMLIG_MCP_DIR: '',
-    NEMLIG_MCP_UV: '',
-    NEMLIG_USER: '',
-    NEMLIG_PASS: '',
-    GOOGLE_OAUTH_CLIENT_ID: '',
-    GOOGLE_OAUTH_CLIENT_SECRET: '',
-    GOOGLE_OAUTH_REDIRECT_URI: '',
-    PUSHOVER_APP_TOKEN: '',
-    PUSHOVER_USER_KEY: '',
-    JARVIS_ALLOW_NPM_INSTALL: 'no',
-  };
 
   async function stop() {
     if (!child) return;
@@ -75,7 +53,7 @@ async function fixture(t) {
     base = `http://127.0.0.1:${port}`;
     logs.push(`\n--- synthetic server start on ${port} ---\n`);
     child = spawn(process.execPath, ['server.mjs'], {
-      cwd: root, env: { ...env, JARVIS_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: root, env: syntheticServerEnv({ dataDir, accessToken: token, port }), stdio: ['ignore', 'pipe', 'pipe'],
     });
     let spawnError;
     child.once('error', error => { spawnError = error; });
@@ -218,6 +196,14 @@ test('v4.9 HTTP workflows preserve review boundaries and survive server restarts
     assert.equal(meal.dishes[0].adults, 3);
     assert.equal(meal.dishes[0].theme, 'child_friendly');
     meal = (await f.api('POST', `/api/meals/plans/${meal.id}/shopping-list`, { expectedRevision: meal.revision })).plan;
+    assert.equal(meal.shoppingNeedsReview, true, 'changed portions preserve the earlier manual choice but not its old review');
+    assert.equal(meal.shoppingList.find(item => item.name === 'pasta').quantity, 250);
+    await f.api('POST', `/api/meals/plans/${meal.id}/nemlig-draft`, { expectedRevision: meal.revision }, { status: 409 });
+    const reviewItems = meal.shoppingList.map(({ name, unit, quantity }) => ({ name, unit, quantity }));
+    meal = (await f.api('PUT', `/api/meals/plans/${meal.id}/shopping-list`, { expectedRevision: meal.revision, items: reviewItems })).plan;
+    assert.equal(meal.shoppingNeedsReview, false, 'the positive restart fixture starts only after an explicit current local review');
+    assert.equal(meal.shoppingList.find(item => item.name === 'pasta').quantity, 250);
+    assert.deepEqual((await f.api('GET', '/api/nemlig/status')).proposals, [], 'reviewing local quantities is not basket approval');
   });
 
   await t.test('recipe intake cannot forge Discord provenance or media and reviewed source changes invalidate plans', async () => {

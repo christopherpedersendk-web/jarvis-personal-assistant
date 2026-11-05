@@ -1,0 +1,64 @@
+{
+  "candidate": "b128867abd570ee41e2065356bab5c90fa64ca34",
+  "at": "2026-11-05T14:41:43.601Z",
+  "node": "v24.22.1",
+  "scope": "Isolated synthetic full-data-directory copy, restore and two restarts. No production credentials, integrations, root service or physical device.",
+  "legacyHash": "5d41311d7bad01fc9e2fe50d4568244e0a34c3a816fc3c5728c019ceee2b7647",
+  "backupHashes": {
+    "state.json": "0964c31748c87807f24505c56ab8caa460b40806c75cb20e6b27c5bb83ea2948",
+    "state.json.v4.9.1-before-v5.backup": "5d41311d7bad01fc9e2fe50d4568244e0a34c3a816fc3c5728c019ceee2b7647",
+    "update-state.json": "e3c996511fde1a3729105729ac70b8426107eb4e163721c4f17e3b5c04566279"
+  },
+  "first": {
+    "ready": {
+      "ok": true,
+      "version": "5.0.0",
+      "storage": {
+        "ready": true,
+        "checkedAt": "2026-11-05T14:41:42.436Z",
+        "lastSavedAt": "2026-11-05T14:41:42.334Z",
+        "lastError": null,
+        "revision": 0
+      }
+    },
+    "health": {
+      "ok": true,
+      "version": "5.0.0"
+    }
+  },
+  "restored": {
+    "ready": {
+      "ok": true,
+      "version": "5.0.0",
+      "storage": {
+        "ready": true,
+        "checkedAt": "2026-11-05T14:41:43.125Z",
+        "lastSavedAt": "2026-11-05T14:41:43.062Z",
+        "lastError": null,
+        "revision": 0
+      }
+    },
+    "health": {
+      "ok": true,
+      "version": "5.0.0"
+    }
+  },
+  "restart": {
+    "ready": {
+      "ok": true,
+      "version": "5.0.0",
+      "storage": {
+        "ready": true,
+        "checkedAt": "2026-11-05T14:41:43.576Z",
+        "lastSavedAt": "2026-11-05T14:41:43.489Z",
+        "lastError": null,
+        "revision": 0
+      }
+    },
+    "health": {
+      "ok": true,
+      "version": "5.0.0"
+    }
+  },
+  "result": "passed"
+}

@@ -51,7 +51,9 @@ test('optional semantic retrieval may only rank the already allowlisted document
 test('bundled SKILL.md are structured, selected by triggers, and forbid symlinked skill files', async () => {
   const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
   const skills = await loadBundledSkills(root);
-  assert.equal(skills.catalog().length, 4);
+  assert.equal(skills.catalog().length, 8, 'four current versions plus four exact historical versions');
+  assert.equal(skills.catalog().filter(skill => skill.current && skill.version === '1.1.0').length, 4);
+  assert.equal(skills.catalog().filter(skill => !skill.current && skill.version === '1.0.0').length, 4);
   assert.match(skills.context('Giv mig gaveidéer til jul'), /Gaveplanlægning/);
   assert.match(skills.context('Lav en madplan'), /Madplan og indkøb/);
   assert.equal(skills.context('Hej med dig'), '');

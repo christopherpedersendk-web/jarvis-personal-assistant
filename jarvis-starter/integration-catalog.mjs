@@ -11,16 +11,27 @@ const PROVIDERS = Object.freeze([
 ]);
 
 export function integrationCatalog({ discordStatus = 'disabled', discordConfigured = false, huePaired = false, sonosConfigured = false,
-  googleCalendarConfigured = false, googleCalendarConnected = false, nemligConfigured = false } = {}) {
+  googleCalendarConfigured = false, googleCalendarConnected = false, googleCalendarStatus = null,
+  discordSnapshot = null, hueStatus = null, sonosStatus = null, nemligConfigured = false, nemligStatus = null } = {}) {
   return PROVIDERS.map(provider => {
-    const status = provider.id === 'discord' && discordConfigured && discordStatus === 'connected' ? 'connected'
+    const home = provider.id === 'hue' ? hueStatus : provider.id === 'sonos' ? sonosStatus : provider.id === 'nemlig' ? nemligStatus : null;
+    const homeStatus = home && ({ not_configured: 'not_configured', not_verified: 'configured', connected: 'connected',
+      expired_login: 'expired', unavailable: 'unavailable', stale: 'stale' })[home.connectionState];
+    const status = homeStatus || (provider.id === 'discord' && discordConfigured && discordStatus === 'connected' ? 'connected'
       : provider.id === 'discord' && discordConfigured ? 'configured'
+        : provider.id === 'google-calendar' && googleCalendarStatus?.connectionState === 'expired_login' ? 'expired'
+        : provider.id === 'google-calendar' && googleCalendarStatus?.connectionState === 'unavailable' ? 'unavailable'
+        : provider.id === 'google-calendar' && googleCalendarStatus?.connectionState === 'not_verified' ? 'configured'
         : provider.id === 'google-calendar' && googleCalendarConnected ? 'connected'
           : provider.id === 'google-calendar' && googleCalendarConfigured ? 'configured'
             : provider.id === 'nemlig' && nemligConfigured ? 'configured'
         : provider.id === 'hue' && huePaired ? 'configured'
-          : provider.id === 'sonos' && sonosConfigured ? 'configured' : 'not_configured';
+          : provider.id === 'sonos' && sonosConfigured ? 'configured' : 'not_configured');
     return { ...provider, status, implementation: ['discord', 'hue', 'sonos', 'google-calendar', 'nemlig'].includes(provider.id) ? 'available' : 'planned',
+      lastCheckedAt: provider.id === 'google-calendar' ? googleCalendarStatus?.lastReadAt || null
+        : provider.id === 'discord' ? discordSnapshot?.lastHeartbeatAckAt || null : home?.lastCheckedAt || null,
+      lastError: provider.id === 'google-calendar' ? googleCalendarStatus?.lastReadError || ''
+        : provider.id === 'discord' ? discordSnapshot?.lastError || '' : home?.lastError || '',
       permissions: { read: provider.capabilities.some(x => x.endsWith('.read') || x === 'message.owner' || x === 'doorbell.events'),
         externalWrite: provider.capabilities.some(x => x.includes('.write.') || x.includes('control') || x.startsWith('notify.')) } };
   });

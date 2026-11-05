@@ -15,7 +15,39 @@
 .meal-form input, .meal-form select, .meal-form textarea, .meal-plan-controls input, .meal-plan-controls select,
 .meal-search input, .meal-product input, .meal-field input, .meal-field select, .meal-field textarea { width: 100%; min-width: 0; max-width: 100%; }
 .meal-form > p, .meal-form > button { grid-column: 1 / -1; }
+.meal-form > .meal-structured-group { grid-column: 1 / -1; }
+.meal-form > .meal-field { grid-column: 1 / -1; }
 .meal-form > button { justify-self: start; }
+.meals-panel [hidden] { display: none !important; }
+.meal-v5-panel { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid #3b6679; border-radius: 12px; background: #0c2637; }
+.meal-v5-panel h3 { margin-top: .1rem; }
+.meal-v5-panel > .inline-check { display: flex; margin: .5rem 0; }
+.meal-structured-group { min-width: 0; border: 1px solid #36576c; border-radius: 10px; padding: .75rem; margin: .5rem 0; }
+.meal-structured-group legend { padding: 0 .35rem; color: #c7e8f4; font-size: .84rem; }
+.meal-structured-rows { display: grid; gap: .5rem; min-width: 0; }
+.meal-structured-row { display: grid; grid-template-columns: minmax(125px, 2fr) minmax(80px, 1fr) minmax(75px, 105px) auto; gap: .45rem; align-items: center; }
+.meal-child-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 1fr) auto; gap: .45rem; align-items: center; }
+.meal-child-row > .meal-child-age-status { grid-column: 1 / -1; line-height: 1.5; }
+.meal-child-row > .meal-age-confirm { grid-column: 1 / -1; justify-self: start; font-size: .75rem; }
+.meal-guests-editor { min-width: 0; }
+.meal-guests-editor > p { margin-top: 0; }
+.meal-portions-preview { min-height: 2.8em; line-height: 1.5; color: #d0e4ed; }
+.meal-inventory-row { display: grid; grid-template-columns: minmax(110px, 2fr) minmax(80px, 1fr) minmax(65px, 95px) minmax(110px, 1fr) auto; gap: .45rem; align-items: center; }
+.meal-structured-row > *, .meal-child-row > *, .meal-inventory-row > * { min-width: 0; width: 100%; margin: 0; }
+.meal-structured-row input, .meal-structured-row select, .meal-child-row input,
+.meal-inventory-row input, .meal-inventory-row select { font: inherit; padding: .55rem .5rem; color: #e1f5fc; border: 1px solid #31556b; border-radius: 8px; background: #091c2c; }
+.meal-structured-row button, .meal-child-row button, .meal-inventory-row button { width: auto; padding: .55rem; }
+.meal-add-row { margin-top: .65rem; font-size: .82rem; }
+.meal-inventory-meta { grid-column: 1 / -1; }
+.meal-rhythm-weeks { display: grid; gap: .6rem; }
+.meal-rhythm-week { border: 1px solid #31556b; border-radius: 10px; padding: .6rem .8rem; }
+.meal-rhythm-week summary { cursor: pointer; color: #c7e8f4; }
+.meal-rhythm-day { padding: .7rem 0; border-bottom: 1px solid #31556b; }
+.meal-rhythm-day-fields { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(170px, 2fr) minmax(120px, 1fr); gap: .45rem .8rem; align-items: start; }
+.meal-rhythm-day-fields > .inline-check { grid-column: 1 / -1; }
+.meal-rhythm-day-fields > .meal-structured-group { grid-column: 1 / -1; }
+.meal-swap { margin: .8rem 0; }
+.meal-swap > .meal-field { display: inline-flex; vertical-align: bottom; width: min(100%, 215px); margin-right: .6rem; }
 .meal-plan-controls, .meal-search, .meal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; margin: 1rem 0; }
 .meal-plan-controls > label { align-self: center; }
 .meal-plan-controls input[type="date"], .meal-plan-controls select { width: auto; min-width: 140px; }
@@ -29,12 +61,21 @@
 .meal-field input, .meal-field select, .meal-field textarea { margin: 0; padding: .65rem .7rem; border-radius: 9px; font-size: .88rem; }
 .meal-field textarea { line-height: 1.6; }
 .meal-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .75rem; }
+.meal-calendar-comparison { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: .9rem; font-size: .8rem; }
+.meal-calendar-comparison th, .meal-calendar-comparison td { min-width: 0; padding: .65rem .45rem; text-align: left; vertical-align: top; border-bottom: 1px solid #55778b; overflow-wrap: anywhere; }
+.meal-calendar-comparison th:first-child { width: 18%; }
+.meal-calendar-comparison p { margin: .25rem 0; }
+.meal-calendar-comparison ul { padding-left: 1rem; margin: .4rem 0; }
+.meal-calendar-comparison .meal-calendar-unknown { color: #f1ce98; }
+#meal-family-calendar > summary { cursor: pointer; color: #d1eaf6; font-weight: 600; }
 .meal-family-day { min-width: 0; padding: .85rem; border: 1px solid #31586c; background: #0c2434; border-radius: 13px; }
 .meal-family-day h3 { margin: .1rem 0 .6rem; text-transform: capitalize; }
 .meal-family-day > p { margin: .25rem 0 .5rem; }
 .meal-family-editor { margin-top: .6rem; padding-bottom: 0; }
 .meal-family-day .meal-actions { margin: .65rem 0 0; gap: .45rem; }
 .meal-family-day .meal-actions button { flex: 1 1 100px; font-size: .78rem; padding: .6rem .5rem; }
+.meal-family-day .meal-child-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.meal-family-day .meal-child-row > button[aria-label="Fjern barn"] { grid-column: 1 / -1; justify-self: start; }
 .meal-card { min-width: 0; background: rgba(40, 66, 85, .29); border: 1px solid rgba(160, 194, 217, .24); border-radius: 14px; padding: 1rem; margin: .7rem 0; }
 .meal-card > h3:first-child, .meal-card > h4:first-child { margin-top: 0; }
 .meal-card ul { margin: .5rem 0 1rem; padding-left: 1.4rem; line-height: 1.65; }
@@ -83,6 +124,16 @@
   .meal-card { padding: .8rem; }
   .meal-actions > button { flex: 1 1 180px; }
   .meal-details summary { padding: .15rem 0; }
+  .meal-structured-row { grid-template-columns: minmax(0, 1fr) 95px; }
+  .meal-structured-row select { grid-column: 1; }
+  .meal-structured-row button { grid-column: 2; }
+  .meal-child-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meal-child-row > button[aria-label="Fjern barn"] { grid-column: 1 / -1; justify-self: start; }
+  .meal-inventory-row { grid-template-columns: minmax(0, 1fr) minmax(70px, 95px); }
+  .meal-inventory-row select { grid-column: 1; }
+  .meal-inventory-row input[type="date"] { grid-column: 1; }
+  .meal-inventory-row button { grid-column: 2; grid-row: 3; }
+  .meal-rhythm-day-fields { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   .meals-panel { scroll-behavior: auto; }

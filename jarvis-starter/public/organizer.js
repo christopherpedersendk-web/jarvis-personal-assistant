@@ -30,40 +30,238 @@ function commandLink(label, tab) {
   return link;
 }
 
-function renderPersonalAgenda(agenda, digests = []) {
-  const root = document.getElementById('home-intelligence');
-  if (!root) return;
-  root.replaceChildren();
-  const groups = [
-    { title: 'I dag', subtitle: 'Aktuelt og snart planlagt', items: agenda.today, tab: 'organizer', empty: 'Ingen registrerede datoer i dag eller opgaver inden for 36 timer.' },
-    { title: 'Næste 7 dage', subtitle: 'Datoer fra dine egne lister', items: agenda.week, tab: 'organizer', empty: 'Ingen kommende datoer registreret.' },
-    { title: 'Kræver opmærksomhed', subtitle: 'Faktiske ændringer og afventninger', items: agenda.insights, tab: 'secretary', empty: 'Ingen kendte forhold, der kræver opfølgning.' },
-  ];
-  for (const group of groups) {
-    const card = make('section', '', 'intelligence-card');
-    card.append(make('span', group.subtitle, 'tiny-label'), make('h2', group.title));
-    if (!group.items.length) card.append(make('p', group.empty, 'muted small-text'));
-    for (const item of group.items.slice(0, 4)) {
-      const entry = make('button', '', 'agenda-item');
-      entry.type = 'button'; entry.addEventListener('click', () => selectTab(item.tab || group.tab));
-      entry.append(make('span', item.priority === 'high' ? '●' : '·', item.priority === 'high' ? 'agenda-priority high' : 'agenda-priority'));
-      const content = make('span', '', 'agenda-content');
-      content.append(make('strong', item.title), make('span', item.detail, 'muted micro'));
-      entry.append(content); card.append(entry);
-    }
-    card.append(commandLink('Vis grundlag', group.tab));
-    root.append(card);
+const agendaCards = new Map();
+let calendarSourceSequence = 0;
+const agendaText = (node, value) => { value = String(value || ''); if (node.textContent !== value) node.textContent = value; };
+const agendaView = view => view || 'plan';
+
+function agendaSource(item) {
+  if (item.sourceId) return { sourceId: item.sourceId, view: agendaView(item.tab) };
+  const source = item.source || {}, first = source.ids?.[0];
+  if (source.kind === 'organizer' && source.collectionId && source.itemId)
+    return { sourceId: `organizer:${source.collectionId}:${source.itemId}`, view: 'knowledge' };
+  if (['task', 'project', 'memory', 'recipe', 'meal-plan', 'nemlig-proposal'].includes(source.kind) && source.id)
+    return { sourceId: `${source.kind}:${source.id}${source.kind === 'meal-plan' && source.date ? ':' + source.date : ''}`,
+      view: source.kind === 'task' ? 'plan' : source.kind === 'project' ? 'projects' : source.kind === 'memory' ? 'knowledge' : 'meals' };
+  if (source.kind === 'household-days' && source.dates?.[0]) return { sourceId: `household-day:${source.dates[0]}`, view: 'meals' };
+  if (['recipes', 'memories', 'tasks', 'nemlig-proposals'].includes(source.kind) && first) {
+    const kind = { recipes: 'recipe', memories: 'memory', tasks: 'task', 'nemlig-proposals': 'nemlig-proposal' }[source.kind];
+    return { sourceId: `${kind}:${first}`, view: kind === 'memory' ? 'knowledge' : kind === 'task' ? 'plan' : 'meals',
+      qualifier: `Første af ${source.ids.length} registrerede kilder. De øvrige findes i samme sektion.` };
   }
-  if (digests.length) {
-    const newest = digests[0];
-    const note = make('p', `Seneste faktabaserede ${newest.kind === 'weekly' ? 'uge-' : 'dags'}overblik: ${new Date(newest.at).toLocaleString('da-DK')} · ${newest.itemCount} punkter`, 'agenda-history muted micro');
-    root.append(note);
+  return { sourceId: null, view: agendaView(item.tab), qualifier: 'Sektionsoversigt, ikke en præcis enkeltkilde.' };
+}
+
+function agendaEntry(item, key) {
+  const node = make('a', '', 'agenda-item'), priority = make('span', '', 'agenda-priority');
+  const content = make('span', '', 'agenda-content'), title = make('strong'), detail = make('span', '', 'muted micro'), basis = make('span', '', 'muted micro');
+  content.append(title, detail, basis); node.append(priority, content); node.dataset.agendaKey = key;
+  node.addEventListener('click', event => {
+    if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const current = node.agendaRecord;
+    if (!current || node.getAttribute?.('aria-disabled') === 'true') return;
+    const target = agendaSource(current);
+    selectTab(target.view, target.sourceId ? { sourceId: target.sourceId } : {});
+    if (target.sourceId) document.dispatchEvent(new CustomEvent('jarvis:source-route', { detail: { id: target.sourceId } }));
+  });
+  return { node, priority, title, detail, basis };
+}
+
+function renderAgendaRows(parent, items, views) {
+  const keep = new Set(); let anchor = parent.firstElementChild;
+  for (const item of items) {
+    const key = String(item.id || `${item.sourceId || JSON.stringify(item.source || {})}:${item.title}`); keep.add(key);
+    let row = views.get(key);
+    if (!row) { row = agendaEntry(item, key); views.set(key, row); }
+    const target = agendaSource(item); row.node.agendaRecord = item;
+    row.node.href = target.sourceId ? `?view=${target.view}&source=${encodeURIComponent(target.sourceId)}` : `?view=${target.view}`;
+    if (target.sourceId) row.node.dataset.agendaSourceId = target.sourceId;
+    else delete row.node.dataset.agendaSourceId;
+    row.node.setAttribute('aria-disabled', 'false');
+    agendaText(row.priority, item.priority === 'high' ? '●' : '·'); row.priority.classList.toggle('high', item.priority === 'high');
+    agendaText(row.title, item.title); agendaText(row.detail, item.detail);
+    agendaText(row.basis, [item.source?.revision ? `Kilderevision ${item.source.revision}` : '', target.qualifier || ''].filter(Boolean).join(' · '));
+    if (row.node === anchor) anchor = anchor.nextElementSibling;
+    else if (!row.node.contains(document.activeElement)) parent.insertBefore(row.node, anchor);
+  }
+  for (const [key, row] of views) if (!keep.has(key)) {
+    if (row.node.contains(document.activeElement)) {
+      row.node.setAttribute('aria-disabled', 'true'); agendaText(row.detail, 'Denne kilde er ikke længere i oversigten. Fokus er bevaret; genindlæs grundlaget før brug.');
+    } else { row.node.remove(); views.delete(key); }
   }
 }
 
+function renderAgendaGroups(root, groups, prefix) {
+  const keep = new Set();
+  for (const group of groups) {
+    const key = `${prefix}:${group.id}`; keep.add(key);
+    let view = agendaCards.get(key);
+    if (!view) {
+      const card = make('section', '', 'intelligence-card'), subtitle = make('span', '', 'tiny-label'), heading = make('h2');
+      const note = make('p', '', 'muted small-text'), empty = make('p', '', 'muted small-text'), body = make('div');
+      const more = make('details'), moreTitle = make('summary'), moreBody = make('div'); more.append(moreTitle, moreBody);
+      const footer = commandLink(group.linkLabel || 'Åbn sektionen', group.tab);
+      card.append(subtitle, heading, note, empty, body, more, footer);
+      card.dataset.todaySection = group.id; root.append(card);
+      if (prefix === 'primary') card.id = ({ priorities: 'today-priorities', household: 'today-meal', calendar: 'today-calendar' })[group.id] || '';
+      view = { card, subtitle, heading, note, empty, body, more, moreTitle, moreBody, footer, rows: new Map(), extraRows: new Map() };
+      agendaCards.set(key, view);
+    }
+    agendaText(view.subtitle, group.subtitle); agendaText(view.heading, group.title); agendaText(view.note, group.note);
+    view.note.hidden = !group.note; agendaText(view.empty, group.empty); view.empty.hidden = Boolean(group.items.length);
+    const limit = group.limit ?? 3;
+    renderAgendaRows(view.body, group.items.slice(0, limit), view.rows);
+    renderAgendaRows(view.moreBody, group.items.slice(limit), view.extraRows);
+    view.more.hidden = group.items.length <= limit;
+    agendaText(view.moreTitle, `Vis ${Math.max(0, group.items.length - limit)} yderligere registreringer`);
+  }
+  for (const [key, view] of agendaCards) if (key.startsWith(prefix + ':') && !keep.has(key)) {
+    view.card.remove(); agendaCards.delete(key);
+  }
+}
+
+function renderPersonalAgenda(agenda = {}, digests = [], today = null) {
+  const root = document.getElementById('home-intelligence'); if (!root) return;
+  const reviewPlans = new Set(today?.shoppingReviewPlanIds || []);
+  const insights = (agenda.insights || []).map(item => item.source?.kind === 'meal-plan' &&
+    reviewPlans.has(item.source.id) && item.id === `meal:${item.source.id}:shopping`
+    ? { ...item, priority: 'high', title: 'Indkøbslisten kræver gennemgang',
+      detail: 'Det beregnede grundlag er ændret. Gennemgå de bevarede manuelle mængder og den aktuelle liste, før der vælges varer; intet overføres automatisk.' }
+    : item);
+  const legacy = [
+    { id: 'recorded-dates', title: 'Registrerede datoer og jobs', subtitle: 'EKSISTERENDE DAGSOVERBLIK', items: agenda.today || [], tab: 'plan', empty: 'Ingen registrerede datoer eller automatiske jobs i dette udsnit.' },
+    { id: 'week', title: 'Næste 7 dage', subtitle: 'DATOER FRA DINE EGNE LISTER', items: agenda.week || [], tab: 'knowledge', empty: 'Ingen kommende datoer registreret.' },
+    { id: 'insights', title: 'Kræver opmærksomhed', subtitle: 'REGISTREREDE AFVENTNINGER OG ÆNDRINGER', items: insights, tab: 'plan', empty: 'Ingen kendte forhold i dette udsnit.' },
+  ];
+  if (!today) { renderAgendaGroups(root, legacy, 'primary'); return; }
+  const preserved = [...insights, ...(agenda.today || [])].map(item => ({ ...item,
+    rank: item.priority === 'high' ? 110 : 20 }));
+  const priorities = [...(today.priorities || []), ...preserved].sort((a, b) => (b.rank || 0) - (a.rank || 0));
+  const seen = new Set();
+  const unique = priorities.filter(item => { const key = item.id || `${JSON.stringify(item.source || {})}:${item.title}`;
+    if (seen.has(key)) return false; seen.add(key); return true; });
+  const calendar = today.calendar || { status: 'unknown', detail: 'Kalenderdækning er ukendt.', events: [] };
+  const calendarMetadata = calendar.fetchedAt && Number.isFinite(Date.parse(calendar.fetchedAt))
+    ? `Senest læst ${new Intl.DateTimeFormat('da-DK', { dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23', timeZone: 'Europe/Copenhagen' }).format(new Date(calendar.fetchedAt))}.`
+    : 'Ingen dokumenteret kalenderkopi.';
+  renderAgendaGroups(root, [
+    { id: 'priorities', title: 'Næste skridt', subtitle: `I dag · ${dateText(today.date)}`, items: unique, tab: 'plan', linkLabel: 'Se opgaver',
+      note: today.priorityCount > (today.priorities || []).length ? `${today.priorityCount} lokale opmærksomhedspunkter; de første 24 vises her. Se alle opgaver og sager i Plan.` : '',
+      empty: 'Ingen forfaldne eller planlagte punkter i de registrerede lokale oplysninger.' },
+    { id: 'household', title: 'Dagens madplan', subtitle: 'Husstand og aftensmad',
+      items: [...(today.household ? [today.household] : []), ...(today.meals || [])], tab: 'meals', linkLabel: 'Se madplan',
+      note: today.mealCount > 1 ? `${today.mealCount} gemte planer omfatter i dag. Ingen af dem er automatisk valgt som den endelige beslutning.`
+        : !today.mealCount ? 'Ingen ret gemt til i dag.' : '', empty: 'Husstand og aftensmad er endnu ikke registreret.' },
+    { id: 'calendar', title: 'Kalender i dag', subtitle: 'Kun læsning', items: calendar.events || [], tab: 'calendar',
+      linkLabel: 'Se kalender', limit: 2, note: `${calendar.detail} ${calendarMetadata}`, empty: '' },
+  ], 'primary');
+  let details = document.getElementById('home-legacy-agenda');
+  if (!details) {
+    details = make('div', '', 'intelligence-grid'); details.id = 'home-legacy-agenda';
+    (document.getElementById('home-more-details') || document.getElementById('home-feed')?.parentNode)?.append(details);
+  }
+  if (details) renderAgendaGroups(details, legacy, 'legacy');
+  let history = document.getElementById('home-agenda-history');
+  if (!history && details) { history = make('p', '', 'agenda-history muted micro'); history.id = 'home-agenda-history'; details.append(history); }
+  if (history) {
+    const newest = digests[0];
+    agendaText(history, newest ? `Seneste gemte ${newest.kind === 'weekly' ? 'uge-' : 'dags'}overblik: ${newest.at} · ${newest.itemCount} punkter. Baggrundslevering er ikke ændret af denne visning.` : '');
+    history.hidden = !newest;
+  }
+}
+
+function clearTodayViews() {
+  calendarSourceSequence++;
+  agendaCards.clear();
+  for (const id of ['home-intelligence', 'home-feed']) document.getElementById(id)?.replaceChildren();
+  for (const id of ['home-calendar-source', 'home-legacy-agenda', 'home-agenda-history']) document.getElementById(id)?.remove();
+}
+
+function agendaCalendarInstant(value) {
+  // Mirror the strict planningInstant input contract at this untrusted UI
+  // boundary; zone conversion still belongs to the shared Plan helper. Date's
+  // permissive parser must not turn 30 February or a missing offset into a
+  // different source observation.
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second = '00', offset] = match;
+  const civil = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  if (!Number.isFinite(civil.getTime()) || civil.toISOString().slice(0, 10) !== `${year}-${month}-${day}` ||
+      Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59 ||
+      offset !== 'Z' && (Number(offset.slice(1, 3)) > 14 || Number(offset.slice(4, 6)) > 59 ||
+        Number(offset.slice(1, 3)) === 14 && Number(offset.slice(4, 6)) !== 0)) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function agendaCalendarDay(value) {
+  if (typeof JarvisPlan === 'undefined' || typeof JarvisPlan.fromInstant !== 'function' ||
+      agendaCalendarInstant(value) === null) return null;
+  try { return JarvisPlan.fromInstant(value).slice(0, 10); } catch { return null; }
+}
+
+function agendaCalendarOverlaps(event, date) {
+  if (!event || event.status === 'cancelled') return false;
+  const civil = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(value + 'T12:00:00Z')) && new Date(value + 'T12:00:00Z').toISOString().slice(0, 10) === value;
+  if (event.allDay === true) return civil(event.start) && civil(event.end) && event.start <= date && date < event.end;
+  const startDay = agendaCalendarDay(event.start), end = agendaCalendarInstant(event.end), start = agendaCalendarInstant(event.start);
+  const endDay = end !== null ? agendaCalendarDay(new Date(end - 1).toISOString()) : null;
+  return startDay && endDay && end > start && startDay <= date && date <= endDay;
+}
+
+async function openRecordedCalendarSource(sourceId, { isCurrent = () => true } = {}) {
+  const sequence = ++calendarSourceSequence, session = organizerSession, owner = localStorage.getItem('jarvisAccessToken');
+  const current = () => Boolean(owner && owner === localStorage.getItem('jarvisAccessToken') &&
+    session === organizerSession && sequence === calendarSourceSequence && isCurrent());
+  if (!current() || typeof sourceId !== 'string' || sourceId.length > 2000) return false;
+  let parts;
+  try { parts = sourceId.split(':').map(decodeURIComponent); } catch { return false; }
+  const [kind, calendarId, date, eventId, fetchedAt] = parts;
+  if (parts.length !== 5 || kind !== 'google-calendar' || !calendarId || !eventId || agendaCalendarInstant(fetchedAt) === null ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + 'T12:00:00Z')) ||
+      new Date(date + 'T12:00:00Z').toISOString().slice(0, 10) !== date) return false;
+  let panel = document.getElementById('home-calendar-source');
+  if (!panel) { panel = make('section', '', 'panel'); panel.id = 'home-calendar-source';
+    (document.getElementById('plan-calendar') || document.getElementById('home-more-details') || document.getElementById('tab-home'))?.append(panel); }
+  delete panel.dataset.calendarSourceId; panel.replaceChildren(make('h2', 'Præcis kalenderkilde'));
+  const status = make('p', 'Henter kun den gemte lokale kalenderkopi …', 'muted small-text'); status.setAttribute('role', 'status'); panel.append(status);
+  const details = document.getElementById('home-more-details'); if (details) details.open = true;
+  try {
+    const cache = await api(`/api/google/calendar/cache?startDate=${encodeURIComponent(date)}&days=1`);
+    if (!current()) return false;
+    const matches = (Array.isArray(cache.events) ? cache.events : []).filter(item => item?.id === eventId);
+    if (cache.calendarId !== calendarId || cache.fetchedAt !== fetchedAt || matches.length !== 1 || !agendaCalendarOverlaps(matches[0], date)) {
+      agendaText(status, 'Kilden er utilgængelig: den præcise kalenderkopi eller begivenhed findes ikke længere. Ingen anden kilde er åbnet og ingen Google-læsning er startet.');
+      return false;
+    }
+    const event = matches[0], expires = agendaCalendarInstant(cache.expiresAt);
+    const fresh = cache.ready === true && agendaCalendarInstant(fetchedAt) <= Date.now() && expires !== null && expires > Date.now();
+    agendaText(status, `${fresh ? 'Gemte kalenderdata' : 'Ældre eller utilgængelig kalenderkopi – ikke aktuelt kapacitetsbevis'} · ${date}. Kun læsning.`);
+    panel.append(make('h3', event.title || 'Aftale uden titel'),
+      make('p', event.allDay ? `Heldagsregistrering ${event.start} – ${event.end} (slutdato ikke medregnet).` : `${event.start} – ${event.end}`),
+      make('p', `Kalender ${calendarId} · begivenhed ${eventId} · hentet ${fetchedAt}`, 'muted micro'),
+      make('p', 'Dette er kalenderdata, ikke oplysninger om hvem der er hjemme. Ingen invitation, besked eller ændring er foretaget.', 'muted small-text'));
+    panel.dataset.calendarSourceId = sourceId;
+    return true;
+  } catch {
+    if (current()) agendaText(status, 'Kilden er utilgængelig: den lokale kalenderkopi kunne ikke hentes. Ingen anden kilde er åbnet.');
+    return false;
+  }
+}
+window.openRecordedCalendarSource = openRecordedCalendarSource;
+
 function renderCommandCenter(data) {
-  if (data.agenda) renderPersonalAgenda(data.agenda, data.recentDigests);
+  if (data.agenda) renderPersonalAgenda(data.agenda, data.recentDigests, data.todayOverview);
   const root = document.getElementById('home-feed');
+  if (root.contains(document.activeElement)) {
+    let notice = document.getElementById('home-detail-update');
+    if (!notice) { notice = make('p', '', 'muted micro'); notice.id = 'home-detail-update'; notice.setAttribute('role', 'status'); root.append(notice); }
+    agendaText(notice, 'Detaljerne opdateres, når fokus er flyttet. Dagens kildekort ovenfor er opdateret; den åbne historik bevares imens.');
+    return;
+  }
   root.replaceChildren();
   const briefing = commandPanel('📰 Seneste morgenrapport', 'feature-panel');
   if (data.briefing) {
@@ -82,7 +280,12 @@ function renderCommandCenter(data) {
   for (const suggestion of data.suggestions) {
     const block = make('div', '', 'command-entry');
     block.append(make('strong', suggestion.title), make('p', suggestion.detail, 'muted small-text'));
-    block.append(commandLink('Se grundlag', suggestion.tab));
+    const source = agendaSource(suggestion);
+    if (source.sourceId) {
+      const link = agendaEntry({ ...suggestion, sourceId: source.sourceId, tab: source.view }, source.sourceId);
+      link.node.agendaRecord = { ...suggestion, sourceId: source.sourceId, tab: source.view };
+      link.node.href = `?view=${source.view}&source=${encodeURIComponent(source.sourceId)}`; agendaText(link.title, 'Åbn præcis kilde'); block.append(link.node);
+    } else block.append(commandLink('Åbn relevant sektion', agendaView(suggestion.tab)));
     attention.append(block);
   }
   attention.append(make('p', 'Forslagene bygger på gemte datoer, opgavestatus, overvågninger og godkendelser – ikke på antagelser.', 'command-evidence'));
@@ -110,11 +313,12 @@ function renderCommandCenter(data) {
   const monitor = commandPanel('👀 Overvågninger');
   if (data.monitor) {
     monitor.append(make('strong', data.monitor.taskTitle));
-    monitor.append(make('p', `${new Date(data.monitor.at).toLocaleString('da-DK')} · seneste registrerede ændring`, 'muted small-text'));
+    monitor.append(make('p', `${data.monitor.at ? new Date(data.monitor.at).toLocaleString('da-DK') : 'Ukendt tidspunkt'} · ${data.monitor.status === 'changed' ? 'registreret ændring' : 'ukendt udfald – kræver gennemgang'}`, 'muted small-text'));
+    if (data.monitor.note) monitor.append(make('p', data.monitor.note, 'muted small-text'));
     const detail = make('details'); detail.append(make('summary', 'Se observation'), make('pre', data.monitor.result, 'command-result'));
     monitor.append(detail);
-  } else monitor.append(make('p', 'Ingen dokumenterede ændringer i dine afsluttede overvågninger endnu.', 'muted small-text'));
-  monitor.append(commandLink('Alle overvågninger', 'tasks')); root.append(monitor);
+  } else monitor.append(make('p', 'Ingen aktuelle ændrede eller ukendte overvågningsudfald i dette udsnit. Se kørselshistorikken for tidligere observationer.', 'muted small-text'));
+  monitor.append(commandLink('Alle overvågninger', 'watches')); root.append(monitor);
 
   const tasks = commandPanel('◷ Næste opgaver');
   for (const task of data.next) tasks.append(make('p', `${task.title} · ${new Date(task.nextRunAt).toLocaleString('da-DK')}`, 'small-text'));
@@ -130,145 +334,554 @@ function renderCommandCenter(data) {
   projects.append(commandLink('Åbn projekter', 'projects')); root.append(projects);
 }
 
-async function refreshCommandCenter() {
-  if (commandLoadInProgress) return;
-  commandLoadInProgress = true;
-  try { renderCommandCenter(await api('/api/dashboard')); }
-  catch (error) { console.warn('Command Center:', error.message); }
-  finally { commandLoadInProgress = false; }
-}
+// Existing lists are deliberately reconciled in place: a poll is not an edit.
+// Each editor retains its captured updatedAt until an explicit reload or its own
+// acknowledged write. A newer server record never silently rebases a local draft.
+const organizerDraftKey = 'jarvis:v5:organizer-drafts';
+const organizerCards = new Map();
+let organizerReadPromise = null;
+let organizerReadVersion = 0;
+let organizerSession = 0;
+let organizerOwner = localStorage.getItem('jarvisAccessToken') || '';
+let organizerStorageAvailable = true;
+let organizerSecretDraft = false;
+let organizerRestored = { collections: {}, items: {} };
+const organizerCreate = { form: document.getElementById('collection-form'), busy: false, uncertain: false };
+const organizerSearch = document.getElementById('organizer-search');
+const organizerTitle = document.getElementById('collection-title');
+const organizerType = document.getElementById('collection-type');
+const organizerQuery = document.getElementById('organizer-query');
 
-async function refreshOrganizer() {
-  if (organizerLoadInProgress) return;
-  organizerLoadInProgress = true;
+function organizerVisible(view) {
+  const root = view === 'knowledge' ? (document.getElementById('plan-notes') || document.getElementById('tab-knowledge')) : document.getElementById('tab-' + view);
+  if (typeof JarvisShell === 'object') return JarvisShell.visible(root);
+  return Boolean(root && !root.hidden && !root.classList.contains('hidden'));
+}
+function organizerAuthenticated() { return Boolean(localStorage.getItem('jarvisAccessToken')); }
+function organizerStatus(parent, id = '') {
+  const status = make('p', '', 'organizer-record-status muted small-text');
+  if (id) status.id = id;
+  status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+  parent.append(status); return status;
+}
+const organizerStatusLine = organizerStatus(organizerRoot.parentNode, 'organizer-status');
+const organizerDraftStatus = organizerStatus(organizerCreate.form.parentNode, 'organizer-draft-status');
+organizerCreate.status = organizerStatus(organizerCreate.form, 'organizer-create-status');
+const organizerSearchStatus = organizerStatus(organizerSearch, 'organizer-search-status');
+function organizerReport(view, message, error = false) {
+  view.status.textContent = message;
+  view.status.classList.toggle('v5-conflict', error);
+  view.error = error;
+}
+function organizerButton(label, action, css = 'secondary compact-button') {
+  const button = make('button', label, css); button.type = 'button';
+  button.addEventListener('click', action); return button;
+}
+function organizerInput(parent, label, name, value = '', type = 'text', prefix = '') {
+  const title = make('label', label), input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+  input.id = 'organizer-' + prefix + '-' + name; input.name = name;
+  title.htmlFor = input.id;
+  if (type !== 'textarea') input.type = type;
+  else { input.rows = 2; input.maxLength = 2500; }
+  if (type === 'checkbox') input.checked = Boolean(value); else input.value = value || '';
+  if (type === 'text') input.maxLength = name === 'title' ? 100 : 350;
+  if (type === 'checkbox') {
+    title.textContent = ''; title.className = 'inline-check';
+    title.append(input, document.createTextNode(' ' + label)); parent.append(title);
+  } else parent.append(title, input);
+  return input;
+}
+function organizerFields(form, prefix, initial = {}) {
+  return {
+    text: organizerInput(form, 'Titel', 'text', initial.text, 'text', prefix),
+    notes: organizerInput(form, 'Beskrivelse / note', 'notes', initial.notes, 'textarea', prefix),
+    date: organizerInput(form, 'Dato (valgfri)', 'date', initial.date, 'date', prefix),
+    annual: organizerInput(form, 'Gentag hvert år', 'annual', initial.annual, 'checkbox', prefix),
+  };
+}
+function organizerReadFields(fields) {
+  return { text: fields.text.value, notes: fields.notes.value, date: fields.date.value, annual: fields.annual.checked };
+}
+function organizerWriteFields(fields, value = {}) {
+  fields.text.value = value.text || ''; fields.notes.value = value.notes || '';
+  fields.date.value = value.date || ''; fields.annual.checked = Boolean(value.annual);
+}
+function organizerEditable(item = {}) {
+  return { text: item.text || '', notes: item.notes || '', date: item.date || '', annual: Boolean(item.annual) };
+}
+function organizerEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function organizerItemDirty(view) { return !organizerEqual(organizerReadFields(view.fields), organizerEditable(view.base)); }
+function organizerAddDirty(view) { return !organizerEqual(organizerReadFields(view.add.fields), organizerEditable()); }
+function organizerRenameDirty(view) { return view.rename.input.value !== view.rename.base.title; }
+function organizerKeepItem(view) {
+  return organizerItemDirty(view) || view.edit.open || view.busy || view.uncertain || view.conflict || view.row.contains(document.activeElement);
+}
+function organizerKeepCollection(view) {
+  return organizerRenameDirty(view) || organizerAddDirty(view) || view.rename.details.open || view.busy || view.add.busy ||
+    view.uncertain || view.add.uncertain || view.card.contains(document.activeElement) || [...view.items.values()].some(organizerKeepItem);
+}
+// Browser draft storage is not a credential store. This conservative screen is
+// intentionally independent of network calls; the server enforces its own shared
+// privacy boundary. No auth token or settings object is ever serialized here.
+function organizerHasSecret(value) {
+  return /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{16,})\b|\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:Authorization\s*:\s*Bearer|api[_ -]?key|api-nøgle|password|passwd|adgangskode|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret)\s*["']?\s*(?:[=:]|\s)\s*\S+/iu.test(JSON.stringify(value));
+}
+function organizerStorageNotice() {
+  organizerDraftStatus.textContent = !organizerStorageAvailable
+    ? 'Fanens kladde kan ikke gemmes lokalt. Lad siden være åben, indtil dine ændringer er gemt eller kopieret.'
+    : organizerSecretDraft
+      ? 'En kladde ligner en adgangskode eller nøgle og gemmes derfor ikke i browserlageret. Fjern hemmeligheden før genindlæsning.'
+      : '';
+  organizerDraftStatus.classList.toggle('v5-conflict', !organizerStorageAvailable || organizerSecretDraft);
+}
+function organizerPersist() {
+  if (!organizerAuthenticated() || organizerOwner !== localStorage.getItem('jarvisAccessToken')) return;
+  organizerSecretDraft = false;
+  const safe = value => { if (organizerHasSecret(value)) { organizerSecretDraft = true; return null; } return value; };
+  // An input may arrive before the first GET completes. Do not erase restored
+  // drafts that have not yet been reconciled into their editor nodes.
+  const snapshot = { version: 1, collections: { ...organizerRestored.collections }, items: { ...organizerRestored.items } };
+  if (organizerTitle.value || organizerType.value !== 'dates' || organizerCreate.uncertain)
+    snapshot.create = safe({ title: organizerTitle.value, type: organizerType.value, uncertain: organizerCreate.uncertain });
+  if (organizerQuery.value) snapshot.query = safe(organizerQuery.value);
+  for (const view of organizerCards.values()) {
+    if (organizerKeepCollection(view)) {
+      snapshot.collections[view.id] = safe({ id: view.id, title: view.latest.title, type: view.latest.type,
+        updatedAt: view.latest.updatedAt, missing: view.missing, rename: { title: view.rename.input.value,
+          base: view.rename.base, open: view.rename.details.open, uncertain: view.uncertain },
+        add: { fields: organizerReadFields(view.add.fields), uncertain: view.add.uncertain } });
+    }
+    for (const item of view.items.values()) if (organizerKeepItem(item))
+      snapshot.items[view.id + ':' + item.id] = safe({ id: item.id, collectionId: view.id,
+        base: item.base, fields: organizerReadFields(item.fields), open: item.edit.open, uncertain: item.uncertain });
+  }
   try {
-    const data = await api('/api/organizer');
-    organizerRoot.replaceChildren();
-    if (!data.collections.length) organizerRoot.append(make('p', 'Du har endnu ingen noter eller lister. Opret fx Familiens fødselsdage, Gaveidéer eller Indkøb.', 'muted'));
-    for (const collection of data.collections) renderCollection(collection);
-  } catch (error) { console.warn('Lister:', error.message); }
-  finally { organizerLoadInProgress = false; }
+    const text = JSON.stringify(snapshot);
+    if (text.length > 1_000_000) throw new Error('Kladderne fylder for meget i browserlageret.');
+    sessionStorage.setItem(organizerDraftKey, text); organizerStorageAvailable = true;
+  } catch { organizerStorageAvailable = false; }
+  organizerStorageNotice();
+}
+function organizerDraftChanged(view) {
+  if (!view.error && !view.conflict && !view.uncertain)
+    organizerReport(view, 'Ugemte ændringer. Kladden bevares i denne fane.');
+  organizerPersist();
+}
+function organizerUnknown(error) {
+  return !Number.isInteger(error?.status) || error.status >= 500 ||
+    /ukendt|kan være udført|kan være gemt|lagerets seneste udfald|runtime-konfigurationen/iu.test(error.message || '');
+}
+function organizerControls(view) {
+  const blocked = view.busy || view.missing || view.conflict || view.uncertain;
+  for (const control of view.actions || []) control.disabled = Boolean(blocked);
+  if (view.review) view.review.hidden = !view.uncertain;
+  if (view.reload) { view.reload.hidden = !view.conflict && !view.missing && !view.error; view.reload.disabled = Boolean(view.busy); }
+}
+async function organizerReviewUnknown(view) {
+  if (view.busy || !view.uncertain) return;
+  try {
+    await refreshOrganizer();
+    if (!confirm('Gennemgå først den opdaterede liste. Er du sikker på, at ændringen ikke allerede er gemt? Et nyt forsøg kan ellers oprette en dublet.')) return;
+    view.uncertain = false; organizerControls(view);
+    organizerReport(view, 'Du har kontrolleret resultatet. Kladden er bevaret; et nyt forsøg sker kun, hvis du vælger Gem eller Tilføj.');
+    organizerPersist();
+  } catch (error) { organizerReport(view, 'Resultatet kan ikke kontrolleres endnu: ' + error.message, true); }
+}
+async function organizerWrite(view, path, method, body, accept, success) {
+  if (!organizerAuthenticated() || view.busy || view.missing || view.conflict || view.uncertain) return;
+  const owner = organizerOwner, session = organizerSession;
+  view.busy = true; organizerControls(view); organizerReport(view, 'Gemmer …');
+  organizerReadVersion++;
+  try {
+    const result = await api(path, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    if (session !== organizerSession || owner !== localStorage.getItem('jarvisAccessToken')) return;
+    // Also invalidate GETs started *during* this write. They may have captured
+    // the old record before the response acknowledged the new revision.
+    organizerReadVersion++;
+    accept(result);
+    organizerReport(view, typeof success === 'function' ? success() : success); organizerPersist();
+    if (organizerReadPromise) await organizerReadPromise.catch(() => {});
+    try { await refreshOrganizer(); }
+    catch (error) { organizerStatusLine.textContent = 'Ændringen er gemt, men oversigten kunne ikke opdateres: ' + error.message + '. Intet er sendt igen.'; }
+    if (organizerVisible('home')) refreshCommandCenter();
+  } catch (error) {
+    if (session !== organizerSession || owner !== localStorage.getItem('jarvisAccessToken')) return;
+    organizerReadVersion++;
+    view.uncertain = organizerUnknown(error);
+    organizerReport(view, (view.uncertain ? 'Gemningens udfald er ikke bekræftet. Kontrollér listen før et nyt forsøg. ' : 'Ikke gemt: ') +
+      error.message + ' Kladden er bevaret.', true);
+    organizerPersist();
+  } finally {
+    if (session === organizerSession) { view.busy = false; organizerControls(view); organizerPersist(); }
+  }
 }
 
+async function refreshCommandCenter() {
+  if (commandLoadInProgress || !organizerAuthenticated()) return;
+  commandLoadInProgress = true;
+  const session = organizerSession, owner = localStorage.getItem('jarvisAccessToken');
+  const visibleStatus = document.getElementById('today-read-status');
+  if (visibleStatus && !document.getElementById('home-intelligence').children.length) {
+    visibleStatus.classList.remove('hidden'); visibleStatus.textContent = 'Henter dagens overblik …';
+  }
+  try {
+    const data = await api('/api/dashboard');
+    if (session === organizerSession && owner === localStorage.getItem('jarvisAccessToken')) {
+      renderCommandCenter(data);
+      if (visibleStatus) { visibleStatus.textContent = ''; visibleStatus.classList.add('hidden'); }
+    }
+  } catch (error) {
+    const root = document.getElementById('home-feed');
+    if (root && session === organizerSession) {
+      let status = root.querySelector('[data-command-read-error]');
+      if (!status) { status = make('p', '', 'v5-conflict'); status.dataset.commandReadError = 'true'; root.append(status); }
+      status.textContent = 'Overblikket kunne ikke opdateres: ' + error.message + '. Tidligere viste oplysninger kan være forældede.';
+      if (visibleStatus) { visibleStatus.textContent = status.textContent; visibleStatus.classList.remove('hidden'); }
+    }
+  } finally { commandLoadInProgress = false; }
+}
+
+function organizerApplyItem(view, item, { force = false } = {}) {
+  view.latest = { ...item }; view.missing = false;
+  const changed = item.updatedAt !== view.base.updatedAt || !organizerEqual(organizerEditable(item), organizerEditable(view.base));
+  if (force || (!organizerKeepItem(view) && changed)) {
+    view.base = { ...item }; organizerWriteFields(view.fields, item); view.conflict = false;
+  } else if (changed) {
+    view.conflict = true;
+    organizerReport(view, 'Ændret et andet sted. Din kladde og dens oprindelige version er bevaret. Hent nyeste punkt før du gemmer.', true);
+  }
+  view.row.classList.toggle('is-done', Boolean(item.done));
+  if (!view.busy) view.checkbox.checked = Boolean(item.done);
+  if (view.displaySignature !== JSON.stringify(item)) {
+    view.content.replaceChildren(make('strong', item.text));
+    if (item.notes) view.content.append(make('p', item.notes, 'muted small-text'));
+    if (item.date) view.content.append(make('span', '📅 ' + dateText(item.date) + (item.annual ? ' · årligt' : ''), 'micro'));
+    view.displaySignature = JSON.stringify(item);
+  }
+  organizerControls(view);
+}
+function organizerRemoveLocalItem(collection, view) {
+  collection.items.delete(view.id); view.row.remove(); organizerPersist();
+}
+function organizerRenderItem(collection, item, draft = null) {
+  const view = { id: item.id, base: { ...item }, latest: { ...item }, busy: false, conflict: false, uncertain: false, missing: false };
+  view.row = make('div', '', 'collection-item'); view.row.dataset.organizerItemId = collection.id + ':' + item.id;
+  const line = make('div', '', 'collection-item-main');
+  view.checkbox = document.createElement('input'); view.checkbox.type = 'checkbox';
+  view.checkbox.setAttribute('aria-label', 'Markér ' + item.text + ' som færdig');
+  view.content = make('div', '', 'collection-item-text'); line.append(view.checkbox, view.content); view.row.append(line);
+  view.edit = make('details', '', 'collection-edit'); view.edit.append(make('summary', 'Redigér / slet'));
+  view.form = make('form', '', 'collection-edit-form'); view.form.dataset.organizerRole = 'item-editor';
+  view.fields = organizerFields(view.form, collection.id + '-' + item.id, item); view.fields.text.required = true;
+  const submit = make('button', 'Gem ændring', 'primary compact-button'); submit.type = 'submit'; view.form.append(submit);
+  view.status = organizerStatus(view.form);
+  view.reload = organizerButton('Hent nyeste punkt og kassér kladde', async () => {
+    if (view.busy) return;
+    try {
+      await refreshOrganizer();
+      if (!confirm('Kassér denne lokale kladde og brug det seneste gemte punkt?')) return;
+      if (view.missing || collection.missing) { organizerRemoveLocalItem(collection, view); return; }
+      organizerApplyItem(view, view.latest, { force: true }); view.uncertain = false;
+      organizerReport(view, 'Nyeste gemte version er indlæst.'); organizerControls(view); organizerPersist();
+    } catch (error) { organizerReport(view, 'Kunne ikke hente nyeste version: ' + error.message + '. Kladden er bevaret.', true); }
+  });
+  view.review = organizerButton('Kontrollér resultat før nyt forsøg', () => organizerReviewUnknown(view));
+  const erase = organizerButton('Slet punkt', async () => {
+    if (view.busy || view.conflict || view.missing || view.uncertain) return;
+    if (!confirm('Slet punktet "' + view.latest.text + '"?' + (organizerItemDirty(view) ? ' Den lokale kladde til dette punkt bliver også fjernet.' : ''))) return;
+    await organizerWrite(view, '/api/organizer/' + collection.id + '/items/' + view.id, 'DELETE', { updatedAt: view.base.updatedAt },
+      () => organizerRemoveLocalItem(collection, view), 'Punktet er slettet.');
+  }, 'danger-button compact-button');
+  view.actions = [submit, erase, view.checkbox];
+  view.edit.append(view.form, view.reload, view.review, erase); view.row.append(view.edit);
+  view.form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const submitted = organizerReadFields(view.fields);
+    await organizerWrite(view, '/api/organizer/' + collection.id + '/items/' + view.id, 'PATCH',
+      { ...submitted, updatedAt: view.base.updatedAt }, result => {
+        if (!result.item?.updatedAt) throw new Error('Serveren kvitterede ikke med punktets gemte version.');
+        const unchanged = organizerEqual(organizerReadFields(view.fields), submitted);
+        view.base = { ...result.item }; view.latest = { ...result.item }; view.conflict = false;
+        if (unchanged) organizerWriteFields(view.fields, result.item);
+        organizerApplyItem(view, result.item);
+      }, () => organizerItemDirty(view) ? 'Punktet er gemt. Nye ændringer i formularen er endnu ikke gemt.' : 'Punktet er gemt.');
+  });
+  view.checkbox.addEventListener('change', async () => {
+    const requested = view.checkbox.checked;
+    await organizerWrite(view, '/api/organizer/' + collection.id + '/items/' + view.id, 'PATCH',
+      { done: requested, updatedAt: view.base.updatedAt }, result => {
+        if (!result.item?.updatedAt) throw new Error('Serveren kvitterede ikke med punktets gemte version.');
+        view.base = { ...result.item }; view.latest = { ...result.item }; view.conflict = false;
+        organizerApplyItem(view, result.item);
+      }, () => organizerItemDirty(view) ? 'Markeringen er gemt. Beskrivelsens kladde er endnu ikke gemt.' : 'Markeringen er gemt.');
+    if (!view.busy) view.checkbox.checked = Boolean(view.latest.done);
+  });
+  for (const type of ['input', 'change']) view.form.addEventListener(type, () => organizerDraftChanged(view));
+  view.edit.addEventListener('toggle', organizerPersist);
+  if (draft) {
+    view.base = { ...draft.base }; organizerWriteFields(view.fields, draft.fields);
+    view.edit.open = Boolean(draft.open); view.uncertain = Boolean(draft.uncertain);
+    organizerReport(view, view.uncertain ? 'Tidligere gemnings udfald er ikke bekræftet. Kontrollér før nyt forsøg.'
+      : 'Kladde gendannet i denne fane. Gennemgå før gemning.', view.uncertain);
+  }
+  collection.items.set(item.id, view); collection.entries.append(view.row);
+  organizerApplyItem(view, item); return view;
+}
+
+function renderCollection(collection, saved = null) {
+  const view = { id: collection.id, latest: { ...collection }, items: new Map(), busy: false, uncertain: false,
+    conflict: false, missing: false };
+  view.card = make('section', '', 'panel collection-card'); view.card.dataset.collectionId = String(collection.id);
+  const head = make('div', '', 'collection-heading');
+  view.heading = make('h2', collection.title); view.type = make('span', collectionNames[collection.type] || collection.type, 'tiny-label');
+  head.append(view.heading, view.type); view.card.append(head);
+  const buttons = make('div', '', 'collection-actions');
+  view.rename = { base: { title: collection.title, updatedAt: collection.updatedAt }, details: make('details', '', 'collection-rename') };
+  view.rename.details.append(make('summary', 'Omdøb liste'));
+  view.rename.form = make('form', '', 'collection-edit-form'); view.rename.form.dataset.organizerRole = 'rename';
+  view.rename.input = organizerInput(view.rename.form, 'Listenavn', 'title', collection.title, 'text', collection.id);
+  view.rename.input.required = true;
+  const renameSave = make('button', 'Gem listenavn', 'secondary compact-button'); renameSave.type = 'submit';
+  view.rename.form.append(renameSave); view.rename.details.append(view.rename.form);
+  const rename = organizerButton('Omdøb', () => { view.rename.details.open = true; view.rename.input.focus(); });
+  const archive = organizerButton('Arkivér liste', async () => {
+    if (view.busy || view.conflict || view.missing || view.uncertain) return;
+    if (!confirm('Arkivér listen "' + view.latest.title + '" med alle punkter?' +
+      (organizerKeepCollection(view) ? ' Lokale kladder i listen fjernes også. Arkivet bevares i datafilen.' : ' Arkivet bevares i datafilen.'))) return;
+    await organizerWrite(view, '/api/organizer/' + view.id, 'DELETE', { updatedAt: view.latest.updatedAt },
+      () => { organizerCards.delete(view.id); view.card.remove(); }, 'Listen er arkiveret i datafilen.');
+  }, 'danger-button compact-button');
+  buttons.append(rename, archive); view.card.append(buttons, view.rename.details);
+  view.status = organizerStatus(view.card);
+  view.reload = organizerButton('Hent nyeste listenavn og kassér navnekladde', async () => {
+    if (view.busy) return;
+    try {
+      await refreshOrganizer();
+      if (!confirm(view.missing ? 'Listen findes ikke længere i den aktive oversigt. Kassér dens lokale kladder og fjern visningen?'
+        : 'Kassér navnekladden og indlæs det seneste listenavn? Kladder til punkter bevares.')) return;
+      if (view.missing) { organizerCards.delete(view.id); view.card.remove(); }
+      else { view.rename.base = { title: view.latest.title, updatedAt: view.latest.updatedAt };
+        view.rename.input.value = view.latest.title; view.conflict = false; view.uncertain = false;
+        organizerReport(view, 'Nyeste listenavn er indlæst. Punktkladder er bevaret.'); organizerControls(view); }
+      organizerPersist();
+    } catch (error) { organizerReport(view, 'Listen kunne ikke opdateres: ' + error.message, true); }
+  });
+  view.review = organizerButton('Kontrollér resultat før nyt forsøg', () => organizerReviewUnknown(view));
+  view.actions = [renameSave, archive]; view.card.append(view.reload, view.review);
+  view.entries = make('div', '', 'collection-items'); view.card.append(view.entries);
+  view.add = { form: make('form', '', 'collection-add-form'), busy: false, missing: false, uncertain: false };
+  view.add.form.dataset.organizerRole = 'add';
+  view.add.fields = organizerFields(view.add.form, collection.id + '-add'); view.add.fields.text.required = true;
+  view.add.fields.text.placeholder = collection.type === 'dates' ? 'Fx Mors fødselsdag' : collection.type === 'shopping' ? 'Fx Havremælk' : 'Nyt punkt / idé …';
+  const addButton = make('button', '+ Tilføj punkt', 'secondary'); addButton.type = 'submit'; view.add.form.append(addButton);
+  view.add.status = organizerStatus(view.add.form);
+  view.add.review = organizerButton('Kontrollér resultat før nyt forsøg', () => organizerReviewUnknown(view.add));
+  view.add.form.append(view.add.review); view.add.actions = [addButton]; view.card.append(view.add.form);
+  view.rename.form.addEventListener('submit', async event => {
+    event.preventDefault(); const title = view.rename.input.value;
+    await organizerWrite(view, '/api/organizer/' + view.id, 'PUT', { title, updatedAt: view.rename.base.updatedAt }, result => {
+      if (!result.collection?.updatedAt) throw new Error('Serveren kvitterede ikke med listens gemte version.');
+      if (view.rename.input.value === title) view.rename.input.value = result.collection.title;
+      view.rename.base = { title: result.collection.title, updatedAt: result.collection.updatedAt };
+      view.latest = { ...result.collection }; view.conflict = false;
+    }, () => organizerRenameDirty(view) ? 'Listenavnet er gemt. Nye navneændringer er endnu ikke gemt.' : 'Listenavnet er gemt.');
+  });
+  view.add.form.addEventListener('submit', async event => {
+    event.preventDefault(); const submitted = organizerReadFields(view.add.fields);
+    await organizerWrite(view.add, '/api/organizer/' + view.id + '/items', 'POST', submitted, result => {
+      if (!result.item?.id) throw new Error('Serveren kvitterede ikke med det nye punkt.');
+      if (organizerEqual(organizerReadFields(view.add.fields), submitted)) organizerWriteFields(view.add.fields);
+      if (!view.items.has(result.item.id)) organizerRenderItem(view, result.item);
+    }, () => organizerAddDirty(view) ? 'Punktet er tilføjet. Den nye tilføjelseskladde er endnu ikke gemt.' : 'Punktet er tilføjet.');
+  });
+  for (const type of ['input', 'change']) {
+    view.rename.form.addEventListener(type, () => organizerDraftChanged(view));
+    view.add.form.addEventListener(type, () => organizerDraftChanged(view.add));
+  }
+  view.rename.details.addEventListener('toggle', organizerPersist);
+  if (saved) {
+    if (saved.rename) {
+      view.rename.base = { ...saved.rename.base }; view.rename.input.value = saved.rename.title;
+      view.rename.details.open = Boolean(saved.rename.open); view.uncertain = Boolean(saved.rename.uncertain);
+    }
+    if (saved.add) { organizerWriteFields(view.add.fields, saved.add.fields); view.add.uncertain = Boolean(saved.add.uncertain);
+      organizerReport(view.add, view.add.uncertain ? 'Tidligere tilføjelse har uafklaret udfald. Kontrollér listen før nyt forsøg.' : 'Tilføjelseskladde gendannet.', view.add.uncertain); }
+  }
+  organizerCards.set(view.id, view); organizerRoot.append(view.card);
+  organizerSyncCollection(view, collection); return view;
+}
+
+function organizerSyncCollection(view, collection) {
+  view.latest = { ...collection }; view.missing = false; view.add.missing = false;
+  view.heading.textContent = collection.title;
+  const renamed = collection.updatedAt !== view.rename.base.updatedAt || collection.title !== view.rename.base.title;
+  if (renamed) {
+    if (organizerRenameDirty(view) || view.rename.details.open || view.rename.form.contains(document.activeElement) || view.busy || view.uncertain) {
+      view.conflict = true; organizerReport(view, 'Listen er ændret et andet sted. Navnekladden og dens version er bevaret; hent nyeste listenavn før gemning.', true);
+    } else {
+      view.rename.base = { title: collection.title, updatedAt: collection.updatedAt }; view.rename.input.value = collection.title; view.conflict = false;
+    }
+  }
+  const incoming = new Set(collection.items.map(item => item.id));
+  for (const item of collection.items) {
+    let editor = view.items.get(item.id);
+    if (editor) organizerApplyItem(editor, item);
+    else editor = organizerRenderItem(view, item, organizerRestored.items[view.id + ':' + item.id]);
+  }
+  for (const [key, draft] of Object.entries(organizerRestored.items)) {
+    if (draft?.collectionId !== view.id || incoming.has(draft.id) || view.items.has(draft.id)) continue;
+    organizerRenderItem(view, { ...draft.base, id: draft.id }, draft);
+  }
+  for (const editor of [...view.items.values()]) if (!incoming.has(editor.id)) {
+    if (organizerKeepItem(editor)) {
+      editor.missing = true; organizerReport(editor, 'Punktet findes ikke længere i den aktive liste. Din lokale kladde er bevaret; ingen ny post oprettes automatisk.', true); organizerControls(editor);
+    } else organizerRemoveLocalItem(view, editor);
+  }
+  organizerControls(view); organizerControls(view.add);
+}
+async function refreshOrganizer() {
+  const owner = localStorage.getItem('jarvisAccessToken');
+  if (!owner) return;
+  if (organizerOwner !== owner) {
+    organizerClear(); organizerOwner = owner;
+    // An earlier owner's in-flight read must neither populate this session nor
+    // satisfy its first explicit refresh with an ignored old response.
+    if (organizerReadPromise) await organizerReadPromise.catch(() => {});
+  }
+  if (organizerReadPromise) return organizerReadPromise;
+  const session = organizerSession, version = organizerReadVersion;
+  organizerLoadInProgress = true;
+  organizerReadPromise = (async () => {
+    try {
+      const data = await api('/api/organizer');
+      if (session !== organizerSession || owner !== localStorage.getItem('jarvisAccessToken') || version !== organizerReadVersion) return;
+      const ids = new Set(data.collections.map(collection => collection.id));
+      for (const collection of data.collections) {
+        const view = organizerCards.get(collection.id);
+        if (view) organizerSyncCollection(view, collection);
+        else renderCollection(collection, organizerRestored.collections[collection.id]);
+      }
+      for (const saved of Object.values(organizerRestored.collections)) if (saved && !ids.has(saved.id) && !organizerCards.has(saved.id))
+        renderCollection({ id: saved.id, title: saved.title, type: saved.type, updatedAt: saved.updatedAt, items: [] }, saved);
+      for (const view of [...organizerCards.values()]) if (!ids.has(view.id)) {
+        if (organizerKeepCollection(view)) {
+          view.missing = true; view.add.missing = true;
+          organizerReport(view, 'Listen findes ikke længere i den aktive oversigt. Lokale kladder er bevaret; de er ikke gemt som en ny liste.', true);
+          organizerControls(view); organizerControls(view.add);
+          for (const item of view.items.values()) { item.missing = true; organizerControls(item); }
+        } else { organizerCards.delete(view.id); view.card.remove(); }
+      }
+      organizerRestored = { collections: {}, items: {} };
+      const empty = organizerRoot.querySelector('[data-organizer-empty]');
+      if (!organizerCards.size && !empty) { const note = make('p', 'Du har endnu ingen noter eller lister. Opret fx Familiens fødselsdage, Gaveidéer eller Indkøb.', 'muted'); note.dataset.organizerEmpty = 'true'; organizerRoot.append(note); }
+      else if (organizerCards.size && empty) empty.remove();
+      organizerStatusLine.textContent = '';
+      organizerPersist();
+      return data;
+    } catch (error) {
+      if (session === organizerSession && owner === localStorage.getItem('jarvisAccessToken'))
+        organizerStatusLine.textContent = 'Listerne kunne ikke opdateres: ' + error.message + '. Tidligere oplysninger kan være forældede. Kladder er bevaret.';
+      throw error;
+    } finally { organizerLoadInProgress = false; organizerReadPromise = null; }
+  })();
+  return organizerReadPromise;
+}
 async function organizerMutation(path, options) {
   const result = await api(path, options);
+  organizerReadVersion++;
+  if (organizerReadPromise) await organizerReadPromise.catch(() => {});
   await refreshOrganizer();
-  await refreshCommandCenter();
+  if (organizerVisible('home')) await refreshCommandCenter();
   return result;
 }
 
-function renderCollection(collection) {
-  const card = make('section', '', 'panel collection-card');
-  const head = make('div', '', 'collection-heading');
-  const heading = make('h2', collection.title);
-  const type = make('span', collectionNames[collection.type] || collection.type, 'tiny-label');
-  head.append(heading, type); card.append(head);
-  const buttons = make('div', '', 'collection-actions');
-  const rename = make('button', 'Omdøb', 'secondary compact-button'); rename.type = 'button';
-  rename.addEventListener('click', async () => {
-    const title = prompt('Nyt listenavn:', collection.title);
-    if (title === null || !title.trim()) return;
-    try { await organizerMutation(`/api/organizer/${collection.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }); toast('Listen er omdøbt.'); }
-    catch (error) { toast(error.message); }
-  });
-  const remove = make('button', 'Arkivér liste', 'danger-button compact-button'); remove.type = 'button';
-  remove.addEventListener('click', async () => {
-    if (!confirm(`Arkivér hele listen "${collection.title}" med ${collection.items.length} punkter?`)) return;
-    try { await organizerMutation(`/api/organizer/${collection.id}`, { method: 'DELETE' }); toast('Listen er arkiveret i datafilen.'); }
-    catch (error) { toast(error.message); }
-  });
-  buttons.append(rename, remove); card.append(buttons);
-
-  const entries = make('div', '', 'collection-items');
-  if (!collection.items.length) entries.append(make('p', 'Ingen punkter endnu.', 'muted small-text'));
-  for (const item of collection.items) {
-    const row = make('div', '', `collection-item ${item.done ? 'is-done' : ''}`);
-    const line = make('div', '', 'collection-item-main');
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(item.done); checkbox.title = 'Markér som færdig';
-    checkbox.addEventListener('change', async () => {
-      try { await organizerMutation(`/api/organizer/${collection.id}/items/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: checkbox.checked, updatedAt: item.updatedAt }) }); }
-      catch (error) { toast(error.message); checkbox.checked = !checkbox.checked; }
-    });
-    const content = make('div', '', 'collection-item-text');
-    content.append(make('strong', item.text));
-    if (item.notes) content.append(make('p', item.notes, 'muted small-text'));
-    if (item.date) content.append(make('span', `📅 ${dateText(item.date)}${item.annual ? ' · årligt' : ''}`, 'micro'));
-    line.append(checkbox, content); row.append(line);
-
-    const edit = make('details', '', 'collection-edit');
-    edit.append(make('summary', 'Redigér / slet'));
-    const form = make('form', '', 'collection-edit-form');
-    const titleLabel = make('label', 'Titel'); const titleInput = document.createElement('input'); titleInput.value = item.text; titleInput.required = true; titleInput.maxLength = 350;
-    const notesLabel = make('label', 'Beskrivelse / note'); const notesInput = document.createElement('textarea'); notesInput.rows = 2; notesInput.maxLength = 2500; notesInput.value = item.notes || '';
-    const dateLabel = make('label', 'Dato (valgfri)'); const dateInput = document.createElement('input'); dateInput.type = 'date'; dateInput.value = item.date || '';
-    const annualLabel = make('label', '', 'inline-check'); const annual = document.createElement('input'); annual.type = 'checkbox'; annual.checked = Boolean(item.annual); annualLabel.append(annual, document.createTextNode(' Gentag hvert år'));
-    const save = make('button', 'Gem ændring', 'primary compact-button'); save.type = 'submit';
-    form.append(titleLabel, titleInput, notesLabel, notesInput, dateLabel, dateInput, annualLabel, save);
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      try { await organizerMutation(`/api/organizer/${collection.id}/items/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        text: titleInput.value, notes: notesInput.value, date: dateInput.value, annual: annual.checked, updatedAt: item.updatedAt,
-      }) }); toast('Punktet er gemt.'); }
-      catch (error) { toast(error.message); }
-    });
-    const erase = make('button', 'Slet punkt', 'danger-button compact-button'); erase.type = 'button';
-    erase.addEventListener('click', async () => {
-      if (!confirm(`Slet punktet "${item.text}"?`)) return;
-      try { await organizerMutation(`/api/organizer/${collection.id}/items/${item.id}`, { method: 'DELETE' }); toast('Punktet er slettet.'); }
-      catch (error) { toast(error.message); }
-    });
-    edit.append(form, erase); row.append(edit); entries.append(row);
-  }
-  card.append(entries);
-
-  const form = make('form', '', 'collection-add-form');
-  const input = document.createElement('input'); input.required = true; input.maxLength = 350;
-  input.placeholder = collection.type === 'dates' ? 'Fx Mors fødselsdag' : collection.type === 'shopping' ? 'Fx Havremælk' : 'Nyt punkt / idé …';
-  const note = document.createElement('textarea'); note.maxLength = 2500; note.rows = 2; note.placeholder = 'Valgfri note, gaveønske, butik, link eller anden kontekst';
-  const date = document.createElement('input'); date.type = 'date';
-  const dateGroup = make('div', '', 'collection-date-row');
-  const dateLabel = make('label', 'Dato (valgfri)');
-  const annualLabel = make('label', '', 'inline-check'); const annual = document.createElement('input'); annual.type = 'checkbox';
-  annualLabel.append(annual, document.createTextNode(' Gentag årligt'));
-  dateGroup.append(dateLabel, date, annualLabel);
-  const submit = make('button', '+ Tilføj punkt', 'secondary'); submit.type = 'submit';
-  form.append(input, note, dateGroup, submit);
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    try { await organizerMutation(`/api/organizer/${collection.id}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      text: input.value, notes: note.value, date: date.value, annual: annual.checked,
-    }) }); toast('Punktet er tilføjet.'); }
-    catch (error) { toast(error.message); }
-  });
-  card.append(form); organizerRoot.append(card);
-}
-
-document.getElementById('collection-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    await organizerMutation('/api/organizer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      title: document.getElementById('collection-title').value, type: document.getElementById('collection-type').value,
-    }) });
-    document.getElementById('collection-title').value = '';
-    toast('Din nye liste er oprettet.');
-  } catch (error) { toast(error.message); }
+organizerCreate.actions = [organizerCreate.form.querySelector('[type="submit"]')];
+organizerCreate.review = organizerButton('Kontrollér resultat før nyt forsøg', () => organizerReviewUnknown(organizerCreate));
+organizerCreate.form.append(organizerCreate.review); organizerControls(organizerCreate);
+organizerCreate.form.addEventListener('submit', async event => {
+  event.preventDefault(); const submitted = { title: organizerTitle.value, type: organizerType.value };
+  await organizerWrite(organizerCreate, '/api/organizer', 'POST', submitted, result => {
+    if (!result.collection?.id) throw new Error('Serveren kvitterede ikke med den nye liste.');
+    if (organizerTitle.value === submitted.title && organizerType.value === submitted.type) organizerTitle.value = '';
+    if (!organizerCards.has(result.collection.id)) renderCollection(result.collection);
+  }, () => organizerTitle.value ? 'Din nye liste er oprettet. Den nye listekladde er endnu ikke gemt.' : 'Din nye liste er oprettet.');
 });
-
-document.getElementById('organizer-search').addEventListener('submit', async event => {
-  event.preventDefault();
-  const query = document.getElementById('organizer-query').value.trim();
-  if (!query) return toast('Skriv et søgeord.');
+for (const type of ['input', 'change']) {
+  organizerCreate.form.addEventListener(type, () => organizerDraftChanged(organizerCreate));
+  organizerSearch.addEventListener(type, organizerPersist);
+}
+organizerSearch.addEventListener('submit', async event => {
+  event.preventDefault(); const query = organizerQuery.value.trim();
+  if (!query) { organizerSearchStatus.textContent = 'Skriv et søgeord.'; return; }
+  const owner = organizerOwner, session = organizerSession;
   try {
     const { matches } = await api('/api/organizer/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+    if (session !== organizerSession || owner !== localStorage.getItem('jarvisAccessToken') || organizerQuery.value.trim() !== query) return;
     const root = document.getElementById('organizer-search-results'); root.replaceChildren();
-    root.append(make('strong', `${matches.length} fund${matches.length === 50 ? ' (maksimum)' : ''}`));
+    root.append(make('strong', matches.length + ' fund' + (matches.length === 50 ? ' (maksimum)' : '')));
     for (const match of matches) {
       const row = make('div', '', 'search-entry');
-      row.append(make('strong', match.text), make('p', `${match.collectionTitle}${match.date ? ` · ${dateText(match.date)}` : ''}${match.notes ? ` · ${match.notes}` : ''}`, 'muted small-text'));
+      row.append(make('strong', match.text), make('p', match.collectionTitle +
+        (match.date ? ' · ' + dateText(match.date) : '') + (match.notes ? ' · ' + match.notes : ''), 'muted small-text'));
+      row.append(organizerButton('Åbn præcist punkt', () => {
+        const sourceId = 'organizer:' + match.collectionId + ':' + match.id;
+        selectTab('knowledge', { sourceId });
+        document.dispatchEvent(new CustomEvent('jarvis:source-route', { detail: { id: sourceId } }));
+      }));
       root.append(row);
     }
-  } catch (error) { toast(error.message); }
+    organizerSearchStatus.textContent = '';
+  } catch (error) { organizerSearchStatus.textContent = 'Søgningen mislykkedes: ' + error.message + '. Søgeteksten er bevaret.'; }
 });
+
+function organizerClear() {
+  organizerSession++; organizerReadVersion++;
+  clearTodayViews();
+  organizerOwner = '';
+  organizerCards.clear(); organizerRoot.replaceChildren(); organizerRestored = { collections: {}, items: {} };
+  organizerTitle.value = ''; organizerType.value = 'dates'; organizerQuery.value = '';
+  organizerCreate.busy = false; organizerCreate.uncertain = false; organizerControls(organizerCreate);
+  for (const status of [organizerStatusLine, organizerDraftStatus, organizerCreate.status, organizerSearchStatus]) status.textContent = '';
+  document.getElementById('organizer-search-results').replaceChildren();
+  try { sessionStorage.removeItem(organizerDraftKey); } catch { /* Signed-out contents remain cleared. */ }
+}
+document.getElementById('logout').addEventListener('click', organizerClear);
+window.addEventListener('beforeunload', event => {
+  if ((!organizerStorageAvailable || organizerSecretDraft) && (organizerTitle.value || [...organizerCards.values()].some(organizerKeepCollection))) {
+    event.preventDefault(); event.returnValue = '';
+  }
+});
+try {
+  if (organizerOwner) {
+    const raw = sessionStorage.getItem(organizerDraftKey);
+    if (raw && raw.length <= 1_000_000) {
+      const saved = JSON.parse(raw), id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
+      const fields = value => value && typeof value.text === 'string' && value.text.length <= 350 &&
+        typeof value.notes === 'string' && value.notes.length <= 2500 && typeof value.date === 'string' && value.date.length <= 10;
+      const timestamp = value => typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value));
+      if (saved.version === 1) {
+        if (saved.create && typeof saved.create.title === 'string' && saved.create.title.length <= 100 && Object.hasOwn(collectionNames, saved.create.type) && !organizerHasSecret(saved.create)) {
+          organizerTitle.value = saved.create.title; organizerType.value = saved.create.type; organizerCreate.uncertain = Boolean(saved.create.uncertain);
+          organizerReport(organizerCreate, organizerCreate.uncertain ? 'Tidligere oprettelse har uafklaret udfald. Kontrollér listen før nyt forsøg.' : 'Listekladde gendannet i denne fane.', organizerCreate.uncertain);
+          organizerControls(organizerCreate);
+        }
+        if (typeof saved.query === 'string' && saved.query.length <= 120 && !organizerHasSecret(saved.query)) organizerQuery.value = saved.query;
+        for (const [key, draft] of Object.entries(saved.collections || {}).slice(0, 80)) {
+          if (!draft || !id(key) || draft.id !== key || typeof draft.title !== 'string' || draft.title.length > 100 ||
+              !Object.hasOwn(collectionNames, draft.type) || !timestamp(draft.updatedAt) || organizerHasSecret(draft) ||
+              !draft.rename?.base || !timestamp(draft.rename.base.updatedAt) ||
+              typeof draft.rename.title !== 'string' || draft.rename.title.length > 100 || !fields(draft.add?.fields)) continue;
+          organizerRestored.collections[key] = draft;
+        }
+        for (const [key, draft] of Object.entries(saved.items || {}).slice(0, 16_000)) {
+          if (!draft || !id(draft.id) || !id(draft.collectionId) || key !== draft.collectionId + ':' + draft.id ||
+              !draft.base || !timestamp(draft.base.updatedAt) || !fields(draft.fields) || organizerHasSecret(draft)) continue;
+          organizerRestored.items[key] = draft;
+        }
+      }
+    }
+  } else sessionStorage.removeItem(organizerDraftKey);
+} catch { organizerStorageAvailable = false; organizerStorageNotice(); }
 
 async function handleOrganizerVoice(name, args) {
   const json = value => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
@@ -284,15 +897,22 @@ async function handleOrganizerVoice(name, args) {
   else if (name === 'update_collection_item') data = await api(`/api/organizer/${args.collectionId}/items/${args.itemId}`, { method: 'PATCH', ...json(args) });
   else if (name === 'remove_collection_item') data = await api(`/api/organizer/${args.collectionId}/items/${args.itemId}`, { method: 'DELETE' });
   else throw new Error('Ukendt listehandling.');
-  await refreshOrganizer(); await refreshCommandCenter();
+  organizerReadVersion++;
+  if (organizerReadPromise) await organizerReadPromise.catch(() => {});
+  await refreshOrganizer();
+  if (organizerVisible('home')) await refreshCommandCenter();
   return { ok: true, ...data };
 }
 
-document.addEventListener('jarvis:refreshed', () => { refreshCommandCenter(); refreshOrganizer(); });
+function refreshVisibleOrganizer() {
+  if (!organizerAuthenticated() || document.visibilityState === 'hidden') return;
+  if (organizerVisible('home')) refreshCommandCenter();
+  if (organizerVisible('knowledge')) refreshOrganizer().catch(() => {});
+}
+document.addEventListener('jarvis:refreshed', refreshVisibleOrganizer);
+document.addEventListener('jarvis:view-changed', refreshVisibleOrganizer);
 document.addEventListener('DOMContentLoaded', () => {
-  if (localStorage.getItem('jarvisAccessToken')) { refreshCommandCenter(); refreshOrganizer(); }
+  refreshVisibleOrganizer();
 });
 
-setInterval(() => {
-  if (localStorage.getItem('jarvisAccessToken') && document.visibilityState === 'visible') refreshCommandCenter();
-}, 60_000);
+setInterval(refreshVisibleOrganizer, 60_000);

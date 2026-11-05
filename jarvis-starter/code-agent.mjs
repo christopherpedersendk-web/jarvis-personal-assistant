@@ -1,7 +1,9 @@
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { atomicStateWrite, durableExclusiveBackup, readPrivateStateText } from './state-schema.mjs';
+import { createJobTransitions } from './job-state-transition.mjs';
+import { checkJavaScriptSyntax } from './subprocess-safety.mjs';
 
 // Explicitly allow-listed, non-server-executable targets for the first release.
 export const EDITABLE_FILES = ['persona.md', 'public/styles.css', 'public/tasks.css', 'public/index.html', 'public/app.js'];
@@ -9,21 +11,25 @@ export const EDITABLE_FILES = ['persona.md', 'public/styles.css', 'public/tasks.
 function digest(text) { return createHash('sha256').update(text).digest('hex'); }
 
 async function checkJavascript(source) {
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--check', '--input-type=commonjs'], { stdio: ['pipe', 'ignore', 'pipe'] });
-    let errors = '';
-    child.stderr.on('data', chunk => { errors += chunk.toString().slice(0, 500); });
-    child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve() : reject(new Error(`JavaScript har syntaksfejl: ${errors.slice(0, 350)}`)));
-    child.stdin.end(source);
-  });
+  await checkJavaScriptSyntax(source, { inputType: 'commonjs' });
 }
 
 export class CodeAgent {
-  constructor({ root, backupRoot, state, save, propose }) {
-    Object.assign(this, { root, backupRoot, state, save, propose });
+  constructor({ root, backupRoot, state, save, transact, propose,
+    backupWriter = durableExclusiveBackup, publish = atomicStateWrite }) {
+    Object.assign(this, { root, backupRoot, state, save, propose, backupWriter, publish });
+    this.transact = transact || createJobTransitions(state);
     this.state.codeProposals ||= [];
+    for (const proposal of this.state.codeProposals) if (['applying', 'rollingback'].includes(proposal.status)) proposal.status = 'unknown';
     this.busy = false;
+  }
+
+  checkpoint(id, change) {
+    return this.transact(['codeProposals'], async () => {
+      const proposal = this.state.codeProposals.find(item => item.id === id);
+      if (!proposal) throw new Error('Forslaget findes ikke.');
+      change(proposal); await this.save(); return this.inspect(id);
+    });
   }
 
   list() {
@@ -35,9 +41,11 @@ export class CodeAgent {
     if (!EDITABLE_FILES.includes(file)) throw new Error('Denne fil kan ikke redigeres af kodeagenten.');
     if (typeof request !== 'string' || !request.trim() || request.length > 2000) throw new Error('Beskriv ændringen med 1–2.000 tegn.');
     if (this.state.codeProposals.filter(x => x.status === 'pending').length >= 5) throw new Error('Godkend eller afvis eksisterende forslag først.');
+    if (this.state.codeProposals.filter(x => ['pending', 'applying', 'rollingback', 'unknown'].includes(x.status)).length >= 20)
+      throw new Error('For mange uafklarede kodehandlinger. Gennemgå udfaldene, før du opretter flere forslag.');
     this.busy = true;
     try {
-      const original = await readFile(join(this.root, file), 'utf8');
+      const original = await readPrivateStateText(join(this.root, file));
       const { summary, content } = await this.propose({ file, request, original });
       if (typeof summary !== 'string' || !summary.trim() || typeof content !== 'string' || !content.trim() || content.length > 80_000) {
         throw new Error('Modellen leverede ikke en gyldig filændring.');
@@ -46,10 +54,13 @@ export class CodeAgent {
       if (file.endsWith('.js')) await checkJavascript(content);
       const proposal = { id: randomUUID(), file, request: request.trim(), summary: summary.slice(0, 800),
         originalHash: digest(original), original, content, status: 'pending', createdAt: new Date().toISOString() };
-      this.state.codeProposals.unshift(proposal);
-      this.state.codeProposals = this.state.codeProposals.slice(0, 20);
-      await this.save();
-      return this.inspect(proposal.id);
+      return await this.transact(['codeProposals'], async () => {
+        this.state.codeProposals.unshift(proposal);
+        const unsettled = new Set(['pending', 'applying', 'rollingback', 'unknown']);
+        let settled = 0;
+        this.state.codeProposals = this.state.codeProposals.filter(item => unsettled.has(item.status) || ++settled <= 20);
+        await this.save(); return this.inspect(proposal.id);
+      });
     } finally { this.busy = false; }
   }
 
@@ -68,40 +79,43 @@ export class CodeAgent {
       this.busy = true;
       try {
         const destination = join(this.root, p.file);
-        const current = await readFile(destination, 'utf8');
+        const current = await readPrivateStateText(destination);
         if (digest(current) !== digest(p.content)) throw new Error('Filen er siden blevet ændret. Automatisk tilbagerulning er ikke sikker.');
-        const backup = await readFile(join(this.backupRoot, p.id, p.file), 'utf8');
-        const temp = `${destination}.${p.id}.rollback.tmp`;
-        await writeFile(temp, backup, { mode: 0o600, flag: 'wx' });
-        await rename(temp, destination);
-        p.status = 'rolledback';
-        await this.save();
-        return this.inspect(id);
+        const backup = await readPrivateStateText(join(this.backupRoot, p.id, p.file));
+        if (digest(backup) !== p.originalHash) throw new Error('Backup matcher ikke det gennemgåede originalindhold.');
+        await this.checkpoint(id, item => { item.status = 'rollingback'; });
+        if (digest(await readPrivateStateText(destination)) !== digest(p.content)) {
+          await this.checkpoint(id, item => { item.status = 'unknown'; });
+          throw new Error('Filen blev ændret inden tilbagerulning. Ingen nyere ændringer overskrevet; gennemgå filen igen.');
+        }
+        try { await this.publish(destination, backup); }
+        catch (error) { await this.checkpoint(id, item => { item.status = error.statePublished ? 'unknown' : 'applied'; }).catch(() => {}); throw error; }
+        return await this.checkpoint(id, item => { item.status = 'rolledback'; });
       } finally { this.busy = false; }
     }
     if (p.status !== 'pending') throw new Error('Forslaget kan ikke længere ændres.');
     if (action === 'reject') {
-      p.status = 'rejected';
-      await this.save();
-      return this.inspect(id);
+      if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
+      return this.checkpoint(id, item => { if (item.status !== 'pending') throw new Error('Forslaget er ændret.'); item.status = 'rejected'; });
     }
     if (action !== 'apply') throw new Error('Ukendt handling.');
     if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
     this.busy = true;
     try {
       const destination = join(this.root, p.file);
-      const actual = await readFile(destination, 'utf8');
+      const actual = await readPrivateStateText(destination);
       if (digest(actual) !== p.originalHash) throw new Error('Filen er ændret siden forslaget. Opret et nyt forslag.');
       const backupFile = join(this.backupRoot, p.id, p.file);
       await mkdir(dirname(backupFile), { recursive: true, mode: 0o700 });
-      await writeFile(backupFile, actual, { mode: 0o600, flag: 'wx' });
-      const temp = `${destination}.${p.id}.tmp`;
-      await writeFile(temp, p.content, { mode: 0o600, flag: 'wx' });
-      await rename(temp, destination);
-      p.status = 'applied';
-      p.appliedAt = new Date().toISOString();
-      await this.save();
-      return this.inspect(id);
+      await this.backupWriter(backupFile, actual);
+      await this.checkpoint(id, item => { if (item.status !== 'pending') throw new Error('Forslaget er ændret.'); item.status = 'applying'; });
+      if (digest(await readPrivateStateText(destination)) !== p.originalHash) {
+        await this.checkpoint(id, item => { item.status = 'unknown'; });
+        throw new Error('Filen blev ændret inden publicering. Ingen ændring udført; gennemgå filen igen.');
+      }
+      try { await this.publish(destination, p.content); }
+      catch (error) { await this.checkpoint(id, item => { item.status = error.statePublished ? 'unknown' : 'pending'; }).catch(() => {}); throw error; }
+      return await this.checkpoint(id, item => { item.status = 'applied'; item.appliedAt = new Date().toISOString(); });
     } finally { this.busy = false; }
   }
 }

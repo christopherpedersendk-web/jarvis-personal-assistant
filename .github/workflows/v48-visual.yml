@@ -1,4 +1,4 @@
-name: JARVIS v4.9 browser and safety smoke
+name: JARVIS v5 candidate regression and browser smoke
 
 on:
   pull_request:
@@ -12,8 +12,78 @@ permissions:
   contents: read
 
 jobs:
+  local-semantic-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact proposed code
+        uses: actions/checkout@v4
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned local inference runtime in ephemeral CI only
+        id: runtime-install
+        working-directory: jarvis-starter
+        run: npm ci --prefix local-semantic-runtime
+      - name: Verify and prepare immutable public model assets
+        working-directory: jarvis-starter
+        run: node scripts/prepare-local-semantic-model.mjs --directory "$RUNNER_TEMP/jarvis-e5-small" --accept-public-download
+      - name: Measure genuine Danish semantic retrieval on fixed synthetic questions
+        working-directory: jarvis-starter
+        run: node scripts/v5-semantic-eval.mjs --model-directory "$RUNNER_TEMP/jarvis-e5-small" --output artifacts/v5-semantic-evaluation.json
+      - name: Audit exact installed optional runtime and retain dependency tree
+        if: always() && steps.runtime-install.outcome == 'success'
+        working-directory: jarvis-starter
+        run: node scripts/audit-local-semantic-runtime.mjs --output artifacts/v5-dependency-audit.json
+      - name: Preserve candidate-bound synthetic model evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-v5-semantic-evaluation
+          path: |
+            jarvis-starter/artifacts/v5-semantic-evaluation.json
+            jarvis-starter/artifacts/v5-dependency-audit.json
+            jarvis-starter/local-semantic-runtime/package-lock.json
+          retention-days: 30
+          if-no-files-found: warn
+  candidate-performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact proposed code
+        uses: actions/checkout@v4
+      - name: Checkout recorded v4.9.1 baseline separately
+        uses: actions/checkout@v4
+        with:
+          ref: 6b2b0736a32e0968d5db233512672d197b4885f7
+          path: .perf-baseline
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Measure baseline with the same synthetic benchmark
+        working-directory: jarvis-starter
+        run: node scripts/v5-perf.mjs --app ../.perf-baseline/jarvis-starter --label v4.9.1 --output artifacts/v5-performance-baseline.json
+      - name: Measure exact candidate with all real integrations blocked
+        working-directory: jarvis-starter
+        run: node scripts/v5-perf.mjs --label candidate --output artifacts/v5-performance-candidate.json
+      - name: Preserve revision-bound performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-v5-performance
+          path: jarvis-starter/artifacts/v5-performance-*.json
+          retention-days: 30
+          if-no-files-found: warn
   visual-smoke:
     runs-on: ubuntu-24.04
+    # Official Playwright test-only image ships WebKit system libraries.
+    # Pin image and npm package together; run as non-root without privileged options.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001
     timeout-minutes: 18
     steps:
       - name: Checkout proposed changes
@@ -22,23 +92,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Offline unit and basket-approval tests
+      - name: Offline full regression and basket-approval tests
         working-directory: jarvis-starter
         run: npm test
       - name: Install browser test dependency in ephemeral CI only
         working-directory: jarvis-starter
-        run: npm install --no-save --no-package-lock playwright
-      - name: Install Chromium in CI only
+        run: npm install --no-save --no-package-lock playwright@1.64.1
+      - name: Verify Chromium and WebKit binaries in pinned CI image
         working-directory: jarvis-starter
-        run: npx playwright install --with-deps chromium
-      - name: Test desktop and mobile UI with synthetic data only
+        run: npx playwright install chromium webkit
+      - name: Test desktop and mobile UI with synthetic data only (both engines)
         working-directory: jarvis-starter
-        run: node scripts/visual-smoke.mjs
-      - name: Preserve synthetic screenshots
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          JARVIS_V5_ARTIFACT_DIR: artifacts/v5-ui
+        run: node scripts/v5-visual-smoke.mjs
+      - name: Preserve synthetic screenshots and measured accessibility evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-v49-ui-screenshots
-          path: jarvis-starter/artifacts/v49-*
+          name: jarvis-v5-ui-screenshots
+          path: |
+            jarvis-starter/artifacts/v5-ui/*.png
+            jarvis-starter/artifacts/v5-ui/*.json
           retention-days: 14
           if-no-files-found: warn

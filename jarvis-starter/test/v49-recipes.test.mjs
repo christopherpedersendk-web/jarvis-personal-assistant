@@ -115,7 +115,8 @@ test('recipe capture is inbox-first, provenance-aware and deduplicated, and only
     fetchResource: async () => { network++; return { buffer: Buffer.from(recipeHtml), contentType: 'text/html' }; } });
   const [recipe, replay] = await Promise.all([memory.capture({ text: 'https://recipe.example.org/tacos', source }),
     memory.capture({ text: 'https://recipe.example.org/tacos', source })]);
-  assert.equal(network, 1); assert.equal(state.recipes.length, 1); assert.equal(saves, 1);
+  assert.equal(network, 1); assert.equal(state.recipes.length, 1);
+  assert.equal(saves, 3, 'durable received, processing and review checkpoints; replay creates no extra save');
   assert.equal(replay.id, recipe.id); assert.equal(replay.duplicate, true);
   assert.equal(recipe.status, 'inbox'); assert.equal(recipe.confirmed, false); assert.deepEqual(memory.usable(), []);
   assert.equal(recipe.source.messageId, messageId); assert.equal(recipe.links[0].status, 'extracted');

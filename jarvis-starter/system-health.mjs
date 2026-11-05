@@ -1,15 +1,32 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { statfs } from 'node:fs/promises';
+import { statfs, writeFile, unlink, mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import os from 'node:os';
+import { cleanProcessEnvironment } from './subprocess-safety.mjs';
 
 const run = promisify(execFile);
 
-async function service(name) {
+export async function storageReadiness(dataDirectory) {
+  const probe = join(dataDirectory, `.jarvis-ready-${randomUUID()}`);
   try {
-    const { stdout } = await run('systemctl', ['show', name,
+    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+    await writeFile(probe, '', { flag: 'wx', mode: 0o600 });
+    await unlink(probe);
+    return { ready: true, checkedAt: new Date().toISOString() };
+  } catch (error) {
+    await unlink(probe).catch(() => {});
+    return { ready: false, checkedAt: new Date().toISOString(),
+      reason: `Lager kan ikke modtage nye lokale filer (${String(error.code || 'ukendt')}).` };
+  }
+}
+
+async function service(name, { command = run, environment = process.env } = {}) {
+  try {
+    const { stdout } = await command('systemctl', ['show', name,
       '--property=ActiveState,Result,ExecMainStatus,ActiveEnterTimestamp,InactiveEnterTimestamp',
-      '--no-pager'], { timeout: 3000 });
+      '--no-pager'], { timeout: 3000, maxBuffer: 8000, windowsHide: true, env: cleanProcessEnvironment(environment) });
     return Object.fromEntries(stdout.trim().split('\n').map(line => {
       const index = line.indexOf('=');
       return [line.slice(0, index), line.slice(index + 1)];
@@ -17,19 +34,26 @@ async function service(name) {
   } catch { return { ActiveState: 'unknown', Result: 'unavailable' }; }
 }
 
-export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0' }) {
-  const [backup, disk] = await Promise.all([
-    service('jarvis-backup.service'),
+export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0', publicationUncertain = false,
+  command = run, environment = process.env }) {
+  const [backup, disk, storage] = await Promise.all([
+    service('jarvis-backup.service', { command, environment }),
     statfs(dataDirectory).catch(() => null),
+    storageReadiness(dataDirectory),
   ]);
   const available = disk ? disk.bavail * disk.bsize : null;
   const total = disk ? disk.blocks * disk.bsize : null;
+  if (publicationUncertain) {
+    storage.ready = false;
+    storage.reason = 'Sidste tilstandsskrivning blev publiceret, men varigheden er ukendt. Genstart og kontrollér data.';
+  }
   const memory = process.memoryUsage();
   const uptimeSeconds = Math.round(process.uptime());
   return {
     version,
     checkedAt: new Date().toISOString(),
     process: { healthy: true, uptimeSeconds, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed },
+    storage,
     host: { freeMemoryBytes: os.freemem(), totalMemoryBytes: os.totalmem(), availableDiskBytes: available, totalDiskBytes: total },
     discord: discord.snapshot(),
     backup: {

@@ -1,5 +1,6 @@
 ---
 name: personal-follow-up
+version: 1.0.0
 description: Find dokumenterede opfølgninger og præsentér konkrete næste skridt uden at handle på brugerens vegne.
 triggers: følg op, opfølgning, husk mig, påmind, næste skridt, afventer, deadline, opgaver
 ---

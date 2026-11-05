@@ -1,5 +1,6 @@
 ---
 name: meal-planning
+version: 1.0.0
 description: Lav et redigerbart madplansforslag ud fra daglig husstand, temaer og gennemgåede opskrifter; opret derefter indkøbsliste og redigerbart kurvforslag uden automatisk overførsel.
 triggers: madplan, aftensmad, opskrift, madlavning, nemlig, dagligvarer, kurv, køb ind
 ---

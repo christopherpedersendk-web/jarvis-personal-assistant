@@ -5,9 +5,9 @@ import { NemligShopping } from '../nemlig-connector.mjs';
 import { GoogleCalendarReadOnly } from '../google-calendar.mjs';
 
 const now = () => new Date('2026-11-04T12:00:00Z');
-function fixture({ lines = [], result, state = {}, validateSourcePlan } = {}) {
+function fixture({ lines = [], result, state = {}, validateSourcePlan, validateSourceDraft } = {}) {
   const writes = [];
-  const shop = new NemligShopping({ state, now, validateSourcePlan, callTool: async (name, args) => {
+  const shop = new NemligShopping({ state, now, validateSourcePlan, validateSourceDraft, callTool: async (name, args) => {
     if (name === 'get_basket') return { Lines: lines };
     if (name === 'search_products') return [{ Id: '123', Name: 'Ris' }, { Id: '456', Name: 'Tomat' }];
     if (name === 'set_basket_quantities') { writes.push(args); return result || { results: args.items.map(x => ({ product_id: x.product_id, status: 'ok' })) }; }
@@ -54,6 +54,41 @@ test('live recipe validation is checked again after an asynchronous approval sav
   const proposal = await f.shop.propose([{ productId: '123', quantity: 1 }], { sourcePlan: { id: plan.id, revision: 1 } });
   f.shop.save = async () => { if (proposal.status === 'applying') recipeChanged = true; };
   await assert.rejects(f.shop.approve(proposal.id, true, 1), /Recipe changed/);
+  assert.equal(proposal.status, 'superseded'); assert.equal(f.writes.length, 0);
+});
+
+test('G1 a retained proposal with newly unresolved manual requirements cannot write the basket', async () => {
+  const plan = { id: randomUUID(), revision: 1, status: 'shopping_ready', shoppingNeedsReview: false };
+  const f = fixture({ state: { mealPlans: [plan] } }); await f.shop.search('ris');
+  const proposal = await f.shop.propose([{ productId: '123', quantity: 1 }], { sourcePlan: { id: plan.id, revision: 1 } });
+  plan.shoppingNeedsReview = true;
+  await assert.rejects(f.shop.approve(proposal.id, true, 1), /gennemgang/);
+  assert.equal(f.writes.length, 0); assert.equal(proposal.status, 'pending');
+});
+
+test('G3 retained source drafts are revalidated even without a sourcePlan field and before effects', async () => {
+  const draft = { id: randomUUID(), revision: 1 };
+  let valid = true, checked = 0;
+  const f = fixture({ state: { shoppingDrafts: [draft] }, validateSourceDraft: (actual, source) => {
+    assert.equal(actual.id, draft.id); assert.equal(source.sourceDraft.id, draft.id); checked++;
+    if (!valid) throw new Error('Aktuel ingredienskonflikt');
+  } });
+  await f.shop.search('ris');
+  const proposal = await f.shop.propose([{ productId: '123', quantity: 1 }], { sourceDraft: { id: draft.id, revision: 1 } });
+  assert.ok(checked >= 3); valid = false;
+  await assert.rejects(f.shop.approve(proposal.id, true, 1), /ingredienskonflikt/);
+  assert.equal(f.writes.length, 0); assert.equal(proposal.status, 'pending');
+});
+
+test('G3 a changed ingredient constraint during intent persistence supersedes the proposal with no write', async () => {
+  const draft = { id: randomUUID(), revision: 1 }; let valid = true;
+  const f = fixture({ state: { shoppingDrafts: [draft] }, validateSourceDraft: () => {
+    if (!valid) throw new Error('Aktuel ingredienskonflikt');
+  } });
+  await f.shop.search('ris');
+  const proposal = await f.shop.propose([{ productId: '123', quantity: 1 }], { sourceDraft: { id: draft.id, revision: 1 } });
+  f.shop.save = async () => { if (proposal.status === 'applying') valid = false; };
+  await assert.rejects(f.shop.approve(proposal.id, true, 1), /ingredienskonflikt/);
   assert.equal(proposal.status, 'superseded'); assert.equal(f.writes.length, 0);
 });
 
