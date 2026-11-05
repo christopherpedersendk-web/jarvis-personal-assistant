@@ -79,10 +79,66 @@
   const list = element('div', '', 'memory-v49-list'); list.id = 'memory-workbench-list';
   const empty = element('p', 'Ingen aktive hukommelsespunkter endnu. Gem kun oplysninger, du ønsker brugt på tværs af samtaler.', 'muted small-text');
   const privacy = element('p', 'Arkivering fjerner punktet fra den aktive hukommelse og søgning. Tidligere samtaler og sikkerhedskopier ændres ikke.', 'muted micro');
-  root.append(toolbar, feedback, createForm, empty, list, privacy);
+  const editorMode = document.getElementById('memory-editor-mode');
+  const claimForm = document.getElementById('personal-claim-form');
+  const claimStatus = document.getElementById('claim-status');
+  const noteDraftKey = 'jarvis:v5:memory-note-draft';
+  const claimDraftKey = 'jarvis:v5:memory-claim-draft';
+  const modeKey = 'jarvis:v5:memory-mode';
+  let draftStorageAvailable = true;
+  root.append(toolbar, feedback, createForm, claimForm, claimStatus, empty, list, privacy);
+  function setEditorMode() {
+    const structured = editorMode.value === 'claim';
+    createForm.classList.toggle('hidden', structured);
+    claimForm.classList.toggle('hidden', !structured);
+    try { sessionStorage.setItem(modeKey, editorMode.value); } catch { draftStorageAvailable = false; }
+  }
+  try {
+    if (localStorage.getItem('jarvisAccessToken')) {
+      const saved = JSON.parse(sessionStorage.getItem(noteDraftKey) || 'null');
+      if (saved && typeof saved.text === 'string' && saved.text.length <= 1200) {
+        newText.value = saved.text;
+        if (Object.hasOwn(categories, saved.category)) newCategory.value = saved.category;
+        if (newText.value) feedback.textContent = 'Ugemt hukommelseskladde er gendannet fra denne browserfane.';
+      }
+      const claim = JSON.parse(sessionStorage.getItem(claimDraftKey) || 'null');
+      if (claim && typeof claim.subject === 'string' && claim.subject.length <= 100 &&
+          typeof claim.value === 'string' && claim.value.length <= 1200) {
+        document.getElementById('claim-subject').value = claim.subject;
+        document.getElementById('claim-value').value = claim.value;
+        const category = document.getElementById('claim-category');
+        if ([...category.options].some(option => option.value === claim.category)) category.value = claim.category;
+      }
+      editorMode.value = sessionStorage.getItem(modeKey) === 'claim' ? 'claim' : 'note';
+    }
+  } catch { /* invalid or unavailable tab storage must never prevent editing */ }
+  function saveNoteDraft() {
+    try {
+      if (newText.value || newCategory.value !== 'fact') sessionStorage.setItem(noteDraftKey,
+        JSON.stringify({ text: newText.value, category: newCategory.value }));
+      else sessionStorage.removeItem(noteDraftKey);
+    } catch { draftStorageAvailable = false; /* keep live fields */ }
+  }
+  function saveClaimDraft() {
+    try {
+      const subject = document.getElementById('claim-subject').value;
+      const value = document.getElementById('claim-value').value;
+      const category = document.getElementById('claim-category').value;
+      if (subject || value) sessionStorage.setItem(claimDraftKey, JSON.stringify({ subject, value, category }));
+      else sessionStorage.removeItem(claimDraftKey);
+    } catch { draftStorageAvailable = false; /* keep live fields */ }
+  }
+  editorMode.addEventListener('change', setEditorMode);
+  newText.addEventListener('input', saveNoteDraft);
+  newCategory.addEventListener('change', saveNoteDraft);
+  claimForm.addEventListener('input', saveClaimDraft);
+  claimForm.addEventListener('change', saveClaimDraft);
+  claimForm.addEventListener('reset', () => setTimeout(saveClaimDraft, 0));
+  setEditorMode();
 
   const creationDirty = () => Boolean(newText.value.trim()) || newCategory.value !== 'fact';
-  const hasDirty = () => creationDirty() || dirtyIds.size > 0;
+  const hasDirty = () => creationDirty() || dirtyIds.size > 0 ||
+    Boolean(document.getElementById('claim-subject').value || document.getElementById('claim-value').value);
   function updateCount() {
     count.textContent = `${cards.size} hukommelsespunkt${cards.size === 1 ? '' : 'er'}`;
     empty.hidden = cards.size > 0;
@@ -247,6 +303,7 @@
       const result = await request('/api/memories', 'POST', { text: newText.value.trim(), category: newCategory.value });
       if (!result.memory?.id) throw new Error('Serveren returnerede ikke et gyldigt hukommelsespunkt.');
       newText.value = ''; newCategory.value = 'fact';
+      saveNoteDraft();
       // Exact-duplicate creation may return an existing record. Never discard
       // a correction already being edited on that record.
       if (!dirtyIds.has(result.memory.id)) replaceCard(result.memory);
@@ -258,7 +315,9 @@
   document.querySelector('[data-tab="knowledge"]')?.addEventListener('click', () => refreshMemories());
   document.addEventListener('jarvis:memories-changed', () => refreshMemories());
   window.addEventListener('beforeunload', event => {
-    if (!hasDirty()) return;
+    // Creation drafts are recoverable within this browser tab. Still warn for
+    // edits to existing revisioned records and browsers blocking sessionStorage.
+    if (!dirtyIds.size && (draftStorageAvailable || !hasDirty())) return;
     event.preventDefault(); event.returnValue = '';
   });
   if (!document.getElementById('workspace')?.classList.contains('hidden')) refreshMemories();

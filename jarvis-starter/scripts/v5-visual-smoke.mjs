@@ -124,11 +124,37 @@ async function runDevice(type, width, height, label) {
   await page.locator('#tab-settings').screenshot({ path: join(screenshotDir, `${label}-settings.png`), animations: 'disabled' });
   await page.locator('[data-tab="knowledge"]').first().click();
   await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#memory-workbench-form').isVisible(), true,
+    `${label}: the unified knowledge editor must open with legacy notes available`);
+  assert.equal(await page.locator('#personal-claim-form').isVisible(), false,
+    `${label}: there must not be two simultaneously visible memory creation forms`);
+  await page.locator('#memory-workbench-text').fill(`Syntetisk ugemt hukommelseskladde ${label}`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#memory-workbench-text').inputValue(), `Syntetisk ugemt hukommelseskladde ${label}`,
+    `${label}: unsaved memory creation draft must recover after reload`);
+  await page.locator('#memory-editor-mode').selectOption('claim');
+  assert.equal(await page.locator('#memory-workbench-form').isVisible(), false);
+  assert.equal(await page.locator('#personal-claim-form').isVisible(), true);
   await page.locator('#claim-subject').fill('syntetisk_emne');
   await page.locator('#claim-value').fill('Syntetisk personligt faktum');
   await page.locator('#personal-claim-form button').click();
   await page.locator('[data-claim-id]').first().waitFor({ state: 'visible' });
   await page.locator('[data-claim-id] button').first().click();
+  await page.locator('#knowledge-query').fill('Syntetisk personligt faktum');
+  await page.locator('#knowledge-search-form button').click();
+  await page.locator('.knowledge-result button').first().waitFor({ state: 'visible' });
+  await page.locator('.knowledge-result button').first().click();
+  await page.locator('[data-claim-id].source-target').first().waitFor({ state: 'visible' });
+  assert.match(new URL(page.url()).searchParams.get('source') || '', /^claim:/,
+    `${label}: source navigation must retain the exact knowledge record ID`);
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('source'), null,
+    `${label}: going back must restore the pre-source route`);
+  await page.locator('#knowledge-query').focus();
+  await page.evaluate(() => refresh());
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'knowledge-query',
+    `${label}: polling cannot steal focus from the active knowledge editor`);
   await page.locator('#tab-knowledge').screenshot({ path: join(screenshotDir, `${label}-knowledge.png`), animations: 'disabled' });
   await page.locator('[data-tab="home"]').first().click();
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });

@@ -35,6 +35,8 @@ body { background: radial-gradient(circle at 55% -30%, #16435e 0, #07111e 56%); 
 .v5-fields { display: grid; grid-template-columns: minmax(140px, 0.34fr) minmax(0, 1fr); gap: 11px 16px; align-items: center; }
 .v5-fields input, .v5-fields textarea, .v5-fields select { width: 100%; min-width: 0; }
 .v5-fields textarea { min-height: 78px; }
+.memory-editor-mode { display: block; width: min(100%, 440px); margin: 7px 0 15px; }
+#personal-claim-form { border: 1px solid #355d74; border-radius: 12px; padding: 16px; margin: 0 0 18px; }
 .v5-fields > button { grid-column: 2; justify-self: start; }
 .v5-fields > .inline-check { grid-column: 1 / -1; }
 .v5-record-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin-top: 16px; }

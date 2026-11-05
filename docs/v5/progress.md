@@ -4,6 +4,8 @@ Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema
 
 **Resume iteration (2026-11-05; awaiting publication/CI):** A second, separate worktree `jarvis-v5-resume` was reconstructed against all **133/133** blobs at remote head `e07dba1c187e5e4fff66ba98912f04d36887168e`, tree `d836025a409985c514af95617ed602f602c52318`. The original `jarvis-v5-work` worktree, with its pre-existing uncommitted changes, remains untouched. The unmodified remote snapshot initially ran **239/240** Node tests locally because the R01 test assumed startup had not already created `state.json`; after making that fault-injection setup deterministic and guarding additional legacy local writes, the revised local suite passes **243/243** (Node 24.22.1). This *new code* has not yet passed remote Node 22 or browser CI; do not attribute the previous green run to it.
 
+**M1 published and verified:** commit `7161a873137c5c0f3933d875eb33f78b12bd3209`, exact tree `cbb6e412decd451ba9f980396d4edb8b29c8e5b9`, app subtree `78ce80b4bde0853e15490baf43f17cc92f13fa51`: [Actions run `41983867576`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41983867576) **243/243 Node 22 tests and Chromium/WebKit 4/4 succeeded**. A **new M5 UI iteration** is now local-only: the memory editor becomes a single visible entry point with a mode selector and session-scoped draft recovery, and source-route/focus assertions are added to browser smoke. Its browser evidence must be obtained from its own new commit; do not reuse `41983867576` for M5 acceptance.
+
 ## Provenance
 
 - Production and M7 were not accessed or performed.
@@ -33,7 +35,7 @@ Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema
 - **M2**: JSON schema 1, immutable backup, atomic/fsync publish, readiness write-probe, same-file mutation contract, action journal, queue and domain APIs implemented/tested synthetically. Not every legacy mutation or external wait uses the shared queue; **partial**.
 - **M3**: personal claims/search, separate persistent tasks, deterministic capacity with fail-closed actual read-only calendar coverage, follow-ups, skills versioning, Discord resilience and recurring retry/observation are integrated and Node-tested. **B3 genuine Danish semantic model missing**, independent 90% retrieval gate pending.
 - **M4**: household rhythm, recipe review/feedback, inventory reservations, editable meals, shopping proposal and one-use Nemlig owner-click intention implemented/tested synthetically. Live credential-free browser and household acceptance pending.
-- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. **Chromium and WebKit desktop/mobile smoke passed on final application hash `bf87ea86`**, including Danish overblik labels, first-screen composer, navigation/history, create task/case/claim, reload draft and real synthetic concurrent conflict. Keyboard/zoom/source-specific and physical acceptance remains pending.
+- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. Browser passed on previous hashes; new single-entry memory editor and session drafts need CI. Keyboard source-routing assertions added but unverified, zoom/contrast and physical acceptance still pending.
 - **M6**: migration/restore/rollback unit evidence, candidate package/version, before/after measurements and release documents exist. **Node and four-browser CI green on final tested application `f19c85d`**. M6 **not accepted** until physical devices, semantic retrieval, full recovery/manual and outstanding P0/P1 gaps are resolved.
 - **M7**: separate owner approvals required.
 
@@ -51,6 +53,6 @@ The concrete staged M7 decision path, candidate binding and blockers are in `rel
 
 ## Continuation
 
-1. Publish the resumed M1 code as a **fast-forward child of `e07dba1c`**, compare all blob hashes/tree, and run Node 22 plus the four mandatory browser CI workflows against the exact new code. Update this record with the remote SHA and CI outcome.
-2. Complete the remaining legacy/multi-file write sweep, a genuine local Danish semantic provider and **independent** ≥90% source@5 evaluation, then consolidate the duplicate memory editors and expand keyboard/zoom/source-route browser tests.
+1. Publish the **new M5 worktree changes** as a fast-forward child of `7161a873`, verify the exact Git tree, and run Node 22 plus all four Chromium/WebKit browser workflows. Record actual source-route, focus and restored note draft verdicts.
+2. Complete the remaining background/project/multi-file write sweep, a genuine local Danish semantic provider and independent ≥90% source@5 evaluation. A shared backend memory schema still needs a safe migration; do not rewrite historic records speculatively.
 3. Arrange actual physical iPhone/desktop acceptance and an administrator-controlled recovery rehearsal. M7 merge, stable tag, release and installation remain **separate authorisations**.

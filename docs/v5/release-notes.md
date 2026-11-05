@@ -7,6 +7,7 @@
 - **I dag, Plan, Mad og indkøb, Min viden, Hjem, Projekter og Indstillinger** med sidepanel på computer og fem punkter på mobil. Eksisterende chat og mikrofon er bevaret.
 - **Personlige opgaver** er adskilt fra kalenderaftaler og automatiske baggrundsjob. Varighed, frister, afhængigheder, tilladte tidsrum og låste valg kan gemmes med revision. Kapacitetsforslag opretter ikke kalenderaftaler og antager aldrig, at ukendt kalender betyder ledig tid.
 - **Personlige oplysninger** har kilder, forslag, egen bekræftelse, gyldighed, rettelser og konflikter. Ubekræftede, forældede eller modstridende oplysninger bruges ikke som sikre fakta. Der findes lokal tekstsøgning med kildehenvisninger.
+- **Én indgang i “Min viden”** til at oprette en fri hukommelsesnote eller en struktureret oplysning, som kræver senere bekræftelse. Ugemte oprettelseskladder bevares inden for browserfanen. De ældre og nye dataposter bevares hver for sig med deres kildehistorik; en fælles backend-migrering er ikke udført.
 - **Opfølgningssager og tilbagevendende kontrol** med næste tjek, stopbetingelse, tydelige observationer, afgrænsede genforsøg og synlig fejlstatus.
 - **Husstand og aftensmad** med flerugers rytme, dato-undtagelser, justerbare børneportioner, gennemgåede opskrifter, bekræftet lager, reservationer, låsbare madplaner, retbytte og bevarede manuelle tilføjelser.
 - **Nemlig** kræver fortsat det faktiske ejerklik på *Overfør til Nemlig*. Klikforløbet bruger nu en tidsbegrænset engangsintention knyttet til det præcise forslag og revisionen. Kun tilføjelse til eksisterende kurv er mulig; ingen bestilling eller betaling.
@@ -28,7 +29,7 @@
 - En rigtig lokal dansk semantisk embeddingmodel mangler. De 80 syntetiske danske søgeprøver gav **80/80 korrekt kilde i top fem**, men målingen dækker kun det lokale leksikale indeks og er ikke dokumentation for semantiske omskrivninger.
 - Chromium og WebKit er gennemført på begge krævede skærmstørrelser i syntetisk CI, **grønt på commit `f19c85d` (run `41944996605`) med den endelige danske mikrotypografi**. **Fysiske enheder og udvidet tilgængelighedskontrol mangler fortsat.**
 - Fysisk iPhone og computer, tastatur, fokus, zoom, kontrast, kilderuter og komplet mad/Nemlig-gennemgang kræver manuel kontrol.
-- Den gamle og den nye visning til personlige hukommelsesoplysninger er endnu ikke fuldt samlet til én editor; dele af indstillinger og hjem-status mangler harmonisering.
+- Den synlige hukommelsesoprettelse er samlet ét sted, men de historiske og nye hukommelsesmodeller har fortsat særskilte backendkontrakter. Komplet migration, formredigering ved navigation/import og dele af indstillinger/hjem-status kræver fortsat gennemgang. Den nye UI kræver en ny browser-CI-kørsel.
 - Baggrundsjob, projekt-/filsystemændringer og indstillinger fordelt på flere filer bruger endnu ikke alle den samme fulde persistensgrænse. For store P0/P1-acceptkrav i `requirements-matrix.md` står derfor fortsat som *delvist* eller *afventer*. Den nye M1-forbedring afventer ny, præcis CI-evidens før endelig kandidatstatus.
 
 Se `verification.md`, `requirements-matrix.md` og `migration-and-rollback.md` før en releasebeslutning.

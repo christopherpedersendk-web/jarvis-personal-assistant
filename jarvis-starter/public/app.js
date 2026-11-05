@@ -349,20 +349,6 @@ function renderSecretary(data) {
   updateDraft('playbook', data.playbook || '');
   $('push-status').textContent = data.pushEnabled ? 'Push: opsat' : 'Push: ikke opsat';
   $('secretary-count').textContent = `${(data.inbox || []).filter(x => !x.read).length} NYE`;
-  const memoryRoot = $('memories');
-  memoryRoot.replaceChildren();
-  for (const item of (data.memories || []).filter(x => !x.archived).slice(0, 30)) {
-    const box = document.createElement('div'); box.className = 'secretary-item';
-    box.dataset.memoryId = String(item.id);
-    const p = document.createElement('p'); p.textContent = item.text;
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Glem';
-    button.addEventListener('click', async () => {
-      if (!confirm('Fjern dette hukommelsespunkt?')) return;
-      try { await api(`/api/memories/${item.id}/archive`, { method: 'POST' }); await refreshSecretary(); }
-      catch (error) { toast(error.message); }
-    });
-    box.append(p, button); memoryRoot.append(box);
-  }
   const inboxRoot = $('secretary-inbox'); inboxRoot.replaceChildren();
   for (const item of (data.inbox || []).slice(0, 20)) {
     const box = document.createElement('div'); box.className = `secretary-item ${item.read ? '' : 'unread'}`;
@@ -424,14 +410,6 @@ $('export-playbook').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a'); link.href = url; link.download = 'JARVIS_Secretary_Skills.md'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 3000);
-});
-
-$('memory-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    await api('/api/memories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: $('memory-text').value }) });
-    $('memory-text').value = ''; await refreshSecretary(); toast('JARVIS husker nu dette på tværs af samtaler og projekter.');
-  } catch (error) { toast(error.message); }
 });
 
 $('push-test').addEventListener('click', async () => {
@@ -885,6 +863,10 @@ $('logout').addEventListener('click', () => {
   stopVoice();
   localStorage.removeItem('jarvisAccessToken');
   try { sessionStorage.removeItem(draftStorageKey); } catch { /* ignore blocked storage */ }
+  try {
+    for (const key of ['jarvis:v5:memory-note-draft', 'jarvis:v5:memory-claim-draft', 'jarvis:v5:memory-mode'])
+      sessionStorage.removeItem(key);
+  } catch { /* ignore blocked storage */ }
   token = '';
   showLogin();
 });

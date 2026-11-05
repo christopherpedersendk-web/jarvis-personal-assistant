@@ -125,19 +125,19 @@
         </section>
         <section id="memory-workbench" class="panel intelligence-panel">
           <div class="section-heading"><h2>Min hukommelse</h2><span class="tiny-label">RET · BEKRÆFT · GLEM</span></div>
-          <p class="muted small-text">Se hvad JARVIS husker, hvor det kommer fra og om det stadig gælder. Forslag bliver først personlige fakta, når du bekræfter dem.</p>
+          <p class="muted small-text">Ét sted til din hukommelse: vælg fritekst eller en struktureret oplysning. Eksisterende noter og bekræftede oplysninger bevares med deres kilder. Forslag bliver først personlige fakta, når du bekræfter dem.</p>
+          <label for="memory-editor-mode">Hvad vil du gemme?</label>
+          <select id="memory-editor-mode" class="memory-editor-mode"><option value="note">Hukommelsesnote</option><option value="claim">Struktureret oplysning, der skal bekræftes</option></select>
           <div id="memory-workbench-content"></div>
-        </section>
-        <section class="panel intelligence-panel">
-          <div class="section-heading"><h2>Bekræftede oplysninger</h2><span class="tiny-label">KILDE · GYLDIGHED · KONFLIKTER</span></div>
-          <p class="muted small-text">Nye oplysninger begynder som forslag. Gennemgå og bekræft dem selv. Historiske, forældede og modstridende oplysninger vises særskilt.</p>
-          <form id="personal-claim-form" class="v5-fields">
+          <form id="personal-claim-form" class="v5-fields hidden">
             <label for="claim-subject">Emne eller nøgle</label><input id="claim-subject" maxlength="100" required placeholder="fx foedselsdag_mor" />
             <label for="claim-value">Oplysning</label><textarea id="claim-value" maxlength="1200" required></textarea>
             <label for="claim-category">Type</label><select id="claim-category"><option value="fact">Faktum</option><option value="preference">Præference</option><option value="temporary">Midlertidigt</option><option value="planned">Planlagt</option><option value="completed">Afsluttet</option></select>
             <button type="submit" class="secondary">Opret forslag</button>
           </form>
           <p id="claim-status" class="muted" role="status" aria-live="polite"></p>
+          <h3>Strukturerede oplysninger</h3>
+          <p class="muted small-text">Nye strukturerede oplysninger begynder som forslag. Se deres kilder, bekræft dem og gennemgå konflikter herunder.</p>
           <div id="claim-list" class="v5-record-list"></div>
         </section>
         <section class="panel intelligence-panel">
@@ -406,13 +406,8 @@
               <input id="playbook-file" class="hidden" type="file" accept=".md,text/markdown,text/plain" />
               <button id="save-playbook" type="button" class="secondary full">Gem skills-dokument</button>
             </details>
-            <h3>Hukommelse på tværs</h3>
-            <form id="memory-form" class="task-form">
-              <label for="memory-text">Hvad skal JARVIS huske?</label>
-              <textarea id="memory-text" rows="2" maxlength="1200" required placeholder="Fx Jeg foretrækker gaveidéer under 500 kr. …"></textarea>
-              <button type="submit" class="secondary full">Husk dette</button>
-            </form>
-            <div id="memories" class="secretary-list"></div>
+            <h3>Min hukommelse</h3>
+            <p class="muted small-text">Personlige oplysninger og hukommelsesnoter rettes samlet under <a href="?view=knowledge" data-tab="knowledge">Min viden</a>. Eksisterende poster er ikke flyttet eller slettet.</p>
             <h3>Indbakke</h3>
             <div id="secretary-inbox" class="secretary-list"></div>
             <h3>Handlinger til godkendelse</h3>
