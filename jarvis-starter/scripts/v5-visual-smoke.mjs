@@ -69,7 +69,22 @@ async function signIn(page) {
 async function uiWrite(page, method, path, action, statuses = [200]) {
   const waiting = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === method);
   await action();
-  const response = await waiting;
+  const response = await waiting.catch(async error => {
+    // A browser may block an invalid native form before fetch() runs. Preserve
+    // evidence of that real failure, including WebKit-specific validity rules,
+    // instead of silently treating a missing HTTP write as successful.
+    const diagnostic = await page.evaluate(() => ({
+      invalid: [...document.querySelectorAll('form :invalid')].map(control => ({
+        id: control.id, type: control.type, message: control.validationMessage,
+        validity: Object.fromEntries(['badInput', 'customError', 'patternMismatch', 'rangeOverflow', 'rangeUnderflow',
+          'stepMismatch', 'tooLong', 'tooShort', 'typeMismatch', 'valueMissing'].map(key => [key, control.validity?.[key] === true])),
+      })).slice(0, 12),
+      taskStatus: document.querySelector('#personal-task-status')?.textContent || '',
+      followStatus: document.querySelector('#follow-up-status')?.textContent || '',
+      focused: document.activeElement?.id || null,
+    })).catch(() => ({ unavailable: true }));
+    throw new Error(`${method} ${path}: no HTTP response (${error.message}); browser state: ${JSON.stringify(diagnostic)}`);
+  });
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
   await page.waitForFunction(() => !document.querySelector('.meal-family-day[aria-busy="true"], .meal-card[aria-busy="true"], #meal-family-form[aria-busy="true"], #meal-recipe-form[aria-busy="true"], .project-card[aria-busy="true"], #project-form[aria-busy="true"], #code-form[aria-busy="true"], #personal-claim-form[aria-busy="true"], .memory-v49-card[aria-busy="true"], #memory-workbench-form[aria-busy="true"], #personal-task-form [type="submit"]:disabled, #follow-up-form [type="submit"]:disabled, #capacity-form [type="submit"]:disabled'));
@@ -1380,6 +1395,13 @@ async function runDevice(type, width, height, label) {
   await page.locator('#personal-task-purpose').fill('Verificér den separate planlægningsarbejdsgang');
   const pastLocalTime = await page.evaluate(() => JarvisPlan.fromInstant(new Date(Date.now() - 120_000).toISOString()).slice(0, 16));
   await page.locator('#personal-task-deadline').fill(pastLocalTime);
+  const nativeTaskValidity = await page.locator('#personal-task-form').evaluate(form => ({
+    valid: form.checkValidity(), invalid: [...form.querySelectorAll(':invalid')].map(control => ({
+      id: control.id, type: control.type, message: control.validationMessage,
+      stepMismatch: control.validity?.stepMismatch === true,
+    })),
+  }));
+  assert.equal(nativeTaskValidity.valid, true, `${label}: native task form invalid before submit: ${JSON.stringify(nativeTaskValidity)}`);
   const createdTask = await uiWrite(page, 'POST', '/api/personal-tasks',
     () => page.locator('#personal-task-form button[type="submit"]').click(), [201]);
   await page.locator(`[data-personal-task-id="${createdTask.body.task.id}"]`).waitFor({ state: 'visible' });
