@@ -22,10 +22,10 @@
       card.append(node('strong', title), node('p', subtitle, 'muted small-text'));
       el('smart-home-status').append(card);
     }
-    const heading = node('h3', '⌂ Smart Home');
+    const heading = node('h3', '⌂ Smart hjem');
     const latest = data.events[0];
     const line = node('p', latest ? `${latest.label} · ${new Date(latest.at).toLocaleString('da-DK')}` : 'Ingen hændelser endnu.', 'muted small-text');
-    const button = node('button', 'Åbn Smart Home', 'secondary');
+    const button = node('button', 'Åbn Hjem', 'secondary');
     button.type = 'button'; button.addEventListener('click', () => selectTab('smart-home'));
     el('home-smart-home').append(heading, line, button);
     if (!data.events.length) el('smart-home-events').append(node('p', 'Ingen hændelser registreret.', 'muted'));

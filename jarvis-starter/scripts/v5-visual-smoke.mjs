@@ -55,6 +55,12 @@ async function runDevice(type, width, height, label) {
     assert.equal(await page.locator(`#tab-${view}`).count(), 1, `${label}: missing view ${view}`);
   }
   await page.locator('#tab-home .chat-panel').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#tab-home .hero-panel h1').innerText(), /dig, Christopher/,
+    `${label}: the Danish greeting lost its word spacing`);
+  await page.locator('#home-system-health p').filter({ hasText: 'JARVIS online' }).waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#home-system-health h2').textContent(), 'Systemtilstand');
+  await page.locator('#home-smart-home h3').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#home-smart-home h3').textContent(), /Smart hjem/);
   assert.equal(await page.locator('#message').isVisible(), true, `${label}: message input hidden`);
   const composerBottom = await page.locator('#message').evaluate(el => el.getBoundingClientRect().bottom);
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-initial-home.png`), animations: 'disabled' });

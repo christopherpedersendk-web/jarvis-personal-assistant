@@ -22,7 +22,7 @@
     ];
     el('system-health-details').replaceChildren(...pairs.map(([a,b]) => card(a,b)));
     el('home-system-health').replaceChildren();
-    const h = document.createElement('h2'); h.textContent = 'System Health';
+    const h = document.createElement('h2'); h.textContent = 'Systemtilstand';
     const p = document.createElement('p');
     p.textContent = `JARVIS online · Discord: ${pairs[1][1]} · Backup: ${backup} · Ledig disk: ${pairs[3][1]}`;
     el('home-system-health').append(h,p);
