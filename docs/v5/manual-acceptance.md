@@ -2,6 +2,8 @@
 
 Ingen af punkterne nedenfor er godkendt alene på baggrund af Node-tests. Brug **syntetiske data** først. Notér enhed, browser, dato, kandidat-SHA, resultater og eventuelle skærmbilleder i `verification.md`.
 
+Automatiseret browser-evidens (ikke fysisk accept): GitHub Actions `41944996605`, app-hash `bf87ea86`, 240 Node-tests og fire Chromium/WebKit-workflows grønne; 16 syntetiske skærmbilleder i artifact `13378367690`. Kryds kun de manuelle punkter af efter de faktiske kontroller.
+
 ## Browser og grænseflade
 
 - [ ] Chromium 1390 × 950: I dag, Plan, Mad, Viden, Hjem, Projekter, Indstillinger; beskedfelt og mikrofon synlige uden uventet scroll.

@@ -1,6 +1,6 @@
 # JARVIS v5 resumable progress
 
-Latest fully browser-tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, published commit **`4a6edfe4e99381c93d1ec7c2f34aed4dc7cab6e4`**. CI **240/240 Node 22 tests plus Chromium and WebKit at both 1390×950 and 390×844 passed**. Sixteen screenshots saved. A subsequent local-only Danish microcopy/spacing patch requires another CI pass before becoming the tested candidate. No M7 action has been taken.
+Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema `1`, published commit **`f19c85d695b87cc7f7c93f609afa3cc756de3df2`**, source tree `aa19a74523a5e57ea2322bba6f30f000d8d25020` and **application subtree `bf87ea8604223ed4ec401ddbd781d55c945203ea`**. GitHub Actions `41944996605`: **240/240 Node 22 tests and Chromium + WebKit at 1390×950 and 390×844 passed**; all 16 synthetic screenshots saved as artifact `13378367690`. A subsequent documentation-only update preserves this exact application subtree. No M7 action has been taken.
 
 ## Provenance
 
@@ -20,7 +20,7 @@ Latest fully browser-tested candidate: 2026-11-05, package `5.0.0`, data schema 
 - Current locally tested **CI diagnostic iteration application subtree hash**: `ac48d6a431daa86382d0abc1a41bec7d52adba54` (240/240 tests; browser before/after evidence pending).
 - Current locally tested **per-device UI regression fixture subtree hash**: `92de68a25037935eeef6e98cdac030915e7301ce` (240/240 tests; only synthetic browser script changed since `ac48d6a4`).
 - Current locally tested **Danish UI microcopy subtree hash**: `bf87ea8604223ed4ec401ddbd781d55c945203ea` (240/240 tests, pending new browser CI, no M7).
-- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41944278403` were **green** for Node and all four browser matrix cases against exact commit `4a6edfe4` and app subtree `92de68a2`. Screenshot artifact `13378221166` is synthetic and expires after 14 days.
+- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. [GitHub Actions `41944996605`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41944996605) were **green** for Node and all four browsers against actual microcopy code commit `f19c85d`. [Screenshot artifact `13378367690`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41944996605/artifacts/13378367690) is synthetic and expires after 14 days.
 - Published `ceeb038` includes session-scoped draft recovery; fail-closed calendar coverage and persisted OAuth token rotations; independent `/ready` storage write-probe; and schema compatibility checks from release manifest through staging/deployment. A separate layout correction now awaits CI.
 
 ## Status
@@ -30,23 +30,25 @@ Latest fully browser-tested candidate: 2026-11-05, package `5.0.0`, data schema 
 - **M2**: JSON schema 1, immutable backup, atomic/fsync publish, readiness write-probe, same-file mutation contract, action journal, queue and domain APIs implemented/tested synthetically. Not every legacy mutation or external wait uses the shared queue; **partial**.
 - **M3**: personal claims/search, separate persistent tasks, deterministic capacity with fail-closed actual read-only calendar coverage, follow-ups, skills versioning, Discord resilience and recurring retry/observation are integrated and Node-tested. **B3 genuine Danish semantic model missing**, independent 90% retrieval gate pending.
 - **M4**: household rhythm, recipe review/feedback, inventory reservations, editable meals, shopping proposal and one-use Nemlig owner-click intention implemented/tested synthetically. Live credential-free browser and household acceptance pending.
-- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. **Chromium and WebKit desktop/mobile smoke passed**, including first-screen composer, navigation/history, create task/case/claim, reload draft and real synthetic concurrent conflict. Keyboard/zoom/source-specific and physical acceptance remains pending.
-- **M6**: migration/restore/rollback unit evidence, candidate package/version, before/after measurements and release documents exist. **Node and four-browser CI green on `4a6edfe4`**. M6 **not accepted** until physical devices, semantic retrieval, full recovery/manual and outstanding P0/P1 gaps are resolved.
+- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. **Chromium and WebKit desktop/mobile smoke passed on final application hash `bf87ea86`**, including Danish overblik labels, first-screen composer, navigation/history, create task/case/claim, reload draft and real synthetic concurrent conflict. Keyboard/zoom/source-specific and physical acceptance remains pending.
+- **M6**: migration/restore/rollback unit evidence, candidate package/version, before/after measurements and release documents exist. **Node and four-browser CI green on final tested application `f19c85d`**. M6 **not accepted** until physical devices, semantic retrieval, full recovery/manual and outstanding P0/P1 gaps are resolved.
 - **M7**: separate owner approvals required.
+
+The concrete staged M7 decision path, candidate binding and blockers are in `release-proposal.md`. Nothing there authorizes a merge, tag or installation.
 
 ## Executed tests / known limits
 
 - `cd jarvis-starter && npm test`: **239/239** in 4.69 seconds, 0 failures (latest local amendment); first published commit CI **236/236**.
 - `node --test test/v5-intelligence.test.mjs`: 45 tests; 80/80 lexical correct-source@5, 30 planning cases; this is not genuine semantic evaluation.
 - `node --test test/deploy-release.test.mjs test/v5-server.test.mjs`: 9 tests green, including restart, click-intent and version/rollback safety.
-- `node scripts/v5-visual-smoke.mjs`: local Chromium remains blocked by sandbox `socket() Operation not permitted`, but CI `41944278403` ran all four browser cases successfully and saved 16 synthetic screenshots. Subsequent microcopy patch awaits rerun.
+- `node scripts/v5-visual-smoke.mjs`: local Chromium remains blocked by sandbox `socket() Operation not permitted`, but CI `41944996605` ran all four browser cases successfully and saved 16 synthetic screenshots from the exact final application hash.
 - Synthetic perf rerun 2026-11-05 (current application subtree `ac48d6a4`): `/api/overview` **117 B, p95 0.91 ms** vs baseline full-state 72,198 B, p95 3.29 ms. v5 full state/search/write p95 were *slower* in this second short paired sample. Both measurements and caveats in `verification.md`.
 - No live credentials, production data, external basket writes, real recurring activation, release tag, merge or deployment.
 
 ## Continuation
 
-1. Publish the Danish UI microcopy correction as a descendant of `4a6edfe4` via GitHub Git Data API; verify exact tree and rerun Node/browser CI against new head.
-2. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) and new CI: first-screen composer must fit 1390×950 and 390×844 on both Chromium/WebKit, with saved screenshots and reload-persistence checks.
-3. Capture the last commit SHA and working-tree status, update review comments if a further patch is required. Never treat this as M7 approval.
+1. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7), the exact application hash `bf87ea86`, green CI `41944996605`, synthetic screenshots and the outstanding requirements matrix. If documentation-only progress changes advance the PR head, they do **not** change the tested application subtree; recheck exact commit binding before any future M7 decision.
+2. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows. Keep incomplete items pending, never accepted by inference.
+3. Have owner/manual reviewers complete physical iPhone/desktop and administrator-safe recovery checks. M7 merge, stable `v5.0.0` tag/release and production install remain separate authorisations.
 4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.
 5. Have owner/manual reviewers complete physical iPhone/desktop and administrator-safe recovery checks. M7 merge, stable `v5.0.0` tag/release and production install are separate authorisations.
