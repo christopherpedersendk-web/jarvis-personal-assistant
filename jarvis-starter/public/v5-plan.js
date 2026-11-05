@@ -167,15 +167,17 @@ const JarvisClaims = (() => {
       const problem = conflict();
       form.setAttribute('aria-busy', String(busy));
       submit.disabled = busy || Boolean(pending) || Boolean(problem);
-      submit.textContent = edit?.mode === 'edit' ? 'Gem ændringer i forslag' : edit?.mode === 'correct' ? 'Opret rettelsesforslag' : 'Opret forslag';
+      const submitLabel = edit?.mode === 'edit' ? 'Gem ændringer i forslag' : edit?.mode === 'correct' ? 'Opret rettelsesforslag' : 'Opret forslag';
+      if (submit.textContent !== submitLabel) submit.textContent = submitLabel;
       byId('claim-subject').readOnly = Boolean(edit);
       cancel.hidden = !(dirty || edit); cancel.disabled = busy || Boolean(pending);
       reload.hidden = !edit; reload.disabled = busy || Boolean(pending);
       inspect.hidden = !pending; inspect.disabled = busy;
       resolve.hidden = !pending; resolve.disabled = busy || !readableAfterFailure;
       const base = edit ? `${edit.mode === 'correct' ? 'Retter bekræftet oplysning' : 'Redigerer forslag'} · basisrevision ${edit.revision}. ` : '';
-      draftStatus.textContent = pending ? 'Gemningens udfald er ikke afklaret. Ingen automatisk gentagelse. Hent status og gennemgå oplysningerne før du fortsætter.'
+      const statusText = pending ? 'Gemningens udfald er ikke afklaret. Ingen automatisk gentagelse. Hent status og gennemgå oplysningerne før du fortsætter.'
         : `${base}${problem || (dirty ? 'Ugemt kladde er bevaret i denne fane.' : '')}${!storageReady ? ' Browseren kan ikke gendanne denne kladde efter lukning; behold fanen åben.' : ''}`;
+      if (draftStatus.textContent !== statusText) draftStatus.textContent = statusText;
       draftStatus.classList.toggle('v5-conflict', Boolean(problem || pending));
     }
     function resetEditor() {

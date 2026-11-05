@@ -168,7 +168,8 @@ const JarvisProjects = (() => {
       if (entry.dependencyStatus.textContent !== dependencyText) entry.dependencyStatus.textContent = dependencyText;
       const writeBlocked = missing || entry.busy || Boolean(entry.attempt) || blocked(project);
       entry.build.disabled = writeBlocked || conflict;
-      entry.build.textContent = entry.busy && entry.attempt?.kind === 'develop' ? 'JARVIS skriver kode …' : project.revision ? 'Videreudvikl' : 'Byg projekt';
+      const buildLabel = entry.busy && entry.attempt?.kind === 'develop' ? 'JARVIS skriver kode …' : project.revision ? 'Videreudvikl' : 'Byg projekt';
+      if (entry.build.textContent !== buildLabel) entry.build.textContent = buildLabel;
       entry.test.disabled = writeBlocked; entry.test.hidden = !project.revision;
       entry.rollback.disabled = writeBlocked; entry.rollback.hidden = !project.lastRollbackableRevision;
       entry.archive.disabled = writeBlocked;
