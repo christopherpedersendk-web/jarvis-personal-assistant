@@ -19,6 +19,8 @@
   <link rel="stylesheet" href="/meals.css" />
   <link rel="stylesheet" href="/memory-v49.css" />
   <link rel="stylesheet" href="/v5.css" />
+  <script src="/job-policy.js" defer></script>
+  <script src="/v5-projects.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
@@ -51,8 +53,8 @@
       <nav class="tab-nav" aria-label="Hovednavigation">
         <a class="tab-button active" href="?view=home" data-tab="home"><span aria-hidden="true">⌂</span> I dag</a>
         <a class="tab-button" href="?view=plan" data-tab="plan"><span aria-hidden="true">◷</span> Plan</a>
-        <a class="tab-button" href="?view=meals" data-tab="meals"><span aria-hidden="true">♧</span> Mad</a>
-        <a class="tab-button" href="?view=knowledge" data-tab="knowledge"><span aria-hidden="true">◎</span> Viden</a>
+        <a class="tab-button" href="?view=meals" data-tab="meals"><span aria-hidden="true">♧</span><span class="nav-title nav-desktop-title">Mad og indkøb</span><span class="nav-title nav-mobile-title">Mad</span></a>
+        <a class="tab-button" href="?view=knowledge" data-tab="knowledge"><span aria-hidden="true">◎</span><span class="nav-title nav-desktop-title">Min viden</span><span class="nav-title nav-mobile-title">Viden</span></a>
         <a class="tab-button desktop-extra" href="?view=smart-home" data-tab="smart-home"><span aria-hidden="true">⌂</span> Hjem</a>
         <a class="tab-button desktop-extra" href="?view=projects" data-tab="projects"><span aria-hidden="true">⌘</span> Projekter</a>
         <a class="tab-button desktop-extra" href="?view=settings" data-tab="settings"><span aria-hidden="true">⚙</span> Indstillinger</a>
@@ -64,11 +66,16 @@
         </div>
       </nav>
       <div id="tab-home" class="tab-view active-view" role="region" aria-label="Samtale og overblik">
-        <div id="home-overview" class="overview-cards" aria-live="polite"></div>
         <div id="home-intelligence" class="intelligence-grid" aria-live="polite"></div>
-        <section id="home-smart-home" class="panel smart-home-summary" aria-live="polite"></section>
-        <section id="home-system-health" class="panel system-health-summary" aria-live="polite"><h2>Systemtilstand</h2><p class="muted">Henter systemstatus …</p></section>
-        <div id="home-feed" class="command-center" aria-live="polite"></div>
+        <section id="home-system-alert" class="source-open-status hidden" role="status" aria-live="polite"></section>
+        <details id="home-more-details" class="home-more-details">
+          <summary>Flere detaljer og historik</summary>
+          <p class="muted small-text">Rapporter, tællere og driftsoplysninger. Kritiske driftsproblemer vises også ovenfor.</p>
+          <div id="home-overview" class="overview-cards" aria-live="polite"></div>
+          <section id="home-smart-home" class="panel smart-home-summary" aria-live="polite"></section>
+          <section id="home-system-health" class="panel system-health-summary" aria-live="polite"><h2>Systemtilstand</h2><p class="muted">Henter systemstatus …</p></section>
+          <div id="home-feed" class="command-center" aria-live="polite"></div>
+        </details>
       </div>
       <div id="tab-plan" class="tab-view hidden" role="region" aria-label="Plan og opfølgning">
         <header class="view-intro"><span class="tiny-label">KAPACITET · OPGAVER · OPFØLGNING</span><h1>Din plan</h1><p class="muted">Kalenderaftaler, dine egne opgaver og JARVIS-job har hver sin betydning og status.</p></header>
@@ -380,6 +387,7 @@
       <div class="content-grid">
         <section class="panel chat-panel" aria-label="Samtale">
           <div class="section-heading"><h2>Samtale</h2><span id="history-count" class="muted micro"></span></div>
+          <div class="history-controls"><button id="history-older" type="button" class="secondary compact-button hidden">Vis ældre beskeder</button><span id="history-status" class="muted micro" role="status"></span></div>
           <div id="messages" class="messages" role="log" aria-live="polite"></div>
           <form id="message-form" class="composer">
             <label class="sr-only" for="message">Besked til JARVIS</label>
@@ -447,7 +455,7 @@
           </section>
           <section class="panel tasks-panel" aria-label="Baggrundsopgaver">
             <div class="section-heading"><h2>Baggrundsopgaver</h2><span id="usage" class="tiny-label">0/10 I DAG</span></div>
-            <p class="muted small-text">Opgaver kan undersøge ting på nettet, mens Windows-serveren kører. Resultater vises her. Ingen eksterne handlinger.</p>
+            <p class="muted small-text">JARVIS-job er automatiseret research, ikke dine personlige kalenderopgaver. Gem først et pauset job og gennemgå politikken. Kun et særskilt klik på start aktiverer modellen og læsning på nettet; ingen køb, kalenderændringer eller nye tilladelser.</p>
             <form id="task-form" class="task-form">
               <label for="task-category">Opgavetype</label>
               <select id="task-category"><option value="research">Research</option><option value="briefing">Morgenrapport</option><option value="monitor">Overvågning / priser</option></select>
@@ -455,11 +463,18 @@
               <input id="task-title" maxlength="120" required placeholder="Fx Restaurantidéer til fredag" />
               <label for="task-prompt">Hvad skal JARVIS undersøge?</label>
               <textarea id="task-prompt" rows="3" maxlength="3500" required placeholder="Find 3 gode restauranter i København med priser og kildelinks …"></textarea>
-              <label for="task-when">Start</label>
-              <select id="task-when"><option value="now">Nu</option><option value="later">På et bestemt tidspunkt</option></select>
+              <label for="task-skill">Versionsbundet procedure (valgfri)</label>
+              <select id="task-skill"><option value="">Ingen særskilt skill – brug instruktionen ovenfor</option></select>
+              <p id="task-skill-status" class="muted small-text" role="status">Henter gennemgåede versioner efter login.</p>
+              <label for="task-parameters">Navngivne parametre (JSON-objekt)</label>
+              <textarea id="task-parameters" rows="3" maxlength="4000" spellcheck="false" aria-describedby="task-parameters-help">{}</textarea>
+              <p id="task-parameters-help" class="muted small-text">Fx {"emne":"brætspil","budgetDKK":300}. Brug tekst, tal, ja/nej eller enkle lister. Parametre giver ikke nye tilladelser; gem aldrig adgangskoder eller tokens.</p>
+              <label for="task-when">Ønsket første start efter aktivering</label>
+              <select id="task-when"><option value="now">Når jeg aktivt starter jobbet</option><option value="later">På et entydigt tidspunkt</option></select>
               <div id="later-wrap" class="hidden">
-                <label for="task-run-at">Dato og tidspunkt (lokal tid)</label>
-                <input id="task-run-at" type="datetime-local" />
+                <label for="task-run-at">Dato og tidspunkt med UTC-forskydning</label>
+                <input id="task-run-at" type="text" maxlength="35" spellcheck="false" placeholder="2026-11-06T09:00+01:00" aria-describedby="task-time-help" />
+                <p id="task-time-help" class="muted small-text">Skriv Z for UTC eller fx +01:00 for dansk vintertid / +02:00 for sommertid. Enhedens tidszone anvendes aldrig skjult.</p>
               </div>
               <label for="task-repeat">Gentagelse</label>
               <select id="task-repeat">
@@ -468,10 +483,30 @@
                 <option value="360">Hver 6. time</option>
                 <option value="1440">Hver 24. time</option>
                 <option value="10080">Hver 7. dag</option>
-                <option value="daily">Dagligt på dansk klokkeslæt</option>
+                <option value="daily">Dagligt i den valgte tidszone</option>
               </select>
-              <div id="daily-wrap" class="hidden"><label for="task-daily-time">Klokkeslæt (Danmark)</label><input type="time" id="task-daily-time" value="07:30" /></div>
-              <button id="task-submit" class="primary full" type="submit">+ Opret opgave</button>
+              <div id="daily-wrap" class="hidden"><label for="task-daily-time">Dagligt klokkeslæt</label><input type="time" id="task-daily-time" value="07:30" /></div>
+              <label for="task-time-zone">Tidszone for daglig kørsel og stilleperiode</label>
+              <select id="task-time-zone"><option value="Europe/Copenhagen">Danmark · Europe/Copenhagen</option><option value="UTC">UTC</option><option value="Europe/London">Storbritannien · Europe/London</option><option value="America/New_York">New York · America/New_York</option></select>
+              <p class="muted small-text">Ved skift til sommertid springes et ikke-eksisterende dagligt klokkeslæt over. Ved skift til vintertid køres højst én gang pr. lokal dato.</p>
+              <details id="task-policy-fields">
+                <summary>Budget, genforsøg og levering</summary>
+                <div class="task-form">
+                  <label for="task-budget-runs">Højst nye modelkørsler pr. UTC-døgn for dette job</label><input id="task-budget-runs" type="number" min="1" max="100" value="10" required />
+                  <label for="task-budget-tokens">Højst outputtokens pr. modelkørsel</label><input id="task-budget-tokens" type="number" min="256" max="12000" value="3500" required />
+                  <label for="task-retry-count">Genforsøg ved midlertidig læsefejl (0–3)</label><input id="task-retry-count" type="number" min="0" max="3" value="1" required />
+                  <label for="task-retry-delay">Ventetid mellem genforsøg (minutter)</label><input id="task-retry-delay" type="number" min="1" max="180" value="5" required />
+                  <label for="task-missed-mode">Hvis en planlagt kørsel er blevet for gammel</label><select id="task-missed-mode"><option value="coalesce">Saml op én gang – ingen kø af gamle kørsler</option><option value="skip">Spring gammel kørsel over</option><option value="pause">Pause og afvent min beslutning</option></select>
+                  <label for="task-missed-late">Hvornår er kørslen for gammel? (minutter)</label><input id="task-missed-late" type="number" min="1" max="43200" value="120" required />
+                  <label for="task-quiet-start">Stilleperiode fra</label><input id="task-quiet-start" type="time" value="22:00" required />
+                  <label for="task-quiet-end">Stilleperiode til</label><input id="task-quiet-end" type="time" value="07:00" required />
+                  <label for="task-deduplicate">Gentagne ens observationer</label><select id="task-deduplicate"><option value="true">Undlad gentagne meddelelser</option><option value="false">Vis hvert nyt kørselsresultat</option></select>
+                </div>
+              </details>
+              <section id="task-policy-preview" class="v5-record-card" aria-label="Politik til gennemgang"></section>
+              <p id="task-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
+              <button id="task-submit" class="primary full" type="submit">Gem pauset job</button>
+              <div class="task-actions"><button id="task-new-draft" type="button">Ny kladde</button><button id="task-reload" type="button" hidden>Hent aktuel revision</button><button id="task-copy-draft" type="button" hidden>Gem kladden som nyt pauset job</button></div>
             </form>
             <div id="tasks" class="task-list" aria-live="polite"></div>
           </section>

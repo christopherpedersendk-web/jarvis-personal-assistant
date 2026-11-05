@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createJobTransitions } from './job-state-transition.mjs';
+import { rejectSecrets } from './privacy.mjs';
 
 const MIN_INTERVAL = 60;
 const MAX_INTERVAL = 30 * 24 * 60;
@@ -217,12 +218,15 @@ export class TaskEngine {
       bindingHash: createHash('sha256').update(JSON.stringify(binding)).digest('hex') };
   }
 
-  async create(input) {
+  #newTask(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Ugyldig opgave.');
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
     if (!title || title.length > 120) throw new Error('Titel skal være 1–120 tegn.');
     if (!prompt || prompt.length > 3500) throw new Error('Opgaven skal være 1–3.500 tegn.');
+    rejectSecrets({ title, prompt, parameters: input.parameters });
+    const activation = input.activation ?? 'scheduled';
+    if (!['scheduled', 'paused'].includes(activation)) throw new Error('Vælg pauset kladde eller eksplicit planlagt aktivering.');
     const intervalMinutes = Number(input.intervalMinutes || 0);
     if (!Number.isInteger(intervalMinutes) || (intervalMinutes !== 0 && (intervalMinutes < MIN_INTERVAL || intervalMinutes > MAX_INTERVAL)))
       throw new Error('Gentagelser skal være mindst hver time og højst hver 30. dag.');
@@ -237,9 +241,12 @@ export class TaskEngine {
       throw new Error('Opgaven kan ikke udvide sine tilladelser.');
     const now = this.now();
     const timeZone = checkedZone(input.timeZone);
-    if (input.runAt && (typeof input.runAt !== 'string' ||
-        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(input.runAt)))
-      throw new Error('Datoen skal være et entydigt tidspunkt med Z eller UTC-forskydning.');
+    if (input.runAt !== undefined && input.runAt !== null) {
+      const instant = typeof input.runAt === 'string' && /^(\d{4}-\d{2}-\d{2})T([0-2]\d):([0-5]\d)(?::([0-5]\d)(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.exec(input.runAt);
+      if (!instant || Number(instant[2]) > 23 || !Number.isFinite(Date.parse(input.runAt)) ||
+          new Date(`${instant[1]}T00:00:00Z`).toISOString().slice(0, 10) !== instant[1])
+        throw new Error('Datoen skal være et gyldigt, entydigt tidspunkt med Z eller UTC-forskydning.');
+    }
     const next = dailyTime ? new Date(nextLocalTime(now, dailyTime, timeZone)) : input.runAt ? new Date(input.runAt) : now;
     if (Number.isNaN(next.getTime()) || next.getTime() > now.getTime() + 366 * 24 * 3600_000) throw new Error('Ugyldig dato eller mere end et år fremme.');
     const task = { id: randomUUID(), revision: 1, title, prompt, intervalMinutes, category, dailyTime, timeZone,
@@ -247,10 +254,16 @@ export class TaskEngine {
       deliveryPolicy: checkedDelivery(input.deliveryPolicy), budget: checkedBudget(input.budget),
       parameters: checkedParameters(input.parameters), permissions: [...READ_PERMISSIONS],
       retryAttempt: 0, consecutiveFailures: 0, skillId: input.skillId || null, skillVersion: input.skillVersion || null,
-      deliveryChannel: 'inbox', nextRunAt: new Date(Math.max(next.getTime(), now.getTime())).toISOString(),
-      status: 'scheduled', archived: false, responseId: null, activeRun: null,
+      deliveryChannel: 'inbox', startOnActivation: !input.runAt && !dailyTime,
+      nextRunAt: new Date(Math.max(next.getTime(), now.getTime())).toISOString(),
+      status: activation, archived: false, responseId: null, activeRun: null,
       runs: [], createdAt: now.toISOString(), updatedAt: now.toISOString() };
     task.skillContentHash = this.#execution(task).skillContentHash;
+    return task;
+  }
+
+  async create(input) {
+    const task = this.#newTask(input);
     return this.transact(['tasks'], async () => {
       if (this.list().length >= 100) throw new Error('Maksimalt 100 aktive opgaver. Arkivér nogle først.');
       this.state.tasks.push(task);
@@ -259,16 +272,60 @@ export class TaskEngine {
     });
   }
 
-  async action(id, action) {
+  async update(id, input) {
+    const allowed = ['expectedRevision', 'title', 'prompt', 'category', 'intervalMinutes', 'dailyTime', 'runAt',
+      'skillId', 'skillVersion', 'parameters', 'permissions', 'timeZone', 'retryPolicy', 'missedRunPolicy',
+      'deliveryPolicy', 'budget', 'activation'];
+    fields(input, allowed, 'Ugyldige felter i jobpolitikken.');
+    if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1)
+      throw new Error('Jobændringen kræver den præcise basisrevision.');
+    if (input.activation !== undefined && input.activation !== 'paused')
+      throw new Error('Gemte jobændringer skal forblive pausede. Aktivér først efter en særskilt gennemgang.');
+    return this.transact(['tasks'], async () => {
+      const current = this.#task(id);
+      this.#requireRevision(current, input.expectedRevision);
+      if (current.archived || !['paused', 'interrupted'].includes(current.status))
+        throw new Error('Pause jobbet, før du ændrer politik eller instruktioner.');
+      if (current.responseId || [...this.pendingCheckpoints.keys()].some(key => key.includes(id)))
+        throw new Error('En eksisterende kørsel eller et lokalt kontrolpunkt er uafklaret. Afklar resultatet før politikændring.');
+      const config = { ...current, ...input, activation: 'paused',
+        runAt: Object.hasOwn(input, 'runAt') ? input.runAt : current.nextRunAt || undefined };
+      if (!config.skillId && input.skillVersion) throw new Error('Skill kræver ID og version.');
+      if (config.skillId === null || config.skillId === '') { delete config.skillId; delete config.skillVersion; }
+      const validated = this.#newTask(config);
+      for (const key of ['title', 'prompt', 'category', 'intervalMinutes', 'dailyTime', 'timeZone', 'retryPolicy',
+        'missedRunPolicy', 'deliveryPolicy', 'budget', 'parameters', 'permissions', 'skillId', 'skillVersion',
+        'skillContentHash', 'nextRunAt', 'startOnActivation']) current[key] = validated[key];
+      current.revision = (current.revision || 1) + 1;
+      current.updatedAt = this.now().toISOString();
+      current.status = 'paused';
+      current.activeRun = null;
+      current.retryAttempt = 0;
+      await this.save();
+      return current;
+    });
+  }
+
+  #requireRevision(task, expectedRevision) {
+    if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision !== (task.revision || 1)))
+      throw Object.assign(new Error('Jobbet er ændret siden din gennemgang. Hent den aktuelle revision; din kladde er bevaret.'),
+        { code: 'REVISION_CONFLICT', status: 409 });
+  }
+
+  async action(id, action, { expectedRevision } = {}) {
     const task = await this.transact(['tasks'], async () => {
       const current = this.#task(id);
+      this.#requireRevision(current, expectedRevision);
       if (current.archived) throw new Error('Opgaven findes ikke.');
       if (current.status === 'running') throw new Error('Opgaven er i gang. Vent på resultatet eller kontrollér et uafklaret lagerudfald.');
       if (action === 'pause') current.status = 'paused';
       else if (action === 'resume' || action === 'run') {
         if (current.status === 'queued') throw new Error('Opgaven står allerede i kø. Vent eller vælg Pause.');
+        const firstActivation = !current.runs.length && ['paused', 'interrupted'].includes(current.status);
         current.status = 'scheduled';
-        current.nextRunAt = action === 'run' ? this.now().toISOString() : current.nextRunAt || this.now().toISOString();
+        current.nextRunAt = action === 'run' || firstActivation && current.startOnActivation ? this.now().toISOString()
+          : firstActivation && current.dailyTime ? nextLocalTime(this.now(), current.dailyTime, checkedZone(current.timeZone))
+            : current.nextRunAt || this.now().toISOString();
         current.retryAttempt = 0;
       } else if (action === 'archive') { current.archived = true; current.status = 'archived'; }
       else throw new Error('Ukendt handling.');
@@ -463,7 +520,9 @@ export class TaskEngine {
     const sending = await this.transact(['tasks'], async () => {
       const task = this.#task(id); const run = task.runs.find(item => item.id === runId);
       if (task.archived || run?.delivery?.status !== 'pending') return null;
-      const due = quietUntil(this.now(), task);
+      const due = quietUntil(this.now(), { ...task,
+        ...(run.binding?.deliveryPolicy ? { deliveryPolicy: run.binding.deliveryPolicy } : {}),
+        ...(run.binding?.timeZone ? { timeZone: run.binding.timeZone } : {}) });
       if (due) {
         if (run.delivery.notBefore !== due) { run.delivery.notBefore = due; await this.save(); }
         return null;

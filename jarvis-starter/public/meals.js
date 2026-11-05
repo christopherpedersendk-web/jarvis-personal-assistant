@@ -1536,10 +1536,10 @@ mealEl('logout')?.addEventListener('click', () => {
 });
 showNemligSelection();
 document.addEventListener('jarvis:refreshed', () => {
-  if (!mealLoaded) refreshMeals().catch(error => console.warn('Madplan-status:', error.message));
+  if (!mealEl('tab-meals').classList.contains('hidden')) refreshMeals().catch(error => console.warn('Madplan-status:', error.message));
 });
-document.querySelector('[data-tab="meals"]')?.addEventListener('click', () => {
-  if (mealLoaded) refreshMeals().catch(error => toast(error.message));
+document.addEventListener('jarvis:view-changed', event => {
+  if (event.detail?.view === 'meals' && localStorage.getItem('jarvisAccessToken')) refreshMeals().catch(error => toast(error.message));
 });
 window.addEventListener('beforeunload', event => {
   if (!mealDirty.size && !mealEl('meal-recipe-text').value.trim() && !mealEl('meal-recipe-urls').value.trim()) return;

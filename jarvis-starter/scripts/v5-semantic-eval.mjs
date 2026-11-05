@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
 import { LocalSemanticProvider } from '../local-semantic-provider.mjs';
 import { IncrementalSemanticIndex } from '../semantic-index.mjs';
-import { PersonalKnowledge, indexPersonalKnowledge } from '../personal-knowledge.mjs';
+import { PersonalKnowledge, indexPersonalKnowledge, HYBRID_RETRIEVAL_STRATEGY } from '../personal-knowledge.mjs';
 import { LOCAL_SEMANTIC_MODEL } from '../semantic-model-manifest.mjs';
 import { DANISH_MEMORY_QUESTIONS, DANISH_MEMORY_SAFETY_QUESTIONS, EVALUATION_NOW,
   EVALUATION_VERSION, makeDanishMemoryEvaluationState } from './fixtures/danish-memory-evaluation.mjs';
@@ -41,8 +41,31 @@ try {
   const startRss = process.memoryUsage().rss;
   let peakSampledRss = startRss;
   const started = performance.now();
+  // Exercise the application's real default deadline before any explicit
+  // warm-up. Cold startup may honestly fall back, but it must recover to a
+  // normal-deadline warm read without changing the retrieval acceptance set.
+  const coldIndex = new IncrementalSemanticIndex({ embedBatch: provider.embedBatch.bind(provider) });
+  const coldKnowledge = new PersonalKnowledge({ state, now, semanticScorer: coldIndex.score.bind(coldIndex) });
+  const coldReadAt = performance.now();
+  const coldPending = coldKnowledge.retrieve('fredslilje', { limit: 5 });
+  await Promise.resolve(); // Let the query itself initiate the lazy worker.
+  const initialReady = provider.prepare().then(() => ({ at: performance.now() }), error => ({ error }));
+  const coldResult = await coldPending;
+  const coldReadMs = performance.now() - coldReadAt;
+  const stateAfterColdRead = provider.stats().status;
+  const ready = await initialReady;
+  if (ready.error) throw ready.error;
+  assert.ok(['local-hybrid', 'local-lexical'].includes(coldResult.mode));
+  assert.ok(coldResult.matches.some(doc => doc.id === 'memory:plant'), 'En kold model må ikke ødelægge den lokale ordsøgning.');
+  if (coldResult.mode === 'local-lexical') assert.equal(coldResult.semantic.status, 'timeout');
+  const coldLoadMs = ready.at - started;
   await provider.prepare();
-  const coldLoadMs = performance.now() - started;
+  const defaultWarmAt = performance.now();
+  const defaultWarm = await coldKnowledge.retrieve('fredslilje', { limit: 5 });
+  const defaultWarmReadMs = performance.now() - defaultWarmAt;
+  assert.equal(defaultWarm.mode, 'local-hybrid', 'En klargjort ægte model skal virke med normal 1500 ms deadline.');
+  assert.equal(provider.stats().network, 'disabled');
+  coldIndex.cache.clear();
   const documents = indexPersonalKnowledge(state, { now: now() });
   const indexStarted = performance.now();
   await index.score('Klargør den syntetiske test', documents.map(doc => ({ id: doc.id, text: doc.text, revision: doc.source.revision || 0 })));
@@ -94,7 +117,7 @@ try {
     model: LOCAL_SEMANTIC_MODEL.id, modelRevision: LOCAL_SEMANTIC_MODEL.revision, modelFiles: LOCAL_SEMANTIC_MODEL.files,
     synthetic: true, externalPersonalDataProcessing: false, remoteModelCalls: 0,
     metric: 'correct-source-retrieval@5; ikke måling af genererede svars faktuelle korrekthed',
-    threshold: 0.9, relevantQuestions: relevant.length, safetyQuestions: cases.length - relevant.length,
+    threshold: 0.9, fusionStrategy: HYBRID_RETRIEVAL_STRATEGY, relevantQuestions: relevant.length, safetyQuestions: cases.length - relevant.length,
     lexicalHits: count('lexicalHit'), vectorHits: count('vectorHit'), hybridHits: count('hybridHit'),
     lexicalRecallAt5: count('lexicalHit') / relevant.length,
     vectorRecallAt5: count('vectorHit') / relevant.length,
@@ -102,6 +125,8 @@ try {
     invalidSourceLeaks: cases.flatMap(entry => entry.invalidSourceLeaks).length,
     missingEvidencePolicy: 'Spørgsmål uden gyldig kilde indgår ikke i recall. Kandidater er ikke bekræftede svar; ugyldige/konfliktende kilder må aldrig genopstå.',
     correction: 'passed', forgetting: 'passed', providerUnavailableFallback: 'passed',
+    defaultDeadline: { budgetMs: 1500, coldMode: coldResult.mode, coldSemanticStatus: coldResult.semantic.status,
+      coldReadMs, providerStateAfterColdRead: stateAfterColdRead, warmMode: defaultWarm.mode, warmReadMs: defaultWarmReadMs },
     measurements: { documents: documents.length, coldLoadMs, initialIndexMs,
       warmRetrievalP50Ms: percentile(latencies, 0.5), warmRetrievalP95Ms: percentile(latencies, 0.95),
       eventLoopP95Ms: lag.percentile(95) / 1e6, startRssBytes: startRss, peakSampledRssBytes: peakSampledRss,

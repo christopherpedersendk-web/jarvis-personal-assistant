@@ -69,11 +69,13 @@ jobs:
           JARVIS_REQUIRE_WEBKIT: 'yes'
           JARVIS_V5_ARTIFACT_DIR: artifacts/v5-ui
         run: node scripts/v5-visual-smoke.mjs
-      - name: Preserve synthetic screenshots
+      - name: Preserve synthetic screenshots and measured accessibility evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-v5-ui-screenshots
-          path: jarvis-starter/artifacts/v5-ui/*.png
+          path: |
+            jarvis-starter/artifacts/v5-ui/*.png
+            jarvis-starter/artifacts/v5-ui/*.json
           retention-days: 14
           if-no-files-found: warn

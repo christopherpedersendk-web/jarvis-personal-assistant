@@ -311,8 +311,9 @@
     } catch (error) { notify(error.message); }
     finally { busyIds.delete('new'); createButton.disabled = false; newText.disabled = false; newCategory.disabled = false; }
   });
-  document.addEventListener('jarvis:refreshed', () => { if (!loaded) refreshMemories(); });
-  document.querySelector('[data-tab="knowledge"]')?.addEventListener('click', () => refreshMemories());
+  const knowledgeVisible = () => !document.getElementById('tab-knowledge')?.classList.contains('hidden');
+  document.addEventListener('jarvis:refreshed', () => { if (knowledgeVisible()) refreshMemories(); });
+  document.addEventListener('jarvis:view-changed', event => { if (event.detail?.view === 'knowledge') refreshMemories(); });
   document.addEventListener('jarvis:memories-changed', () => refreshMemories());
   window.addEventListener('beforeunload', event => {
     // Creation drafts are recoverable within this browser tab. Still warn for
@@ -320,5 +321,5 @@
     if (!dirtyIds.size && (draftStorageAvailable || !hasDirty())) return;
     event.preventDefault(); event.returnValue = '';
   });
-  if (!document.getElementById('workspace')?.classList.contains('hidden')) refreshMemories();
+  if (!document.getElementById('workspace')?.classList.contains('hidden') && knowledgeVisible()) refreshMemories();
 })();

@@ -156,6 +156,48 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
   assert.ok(overview.raw.length < full.raw.length, 'polling uses a smaller bounded response');
 });
 
+test('J1 HTTP bootstrap and paged history omit unrelated source payloads without deleting stored data', { timeout: 20_000 }, async t => {
+  const history = Array.from({ length: 65 }, (_, i) => ({ role: 'user', text: `Syntetisk besked ${i}`, channel: 'text', at: new Date(Date.UTC(2026, 10, 5, 8, i)).toISOString() }));
+  const f = await fixture(t, { legacy: { history, preferences: 'Bevaret note', extraLegacy: { marker: 'bevares-paa-disk' },
+    organizer: [{ id: 'source', title: 'Kilde', type: 'notes', items: Array.from({ length: 400 }, (_, i) => ({ id: String(i), text: 'Syntetisk kildepost' })) }] } });
+  const boot = (await f.api('GET', '/api/state?scope=bootstrap')).data;
+  assert.equal(boot.history.length, 20); assert.equal(boot.historyPagination.total, 65);
+  assert.equal('organizer' in boot, false); assert.equal('extraLegacy' in boot, false);
+  assert.equal((await f.api('GET', '/api/state')).data.extraLegacy.marker, 'bevares-paa-disk');
+  let cursor = boot.historyPagination.nextCursor, items = boot.history;
+  while (cursor) { const page = (await f.api('GET', `/api/history?cursor=${encodeURIComponent(cursor)}`)).data;
+    items = [...page.items, ...items]; cursor = page.nextCursor; }
+  assert.deepEqual(items, history);
+  await f.api('GET', '/api/history', undefined, 401, false);
+  await f.api('GET', '/api/history?limit=500', undefined, 400);
+  await f.api('POST', '/api/transcript', { role: 'user', text: 'Syntetisk ny besked', eventId: 'synthetic-history-append' });
+  await f.api('GET', `/api/history?cursor=${encodeURIComponent(boot.historyPagination.nextCursor)}`, undefined, 409);
+});
+
+test('R03 HTTP text saves reject stale same-field baselines and preserve a newer edit', { timeout: 20_000 }, async t => {
+  const f = await fixture(t);
+  await f.api('POST', '/api/preferences', { text: 'Første' });
+  await f.api('POST', '/api/preferences', { text: 'Anden', expectedText: 'Første' });
+  await f.api('POST', '/api/preferences', { text: 'Forældet kladde', expectedText: 'Første' }, 409);
+  assert.equal((await f.api('GET', '/api/state?scope=bootstrap')).data.preferences, 'Anden');
+  const baseline = (await f.api('GET', '/api/state?scope=bootstrap')).data.playbook;
+  await f.api('POST', '/api/playbook', { content: 'Gennemgået procedure', expectedText: baseline });
+  await f.api('POST', '/api/playbook', { content: 'Forældet procedure', expectedText: baseline }, 409);
+  assert.equal((await f.api('GET', '/api/secretary')).data.playbook, 'Gennemgået procedure');
+});
+
+test('J6 HTTP project operations enforce the owner-reviewed revision before any model, test or file move', { timeout: 20_000 }, async t => {
+  const f = await fixture(t);
+  const project = (await f.api('POST', '/api/projects', { title: 'Syntetisk UI-projekt', description: 'Afgrænset lokal testmappe' }, 201)).data.project;
+  for (const [method, suffix, input] of [['POST', '/develop', { request: 'Ingen faktisk modelkørsel' }], ['POST', '/test', {}], ['POST', '/rollback', {}], ['DELETE', '', {}]]) {
+    const result = await f.api(method, `/api/projects/${project.id}${suffix}`, { ...input, expectedRevision: 99 }, 409);
+    assert.equal(result.data.code, 'REVISION_CONFLICT');
+  }
+  assert.equal((await f.api('GET', '/api/projects')).data.projects[0].revision, 0);
+  await f.api('DELETE', `/api/projects/${project.id}`, { expectedRevision: 0 });
+  assert.equal((await f.api('GET', '/api/projects')).data.archived[0].id, project.id);
+});
+
 test('v5 HTTP: reviewable household rhythm and inventory never activate retailer writes', { timeout: 20_000 }, async t => {
   const f = await fixture(t);
   await f.api('PUT', '/api/meals/household', { adults: 2, children: [{ age: 7 }],

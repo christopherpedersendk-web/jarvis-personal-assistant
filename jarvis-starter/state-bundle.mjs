@@ -1,7 +1,7 @@
 import { readFile, lstat, unlink, open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { atomicStateWrite, stateHash } from './state-schema.mjs';
+import { atomicStateWrite, stateHash, schemaVersion } from './state-schema.mjs';
 
 const JOURNAL = 'pending-state-transaction.json';
 const ALLOWED = new Set(['state.json', 'private-settings.json']);
@@ -30,8 +30,12 @@ function checkedJournal(journal) {
     if (!ALLOWED.has(file.name) || !(file.before === null || typeof file.before === 'string') ||
         typeof file.after !== 'string' || hash(file.before) !== file.beforeHash || hash(file.after) !== file.afterHash)
       throw new Error('Lagringstransaktionens indhold matcher ikke kontrolsummerne.');
-    JSON.parse(file.after);
-    if (file.before !== null) JSON.parse(file.before);
+    const after = JSON.parse(file.after);
+    const before = file.before === null ? null : JSON.parse(file.before);
+    if (file.name === 'state.json') {
+      schemaVersion(after);
+      if (before !== null) schemaVersion(before);
+    }
   }
   return journal;
 }
@@ -49,7 +53,11 @@ export async function recoverStateBundle(directory, { write = atomicStateWrite }
     if (![file.beforeHash, file.afterHash].includes(hash(actual[index])))
       throw new Error('Lageret er ændret efter en afbrudt transaktion. Ingen data overskrevet; manuel gennemgang kræves.');
   });
-  for (const file of journal.files) await write(join(directory, file.name), file.after);
+  for (const file of journal.files) {
+    if (![file.beforeHash, file.afterHash].includes(hash(await readRegular(join(directory, file.name)))))
+      throw new Error('Lageret er ændret under gendannelse. Ingen nyere bytes må overskrives.');
+    await write(join(directory, file.name), file.after);
+  }
   await removeJournal(directory);
   return { recovered: true, id: journal.id };
 }

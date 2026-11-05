@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { RecipeMemory } from '../recipe-memory.mjs';
+import { PersonalKnowledge } from '../personal-knowledge.mjs';
 
 // Contract tests for the async route coordinator. This is intentionally a small
 // DOM double, not evidence of real browser focus, layout or accessibility.
@@ -118,4 +120,21 @@ test('B3/R09 voice household lookup uses the fixed read-only route and encodes t
   const result = await operation();
   assert.deepEqual(requests, [['/api/knowledge/household/2026-12-20%2F..%2F..%2Fnot-a-write']]);
   assert.equal(result.recorded.recorded, false); assert.equal(result.effective.known, false);
+});
+
+test('F3/R11 recipe source fixture requires explicit review before retrieval, while a separate local draft changes no facts', async () => {
+  const state = {}; let externalReads = 0;
+  const recipes = new RecipeMemory({ state, extractor: null, fetchResource: async () => { externalReads++; throw new Error('No external reads in this fixture'); } });
+  const knowledge = new PersonalKnowledge({ state });
+  const title = 'Syntetisk risret kildekontrakt';
+  const received = await recipes.capture({ text: `${title}\n200 g ris\nKog risene.`, source: { channel: 'web' } });
+  assert.equal(received.confirmed, false);
+  assert.equal(knowledge.search(title, { types: ['recipe'] }).some(match => match.id === `recipe:${received.id}`), false);
+  const reviewed = await recipes.update(received.id, { expectedRevision: received.revision, title,
+    diet: 'vegan', minutes: 20, servings: 2, ingredients: [{ name: 'ris', quantity: 200, unit: 'g' }], confirmed: true });
+  const localDraft = { record: structuredClone(reviewed), fields: { title: 'Ugemt rettelse', ingredients: [{ name: 'Ny vare', quantity: '' }] } };
+  const matches = knowledge.search(title, { types: ['recipe'] });
+  assert.equal(matches[0].id, `recipe:${received.id}`); assert.equal(matches[0].source.revision, reviewed.revision);
+  assert.equal(recipes.get(received.id).title, title); assert.equal(recipes.get(received.id).confirmed, true);
+  assert.equal(localDraft.fields.ingredients[0].quantity, ''); assert.equal(externalReads, 0);
 });

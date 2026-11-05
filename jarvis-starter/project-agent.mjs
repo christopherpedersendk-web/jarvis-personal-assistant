@@ -244,6 +244,19 @@ export class ProjectAgent {
       throw new Error('En tidligere projektændring har ukendt udfald. Kontrollér manifest og filer før nye ændringer.');
   }
 
+  async assertBasis(id, { expectedRevision, expectedContentHash } = {}) {
+    const project = this.get(id);
+    const conflict = message => { const error = new Error(message); error.code = 'REVISION_CONFLICT'; error.status = 409; throw error; };
+    if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision !== project.revision))
+      conflict('Projektets revision er ændret siden gennemgangen. Din kladde er bevaret; gennemgå den aktuelle version først.');
+    if (expectedContentHash !== undefined) {
+      if (typeof expectedContentHash !== 'string' || !/^[0-9a-f]{64}$/.test(expectedContentHash))
+        conflict('Projektets godkendte indholdshash er ugyldigt. Gennemgå projektet igen.');
+      if ((await this.sourceSnapshot(id)).sourceContentHash !== expectedContentHash)
+        conflict('Projektets filer er ændret siden gennemgangen. Ingen handling udført på et andet indhold.');
+    }
+  }
+
   async checkpoint(id, change) {
     return this.transact(['projects', 'archivedProjects'], async () => {
       const project = this.get(id); change(project); await this.save(); return project;
@@ -252,12 +265,13 @@ export class ProjectAgent {
 
   list() { return this.state.projects.map(({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, packageInstallAttempt, operation, contentHash, lastRollbackableRevision, lastTest }) => ({ id, slug, title, description, revision, updatedAt, lastSummary, pendingPackages, packageInstallAttempt, operation, contentHash, lastRollbackableRevision, lastTest })); }
 
-  archived() { return (this.state.archivedProjects || []).map(({ id, title, slug, archivedAt }) => ({ id, title, slug, archivedAt })); }
+  archived() { return (this.state.archivedProjects || []).map(({ id, title, slug, archivedAt, revision, contentHash, operation }) => ({ id, title, slug, archivedAt, revision, contentHash, operation })); }
 
-  async archive(id) {
+  async archive(id, basis) {
     if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
     const project = this.get(id);
     this.assertSettled(project);
+    await this.assertBasis(id, basis);
     if (!slugPattern.test(project.slug)) throw new Error('Ugyldigt projektnavn.');
     if ((await lstat(this.root)).isSymbolicLink()) throw new Error('Projektroden må ikke være et symbolsk link.');
     const source = join(this.root, project.slug);
@@ -402,9 +416,10 @@ export class ProjectAgent {
   async testSnapshot(id) { return this.capture(id, { purpose: 'test' }); }
   async sourceSnapshot(id) { return this.capture(id, { purpose: 'hash' }); }
 
-  async develop(id, request) {
+  async develop(id, request, basis) {
     const project = this.get(id);
     this.assertSettled(project);
+    await this.assertBasis(id, basis);
     if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
     if (typeof request !== 'string' || request.trim().length < 4 || request.length > 3000) throw new Error('Beskriv udviklingsopgaven med 4–3.000 tegn.');
     this.busy = true;
@@ -506,9 +521,10 @@ export class ProjectAgent {
     } finally { this.busy = false; }
   }
 
-  async rollback(id) {
+  async rollback(id, basis) {
     const project = this.get(id);
     this.assertSettled(project);
+    await this.assertBasis(id, basis);
     if (this.busy) throw new Error('Kodeagenten arbejder allerede.');
     if (!project.lastRollbackableRevision) throw new Error('Ingen automatisk tilbagerulning er tilgængelig.');
     this.busy = true;

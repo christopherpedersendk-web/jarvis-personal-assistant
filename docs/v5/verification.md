@@ -1,5 +1,18 @@
 # Verification record
 
+## Aktuel gate – 5. november 2026
+
+Seneste publicerede app er `0acdca9df4ea5fa7b28fab88ee9e2bd51db0cbed`, app-subtree `4b1e8f05b5dd289236deaa587b17ae2ac01c8935`. Lokal fuld suite: **383/383**, 0 fejl/skip, Node24.22.1, 11,976 s. [CI 42002595243](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42002595243) testede mergecommit `9e322c71e595c6762f9af925a648f7816d7d38f3` med identisk app-subtree: **383/383 Node22.23.4** på 13,871 s.
+
+**CI er samlet fejlet, ikke releasegodkendt:**
+
+- Faktisk E5-model: vector-only75/80 (93,75 %), lexical41/80 (51,25 %), produktets hybrid62/80 (77,5 %) mod krav90 %. Fast datasetSHA `2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895`. Rå rapport inkl. alle18 fejl i `evidence/semantic-0acdca9d.json`; [artifact13403675087](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42002595243/artifacts/13403675087), SHA256 `f0df7304fbefafedec313318e821176ddf2578deaa9a18ed2ad703025c18e827`.
+- Model performance i CI: kold load2137,95 ms, første indeks514,20 ms, varm retrievalp95 41,28 ms, event-loop-p95 19,01 ms, peakRSS698007552 B. 110 lokale encoderrequests/176 tekster; ingen ekstern behandling af persondata. Dette er syntetisk CPU-måling, ikke produktions-SLA.
+- Chromium-desktop nåede husstandsforløbet, men kildesøgningen forventede en ubekræftet opskrift, som med rette var udelukket. Tre øvrige browsertilfælde blev ikke udført. Fire diagnostiske screenshots i [artifact13404000014](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42002595243/artifacts/13404000014), SHA256 `431de28b50393de201cd5e432d41b321feecf0beb8bb272b3a0706076681e24c`; downloadhash verificeret og I dag/husstand visuelt inspiceret.
+- Næste checkpoint retter generisk hybridrangering og recipe-fixturens eksplicitte gennemgang; **ingen spørgsmål, kravgrænser eller produktoplysninger er ændret for at få grønt**. Nyt CI-resultat på den ændrede kode er påkrævet.
+
+Alle tabeller nedenfor er historiske målinger på deres angivne revisioner. De er ikke bevis for senere kode. Fysiske enheder, faktisk zoom/mikrofon og administrativ restore er fortsat afventer manuel verifikation.
+
 All times and results below describe **isolated synthetic development**, never production.
 
 | Date | Candidate / scope | Command or check | Observed result |

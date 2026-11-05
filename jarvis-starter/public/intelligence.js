@@ -1,7 +1,7 @@
 // V4.7: Transparens for retrieval, skills og integrationsrettigheder.
 let intelligenceCatalogLoaded = false;
 const sourceKinds = Object.freeze({
-  organizer: 'knowledge', memory: 'knowledge', claim: 'knowledge', task: 'plan',
+  organizer: 'knowledge', memory: 'knowledge', claim: 'knowledge', skill: 'knowledge', task: 'plan',
   'personal-task': 'plan', 'follow-up': 'plan', project: 'projects',
   household: 'meals', 'household-day': 'meals', 'household-rhythm': 'meals',
   recipe: 'meals', 'meal-profile': 'meals', 'meal-plan': 'meals',
@@ -53,7 +53,8 @@ async function focusRecordedSource(sourceId) {
       document.getElementById('meal-family-start').value = householdDate;
       showHousehold(mealData.household);
     }
-  } else if (kind === 'organizer') await refreshOrganizer();
+  } else if (kind === 'skill') await refreshIntelligenceCatalog();
+  else if (kind === 'organizer') await refreshOrganizer();
   else if (kind === 'memory') document.dispatchEvent(new CustomEvent('jarvis:memories-changed'));
   else if (kind === 'claim' || kind === 'personal-task' || kind === 'follow-up') {
     // A source card can be replaced by its async domain refresh. Highlight only
@@ -71,6 +72,7 @@ async function focusRecordedSource(sourceId) {
     organizer: `[data-organizer-item-id="${CSS.escape(`${parts[1]}:${parts[2]}`)}"]`,
     memory: `[data-memory-id="${CSS.escape(parts[1] || '')}"]`,
     claim: `[data-claim-id="${CSS.escape(parts[1] || '')}"]`,
+    skill: `[data-skill-id="${CSS.escape(parts[1] || '')}"][data-skill-version="${CSS.escape(parts[2] || '')}"]`,
     task: `[data-task-id="${CSS.escape(parts[1] || '')}"]`,
     'personal-task': `[data-personal-task-id="${CSS.escape(parts[1] || '')}"]`,
     'follow-up': `[data-follow-up-id="${CSS.escape(parts[1] || '')}"]`,
@@ -148,7 +150,8 @@ async function refreshIntelligenceCatalog() {
   integrationRoot.replaceChildren();
   for (const skill of skillsData.skills) {
     const card = knowledgeElement('article', '', 'catalog-card');
-    card.append(knowledgeElement('strong', skill.name), knowledgeElement('p', skill.description, 'muted small-text'),
+    card.dataset.skillId = skill.name; card.dataset.skillVersion = skill.version;
+    card.append(knowledgeElement('strong', `${skill.name} · version ${skill.version}`), knowledgeElement('p', skill.description, 'muted small-text'),
       knowledgeElement('span', `Udløsere: ${skill.triggers.join(' · ')}`, 'micro muted'));
     skillsRoot.append(card);
   }

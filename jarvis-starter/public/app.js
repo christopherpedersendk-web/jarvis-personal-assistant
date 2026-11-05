@@ -47,6 +47,7 @@ function canonicalView(view) {
 
 function updateDraft(id, value) {
   const draft = savedDrafts[id];
+  draft.latestServerValue = value;
   const field = $(id);
   const status = $(`${id}-draft-status`);
   if (draft.dirty) {
@@ -58,6 +59,7 @@ function updateDraft(id, value) {
     } else if (draft.serverValue !== value && field.value !== value) {
       status.textContent = 'Ændret et andet sted. Din ikke-gemte tekst er bevaret. Gennemgå forskellen før du gemmer.';
       status.classList.add('draft-conflict');
+      showTextDraftReview(id);
     }
     return;
   }
@@ -77,14 +79,58 @@ function markDraftDirty(id) {
   status.textContent = 'Ikke gemt. Dine ændringer bevares ved opdatering.';
 }
 
-function markDraftSaved(id) {
-  savedDrafts[id].dirty = false;
+function markDraftSaved(id, submitted) {
+  savedDrafts[id].dirty = $(id).value !== submitted;
   savedDrafts[id].value = $(id).value;
-  savedDrafts[id].serverValue = savedDrafts[id].value;
+  savedDrafts[id].serverValue = submitted;
+  savedDrafts[id].latestServerValue = submitted;
   persistTextDrafts();
   const status = $(`${id}-draft-status`);
-  status.textContent = 'Gemt.';
+  status.textContent = savedDrafts[id].dirty ? 'Den afsendte tekst er gemt. Dine nyere ændringer er stadig en ugemt kladde.' : 'Gemt.';
   status.classList.remove('draft-conflict');
+  $(`${id}-review-conflict`)?.remove();
+}
+
+function showTextDraftReview(id) {
+  let review = $(`${id}-review-conflict`);
+  if (!review) {
+    review = document.createElement('details'); review.id = `${id}-review-conflict`; review.className = 'v5-conflict';
+    const heading = document.createElement('summary'); heading.textContent = 'Gennemgå den nyeste gemte tekst';
+    const text = document.createElement('pre'); text.className = 'command-result';
+    const accept = document.createElement('button'); accept.type = 'button'; accept.className = 'secondary';
+    accept.textContent = 'Behold min kladde på dette grundlag';
+    accept.addEventListener('click', () => {
+      const draft = savedDrafts[id]; draft.serverValue = draft.latestServerValue;
+      persistTextDrafts(); review.remove();
+      $(`${id}-draft-status`).textContent = 'Nyt grundlag gennemgået. Din kladde er bevaret og endnu ikke gemt.';
+      $(`${id}-draft-status`).classList.remove('draft-conflict');
+    });
+    review.append(heading, text, accept); $(`${id}-draft-status`).insertAdjacentElement('afterend', review);
+  }
+  review.querySelector('pre').textContent = savedDrafts[id].latestServerValue;
+}
+
+async function saveTextDraft(id, path, field) {
+  const button = $(id === 'playbook' ? 'save-playbook' : 'save-preferences');
+  if (button.disabled) return;
+  const draft = savedDrafts[id], submitted = $(id).value;
+  if (draft.serverValue === null) {
+    $(`${id}-draft-status`).textContent = 'Hent det aktuelle grundlag før gemning. Din kladde er bevaret.';
+    await refresh(); return;
+  }
+  if (typeof draft.latestServerValue === 'string' && draft.latestServerValue !== draft.serverValue) {
+    $(`${id}-draft-status`).textContent = 'Teksten er ændret et andet sted. Gennemgå grundlaget før du gemmer din kladde.';
+    showTextDraftReview(id); return;
+  }
+  button.disabled = true; $(`${id}-draft-status`).textContent = 'Gemmer den afsendte tekst …';
+  try {
+    await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: submitted, expectedText: draft.serverValue }) });
+    markDraftSaved(id, submitted);
+  } catch (error) {
+    $(`${id}-draft-status`).textContent = `Gemning fejlede: ${error.message}. Din tekst er bevaret.`;
+    if (error.status === 409) await refresh();
+  } finally { button.disabled = false; }
 }
 
 for (const id of Object.keys(savedDrafts)) $(id).addEventListener('input', () => markDraftDirty(id));
@@ -106,7 +152,7 @@ function initializeDashboard() {
   const hero = document.querySelector('#tab-home .hero-panel');
   if (hero) $('tab-home').prepend(hero);
   const chat = document.querySelector('#tab-home .chat-panel');
-  if (chat) $('tab-home').insertBefore(chat, $('home-overview'));
+  if (chat) $('tab-home').insertBefore(chat, $('home-intelligence'));
   document.querySelectorAll('a[data-tab]').forEach(link => link.addEventListener('click', event => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     event.preventDefault();
@@ -142,6 +188,7 @@ function selectTab(tab, { fromHistory = false, replace = false, sourceId = null 
   }
   document.title = `JARVIS · ${({ home: 'I dag', plan: 'Plan', meals: 'Mad og indkøb', knowledge: 'Min viden', 'smart-home': 'Hjem', projects: 'Projekter', settings: 'Indstillinger' })[tab]}`;
   sessionStorage.setItem('jarvisTab', tab);
+  document.dispatchEvent(new CustomEvent('jarvis:view-changed', { detail: { view: tab } }));
 }
 
 function renderOverview(state) {
@@ -163,7 +210,8 @@ function renderOverview(state) {
   }
   if (latest) {
     const note = document.createElement('p'); note.className = 'overview-latest';
-    note.textContent = `Seneste opgave: ${latest.title} · ${latest.status === 'completed' ? 'Bestået' : 'Fejlet'} · ${taskDate(latest.at)}`;
+    const label = ({ completed: 'Færdig', partially_completed: 'Delvist udført', unknown: 'Ukendt udfald', failed: 'Fejlet', running: 'Arbejder', queued: 'I kø' })[latest.status] || 'Uafklaret status';
+    note.textContent = `Seneste opgave: ${latest.title} · ${label} · ${taskDate(latest.at)}`;
     root.append(note);
   }
 }
@@ -195,7 +243,9 @@ async function api(path, options = {}) {
     let detail;
     try { detail = (await response.json()).error; } catch { detail = `HTTP ${response.status}`; }
     if (response.status === 401) showLogin();
-    throw new Error(detail || `HTTP ${response.status}`);
+    const error = new Error(detail || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();
   return response.text();
@@ -213,10 +263,12 @@ function showWorkspace() {
   $('connection').textContent = '● Privat forbindelse';
 }
 
+let historySnapshot = { items: [], revision: null, total: 0, nextCursor: null };
 function renderHistory(history) {
   const list = $('messages');
   list.replaceChildren();
-  $('history-count').textContent = `${history.length} beskeder`;
+  $('history-count').textContent = historySnapshot.total > history.length ? `${history.length} af ${historySnapshot.total} beskeder` : `${history.length} beskeder`;
+  $('history-older').classList.toggle('hidden', !historySnapshot.nextCursor);
   if (!history.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
@@ -238,17 +290,53 @@ function renderHistory(history) {
   list.scrollTop = list.scrollHeight;
 }
 
+function acceptHistoryPage(page, { older = false } = {}) {
+  if (!older && page.revision && page.revision === historySnapshot.revision) return;
+  historySnapshot = { ...page, items: older ? [...page.items, ...historySnapshot.items] : [...page.items] };
+  renderHistory(historySnapshot.items);
+}
+$('history-older').addEventListener('click', async () => {
+  if (!historySnapshot.nextCursor || $('history-older').disabled) return;
+  const original = historySnapshot;
+  const list = $('messages'), oldHeight = list.scrollHeight, oldTop = list.scrollTop;
+  $('history-older').disabled = true; $('history-status').textContent = 'Henter ældre beskeder …';
+  try {
+    const page = await api(`/api/history?cursor=${encodeURIComponent(original.nextCursor)}`);
+    if (historySnapshot !== original) { $('history-status').textContent = 'Historikken blev opdateret imens. Prøv den aktuelle oversigt.'; return; }
+    acceptHistoryPage(page, { older: true });
+    list.scrollTop = oldTop + list.scrollHeight - oldHeight;
+    $('history-status').textContent = page.nextCursor ? 'Ældre beskeder indlæst.' : 'Alle gemte beskeder er vist.';
+  } catch (error) { $('history-status').textContent = error.message; }
+  finally { $('history-older').disabled = false; }
+});
+$('logout').addEventListener('click', () => {
+  historySnapshot = { items: [], revision: null, total: 0, nextCursor: null };
+  renderHistory([]); $('history-status').textContent = '';
+});
+
+async function refreshActiveCore() {
+  const view = canonicalView(new URL(window.location.href).searchParams.get('view'));
+  if (view === 'plan') await Promise.all([refreshTasks(), refreshSecretary()]);
+  else if (view === 'projects') await Promise.all([refreshProjects(), refreshCode()]);
+  else if (view === 'settings') await refreshSettings();
+}
+document.addEventListener('jarvis:view-changed', () => {
+  if (token && !$('workspace').classList.contains('hidden')) refreshActiveCore().catch(error => toast(error.message));
+});
+
 async function refresh() {
-  const state = await api('/api/state');
+  const sessionToken = token;
+  const state = await api('/api/state?scope=bootstrap');
+  if (!sessionToken || sessionToken !== token) return;
+  localStorage.setItem('jarvisAccessToken', sessionToken);
   showWorkspace();
-  renderHistory(state.history || []);
-  renderTasks(state.tasks || [], state.usage);
-  renderCodeProposals(state.codeProposals || []);
-  renderProjects(state.projects || []);
-  renderSecretary(state);
+  acceptHistoryPage({ items: state.history || [], ...(state.historyPagination || {}) });
+  updateDraft('playbook', state.playbook || '');
+  $('push-status').textContent = state.pushEnabled ? 'Push: opsat' : 'Push: ikke opsat';
   renderOverview(state);
   document.dispatchEvent(new CustomEvent('jarvis:refreshed'));
   updateDraft('preferences', state.preferences || '');
+  await refreshActiveCore();
   if (!state.configured) toast('API-nøglen mangler i .env. Se installationsguiden.');
 }
 
@@ -262,88 +350,17 @@ function taskDate(value) {
   return new Intl.DateTimeFormat('da-DK', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 }
 
-function renderTasks(tasks, usage = {}) {
-  $('usage').textContent = `${usage.started || 0}/${usage.maxRunsPerDay || 10} I DAG`;
-  const root = $('tasks');
-  root.replaceChildren();
-  if (!tasks.length) {
-    const empty = document.createElement('div');
-    empty.className = 'task-empty';
-    empty.textContent = 'Ingen opgaver endnu. Prøv en engangsundersøgelse.';
-    root.append(empty);
-    return;
-  }
-  for (const task of tasks) {
-    const card = document.createElement('article');
-    card.className = 'task-card';
-    card.dataset.taskId = String(task.id);
-    const top = document.createElement('div');
-    top.className = 'task-top';
-    const title = document.createElement('h3');
-    title.textContent = task.title;
-    const status = document.createElement('span');
-    status.className = `task-pill ${task.status}`;
-    status.textContent = taskStatus[task.status] || task.status;
-    top.append(title, status);
-    const schedule = document.createElement('div');
-    schedule.className = 'task-schedule';
-    schedule.textContent = [task.nextRunAt ? `Næste: ${taskDate(task.nextRunAt)}` : '',
-      task.dailyTime ? `Dagligt kl. ${task.dailyTime} dansk tid` : task.intervalMinutes ? `Gentages hver ${task.intervalMinutes / 60} time(r)` : 'Engangsopgave']
-      .filter(Boolean).join(' · ');
-    const description = document.createElement('p');
-    description.textContent = task.prompt;
-    card.append(top, schedule, description);
-    if (task.runs?.length) {
-      const detail = document.createElement('details');
-      detail.className = 'task-result';
-      const summary = document.createElement('summary');
-      summary.textContent = task.runs[0].status === 'completed' ? 'Se seneste resultat' : 'Se seneste fejl';
-      const pre = document.createElement('pre');
-      pre.textContent = task.runs[0].result;
-      detail.append(summary, pre);
-      card.append(detail);
-    }
-    const actions = document.createElement('div');
-    actions.className = 'task-actions';
-    const controls = task.status === 'running' ? [] : [
-      ['run', 'Kør nu'],
-      [task.status === 'paused' ? 'resume' : 'pause', task.status === 'paused' ? 'Genoptag' : 'Pause'],
-      ['archive', 'Arkivér'],
-    ];
-    for (const [action, label] of controls) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', async () => {
-        if (action === 'archive' && !confirm(`Arkivér opgaven "${task.title}"?`)) return;
-        button.disabled = true;
-        try {
-          await api(`/api/tasks/${task.id}/action`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action }),
-          });
-          await refreshTasks();
-        } catch (error) { toast(error.message); button.disabled = false; }
-      });
-      actions.append(button);
-    }
-    if (task.status !== 'running') {
-      const remove = document.createElement('button');
-      remove.type = 'button'; remove.className = 'danger-button'; remove.textContent = 'Slet opgave';
-      remove.addEventListener('click', async () => {
-        if (!confirm(`Fjern opgaven "${task.title}" fra listen? Historikken arkiveres.`)) return;
-        try { await api(`/api/tasks/${task.id}`, { method: 'DELETE' }); await refresh(); toast('Opgaven er fjernet fra listen.'); }
-        catch (error) { toast(error.message); }
-      });
-      actions.append(remove);
-    }
-    card.append(actions);
-    root.append(card);
-  }
-}
+const jobPolicyEditor = JarvisJobs.attach({ document, api, getToken: () => token, refresh: () => refreshTasks(),
+  navigateSkill: sourceId => { selectTab('knowledge', { sourceId });
+    focusRecordedSource(sourceId).catch(error => sourceStatus('knowledge', error.message)); } });
 
+function renderTasks(tasks, usage = {}) { jobPolicyEditor.render(tasks, usage); }
+
+let taskRefreshSequence = 0;
 async function refreshTasks() {
+  const request = ++taskRefreshSequence, owner = token;
   const result = await api('/api/tasks');
+  if (request !== taskRefreshSequence || owner !== token) return;
   renderTasks(result.tasks, result.usage);
 }
 
@@ -394,8 +411,7 @@ function renderSecretary(data) {
 async function refreshSecretary() { renderSecretary(await api('/api/secretary')); }
 
 $('save-playbook').addEventListener('click', async () => {
-  try { await api('/api/playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: $('playbook').value }) }); markDraftSaved('playbook'); toast('Skills-dokumentet er gemt.'); }
-  catch (error) { $('playbook-draft-status').textContent = `Gemning fejlede: ${error.message}. Din tekst er bevaret.`; }
+  await saveTextDraft('playbook', '/api/playbook', 'content');
 });
 $('import-playbook').addEventListener('click', () => $('playbook-file').click());
 $('playbook-file').addEventListener('change', async () => {
@@ -420,294 +436,44 @@ $('push-test').addEventListener('click', async () => {
 });
 
 function applyTaskTemplate(category) {
-  selectTab('tasks');
-  $('task-category').value = category;
-  $('task-title').value = category === 'briefing' ? 'Morgenrapport – AI og cybersikkerhed' : 'Prisovervågning';
-  $('task-prompt').value = category === 'briefing'
-    ? 'Lav en kort morgenrapport om de vigtigste nyheder inden for AI, cybersikkerhed, DORA, NIS2 og IT-revision i Danmark/Norden. Følg mit skills-dokument. Medtag kildelinks, datoer og hvad der er nyt siden sidst.'
-    : 'Overvåg følgende præcise produkt, variant og forhandler: [INDSÆT PRODUKT OG LINK]. Registrér pris i DKK, lagerstatus, tidspunkt og kilde. Sammenlign med forrige observation og markér CHANGE eller NO_CHANGE.';
-  $('task-repeat').value = 'daily';
-  $('daily-wrap').classList.remove('hidden');
-  $('task-when').value = 'now'; $('later-wrap').classList.add('hidden');
-  $('task-daily-time').value = category === 'briefing' ? '07:30' : '08:00';
+  const accepted = jobPolicyEditor.template({ 'task-category': category,
+    'task-title': category === 'briefing' ? 'Morgenrapport – AI og cybersikkerhed' : 'Prisovervågning',
+    'task-prompt': category === 'briefing'
+      ? 'Lav en kort morgenrapport om AI, cybersikkerhed, DORA, NIS2 og IT-revision i Danmark/Norden. Medtag kildelinks, datoer og hvad der faktisk er nyt siden sidst.'
+      : 'Overvåg følgende præcise produkt, variant og forhandler: [INDSÆT PRODUKT OG LINK]. Registrér pris i DKK, lagerstatus, tidspunkt og kilde som strukturerede observationer. Skeln mellem ændret, uændret og ukendt; en fejlet læsning er ukendt.',
+    'task-repeat': 'daily', 'task-daily-time': category === 'briefing' ? '07:30' : '08:00' });
+  if (!accepted) return;
+  selectTab('plan');
   $('task-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 $('briefing-template').addEventListener('click', () => applyTaskTemplate('briefing'));
 $('monitor-template').addEventListener('click', () => applyTaskTemplate('monitor'));
 $('gift-template').addEventListener('click', () => {
-  applyTaskTemplate('monitor');
-  $('task-title').value = 'Gaveidéer og tilbud';
-  $('task-prompt').value = 'Find 3 nye gaveidéer til [PERSON, ALDER, INTERESSER] under [BUDGET] kr. i danske butikker. Medtag pris, levering, links og sammenlign med tidligere forslag. Markér CHANGE ved reelt nye relevante fund, NO_CHANGE hvis intet nyt.';
-  $('task-repeat').value = '10080';
-  $('daily-wrap').classList.add('hidden');
+  if (jobPolicyEditor.template({ 'task-category': 'monitor', 'task-title': 'Gaveidéer og tilbud',
+    'task-prompt': 'Find 3 nye gaveidéer til [PERSON, ALDER, INTERESSER] under [BUDGET] kr. i danske butikker. Medtag pris, levering, links og sammenlign med tidligere forslag. Registrér struktureret observation: ændret, uændret eller ukendt. En fejlet kilde er ikke bevis for uændret.',
+    'task-repeat': '10080' })) selectTab('plan');
 });
-$('task-repeat').addEventListener('change', () => $('daily-wrap').classList.toggle('hidden', $('task-repeat').value !== 'daily'));
 
-function renderCodeProposals(proposals) {
-  const root = $('code-proposals');
-  root.replaceChildren();
-  for (const proposal of proposals) {
-    const card = document.createElement('article');
-    card.className = 'code-proposal';
-    const title = document.createElement('h3');
-    title.textContent = `${proposal.file} · ${proposal.status === 'pending' ? 'Afventer godkendelse' : proposal.status === 'applied' ? 'Installeret' : proposal.status === 'rolledback' ? 'Rullet tilbage' : 'Afvist'}`;
-    const summary = document.createElement('p');
-    summary.textContent = proposal.summary;
-    card.append(title, summary);
-    if (proposal.status === 'applied') {
-      const undo = document.createElement('button');
-      undo.type = 'button';
-      undo.textContent = 'Fortryd installation';
-      undo.addEventListener('click', async () => {
-        if (!confirm(`Gendan backup af ${proposal.file}?`)) return;
-        undo.disabled = true;
-        try {
-          await api(`/api/code/${proposal.id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rollback' }) });
-          toast('Backup gendannet. Genindlæs siden om nødvendigt.');
-          await refreshCode();
-        } catch (error) { toast(error.message); undo.disabled = false; }
-      });
-      card.append(undo);
-    }
-    if (proposal.status === 'pending') {
-      const controls = document.createElement('div');
-      controls.className = 'code-controls';
-      const preview = document.createElement('button');
-      preview.type = 'button';
-      preview.textContent = 'Gennemse filændring';
-      preview.addEventListener('click', async () => {
-        preview.disabled = true;
-        try {
-          const { proposal: full } = await api(`/api/code/${proposal.id}`);
-          const box = document.createElement('div');
-          box.className = 'code-preview';
-          for (const [label, content] of [['NUVÆRENDE FIL', full.original], ['FORESLÅET FIL', full.content]]) {
-            const wrap = document.createElement('div');
-            const caption = document.createElement('strong');
-            caption.textContent = label;
-            const pre = document.createElement('pre');
-            pre.textContent = content;
-            wrap.append(caption, pre);
-            box.append(wrap);
-          }
-          card.querySelector('.code-preview')?.remove();
-          card.append(box);
-        } catch (error) { toast(error.message); }
-        finally { preview.disabled = false; }
-      });
-      const approve = document.createElement('button');
-      approve.type = 'button';
-      approve.textContent = 'Godkend og installér';
-      approve.addEventListener('click', async () => {
-        if (!card.querySelector('.code-preview')) return toast('Gennemse filerne, før du godkender.');
-        if (!confirm(`Installér den foreslåede ændring i ${proposal.file}? Der oprettes backup.`)) return;
-        approve.disabled = true;
-        try {
-          await api(`/api/code/${proposal.id}/action`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'apply' }),
-          });
-          toast('Ændringen er installeret. Genindlæs siden; persona kræver servergenstart.');
-          await refreshCode();
-        } catch (error) { toast(error.message); approve.disabled = false; }
-      });
-      const reject = document.createElement('button');
-      reject.type = 'button';
-      reject.textContent = 'Afvis';
-      reject.addEventListener('click', async () => {
-        try {
-          await api(`/api/code/${proposal.id}/action`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }),
-          });
-          await refreshCode();
-        } catch (error) { toast(error.message); }
-      });
-      const warning = document.createElement('p');
-      warning.className = 'warning';
-      warning.textContent = 'Modelforslag kan indeholde fejl. Kontrollér ændringen, før du installerer.';
-      controls.append(preview, approve, reject);
-      card.append(warning, controls);
-    }
-    root.append(card);
-  }
-}
+const projectUi = JarvisProjects.attach({
+  document, storage: sessionStorage, isAuthenticated: () => Boolean(token), api,
+  confirm: message => confirm(message), refreshProjects: () => refreshProjects(), refreshCode: () => refreshCode(),
+});
+
+function renderCodeProposals(proposals) { projectUi.renderCode(proposals); }
+function renderProjects(projects) { projectUi.renderProjects(projects); }
 
 async function refreshCode() {
+  const epoch = projectUi.generation();
   const result = await api('/api/code');
-  renderCodeProposals(result.proposals);
-}
-
-function renderProjects(projects) {
-  const root = $('projects');
-  root.replaceChildren();
-  if (!projects.length) {
-    const empty = document.createElement('p');
-    empty.className = 'muted small-text';
-    empty.textContent = 'Ingen projekter endnu. Opret dit første projekt ovenfor.';
-    root.append(empty);
-    return;
-  }
-  for (const project of projects) {
-    const card = document.createElement('article');
-    card.className = 'project-card';
-    card.dataset.projectId = String(project.id);
-    const title = document.createElement('h3');
-    title.textContent = project.title;
-    const location = document.createElement('div');
-    location.className = 'project-meta';
-    location.textContent = `JARVIS-Projects/${project.slug} · Version ${project.revision}`;
-    const description = document.createElement('p');
-    description.textContent = project.lastSummary || project.description;
-    card.append(title, location, description);
-    if (project.lastTest) {
-      const label = document.createElement('p');
-      const statusNames = { passed: 'Bestået', failed: 'Fejlet', unavailable: 'Docker mangler', skipped: 'Kun statisk indhold' };
-      label.className = `project-test-status ${project.lastTest.status}`;
-      label.textContent = `Seneste test (version ${project.lastTest.revision}): ${statusNames[project.lastTest.status] || project.lastTest.status} · ${project.lastTest.summary}`;
-      card.append(label);
-      if (project.lastTest.reports?.length) {
-        const report = document.createElement('details');
-        report.className = 'project-files';
-        const summary = document.createElement('summary');
-        summary.textContent = 'Se testlog';
-        const pre = document.createElement('pre');
-        pre.textContent = project.lastTest.reports.map(r => `${r.image}\n${r.output}`).join('\n\n').slice(-9000);
-        report.append(summary, pre);
-        card.append(report);
-      }
-    }
-    const textarea = document.createElement('textarea');
-    textarea.rows = 3;
-    textarea.maxLength = 3000;
-    textarea.placeholder = project.revision ? 'Hvad skal JARVIS forbedre?' : 'Byg den første version af projektet …';
-    textarea.value = project.revision ? '' : project.description;
-    card.append(textarea);
-    const controls = document.createElement('div');
-    controls.className = 'project-actions';
-    const build = document.createElement('button');
-    build.type = 'button';
-    build.textContent = project.revision ? 'Videreudvikl' : 'Byg projekt';
-    build.addEventListener('click', async () => {
-      if (!textarea.value.trim()) return toast('Beskriv, hvad der skal bygges.');
-      build.disabled = true;
-      build.textContent = 'JARVIS skriver kode …';
-      try {
-        const result = await api(`/api/projects/${project.id}/develop`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ request: textarea.value }),
-        });
-        toast(`${result.changedFiles.length} fil(er) skrevet. Test: ${result.test.status}.`);
-        await refreshProjects();
-      } catch (error) { toast(error.message); }
-      finally { build.disabled = false; build.textContent = 'Videreudvikl'; }
-    });
-    const view = document.createElement('button');
-    view.type = 'button';
-    view.textContent = 'Se projektfiler';
-    view.addEventListener('click', async () => {
-      view.disabled = true;
-      try {
-        const data = await api(`/api/projects/${project.id}`);
-        const list = document.createElement('div');
-        list.className = 'project-files';
-        for (const file of data.project.files) {
-          const detail = document.createElement('details');
-          const name = document.createElement('summary');
-          name.textContent = file.path;
-          const pre = document.createElement('pre');
-          pre.textContent = file.content;
-          detail.append(name, pre);
-          list.append(detail);
-        }
-        if (!data.project.files.length) list.textContent = 'Ingen filer endnu.';
-        card.querySelector('.project-files')?.remove();
-        card.append(list);
-      } catch (error) { toast(error.message); }
-      finally { view.disabled = false; }
-    });
-    controls.append(build, view);
-    if (project.revision) {
-      const test = document.createElement('button');
-      test.type = 'button';
-      test.textContent = 'Test isoleret';
-      test.addEventListener('click', async () => {
-        test.disabled = true;
-        test.textContent = 'Tester …';
-        try {
-          const result = await api(`/api/projects/${project.id}/test`, { method: 'POST' });
-          toast(`Teststatus: ${result.test.status}`);
-          await refreshProjects();
-        } catch (error) { toast(error.message); }
-        finally { test.disabled = false; test.textContent = 'Test isoleret'; }
-      });
-      controls.append(test);
-    }
-    if (project.lastRollbackableRevision) {
-      const rollback = document.createElement('button');
-      rollback.type = 'button';
-      rollback.textContent = 'Fortryd seneste kodeændring';
-      rollback.addEventListener('click', async () => {
-        if (!confirm('Gendan filerne fra før den seneste udviklingsrunde?')) return;
-        rollback.disabled = true;
-        try {
-          await api(`/api/projects/${project.id}/rollback`, { method: 'POST' });
-          toast('Projektfilerne er gendannet.');
-          await refreshProjects();
-        } catch (error) { toast(error.message); rollback.disabled = false; }
-      });
-      controls.append(rollback);
-    }
-    if (project.pendingPackages?.length) {
-      const warning = document.createElement('p');
-      warning.className = 'project-warning';
-      warning.textContent = `Afventer installationsgodkendelse: ${project.pendingPackages.join(', ')}. Kontroller pakkenavne før du godkender.`;
-      const install = document.createElement('button');
-      install.type = 'button';
-      install.textContent = 'Godkend npm-installation';
-      install.addEventListener('click', async () => {
-        if (!confirm(`Installér følgende npm-pakker i projektmappen?\n${project.pendingPackages.join('\n')}\n\nPakker kan indeholde ukendt kode. Installation kræver særskilt aktivering i .env.`)) return;
-        install.disabled = true;
-        try {
-          await api(`/api/projects/${project.id}/install`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ packages: project.pendingPackages, expectedRevision: project.revision }),
-          });
-          toast('npm-pakker installeret i projektmappen.');
-          await refreshProjects();
-        } catch (error) { toast(error.message); install.disabled = false; }
-      });
-      card.append(warning);
-      controls.append(install);
-    }
-    const remove = document.createElement('button');
-    remove.type = 'button'; remove.className = 'danger-button'; remove.textContent = 'Arkivér projekt';
-    remove.addEventListener('click', async () => {
-      if (!confirm(`Arkivér "${project.title}"? Projektmappen flyttes til et sikkert lokalt arkiv og kan gendannes.`)) return;
-      try { await api(`/api/projects/${project.id}`, { method: 'DELETE' }); await refreshProjects(); toast('Projektet er arkiveret.'); }
-      catch (error) { toast(error.message); }
-    });
-    controls.append(remove);
-    card.append(controls);
-    root.append(card);
-  }
+  if (epoch === projectUi.generation() && token) renderCodeProposals(result.proposals);
 }
 
 async function refreshProjects() {
-  const data = await api('/api/projects');
-  renderProjects(data.projects);
-  const root = $('archived-projects');
-  if (root) {
-    root.replaceChildren();
-    for (const entry of data.archived || []) {
-      const line = document.createElement('div'); line.className = 'archived-entry';
-      const title = document.createElement('span'); title.textContent = entry.title;
-      const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'secondary'; restore.textContent = 'Gendan';
-      restore.addEventListener('click', async () => {
-        try { await api(`/api/projects/${entry.id}/restore`, { method: 'POST' }); await refreshProjects(); toast('Projektet er gendannet.'); }
-        catch (error) { toast(error.message); }
-      });
-      line.append(title, restore); root.append(line);
-    }
-  }
+  const epoch = projectUi.generation();
+  const result = await api('/api/projects');
+  if (epoch !== projectUi.generation() || !token) return;
+  renderProjects(result.projects);
+  projectUi.renderArchived(result.archived);
 }
 
 const archivePanel = document.createElement('section');
@@ -757,77 +523,13 @@ $('settings-form').addEventListener('submit', async event => {
   } catch (error) { toast(error.message); }
 });
 
-$('project-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  $('project-create').disabled = true;
-  try {
-    await api('/api/projects', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: $('project-title').value, description: $('project-description').value }),
-    });
-    $('project-title').value = '';
-    $('project-description').value = '';
-    toast('Projektmappen er oprettet. Tryk Byg projekt for at generere kode.');
-    await refreshProjects();
-  } catch (error) { toast(error.message); }
-  finally { $('project-create').disabled = false; }
-});
-
-$('code-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  $('code-submit').disabled = true;
-  $('code-submit').textContent = 'Udarbejder forslag …';
-  try {
-    await api('/api/code', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: $('code-file').value, request: $('code-request').value }),
-    });
-    $('code-request').value = '';
-    toast('Kodeforslaget er klar til gennemgang.');
-    await refreshCode();
-  } catch (error) { toast(error.message); }
-  finally { $('code-submit').disabled = false; $('code-submit').textContent = 'Foreslå kodeændring'; }
-});
-
-$('task-when').addEventListener('change', () => {
-  $('later-wrap').classList.toggle('hidden', $('task-when').value !== 'later');
-});
-
-$('task-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  let runAt;
-  if ($('task-when').value === 'later') {
-    if (!$('task-run-at').value) return toast('Vælg et tidspunkt.');
-    runAt = new Date($('task-run-at').value).toISOString();
-  }
-  $('task-submit').disabled = true;
-  try {
-    await api('/api/tasks', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: $('task-title').value, prompt: $('task-prompt').value,
-        category: $('task-category').value,
-        intervalMinutes: $('task-repeat').value === 'daily' ? 0 : Number($('task-repeat').value),
-        ...($('task-repeat').value === 'daily' ? { dailyTime: $('task-daily-time').value } : {}),
-        ...(runAt ? { runAt } : {}),
-      }),
-    });
-    $('task-title').value = '';
-    $('task-prompt').value = '';
-    toast('Opgaven er oprettet.');
-    await refreshTasks();
-  } catch (error) { toast(error.message); }
-  finally { $('task-submit').disabled = false; }
-});
+$('task-form').addEventListener('submit', event => jobPolicyEditor.save(event));
 
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault();
   token = $('token').value.trim();
   try {
     await refresh();
-    await refreshProjects();
-    await refreshSettings();
-    localStorage.setItem('jarvisAccessToken', token);
     $('token').value = '';
   } catch (error) { toast(error.message); }
 });
@@ -850,14 +552,7 @@ $('message-form').addEventListener('submit', async event => {
 });
 
 $('save-preferences').addEventListener('click', async () => {
-  try {
-    await api('/api/preferences', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: $('preferences').value }),
-    });
-    markDraftSaved('preferences');
-    toast('Dine noter er gemt.');
-  } catch (error) { $('preferences-draft-status').textContent = `Gemning fejlede: ${error.message}. Din tekst er bevaret.`; }
+  await saveTextDraft('preferences', '/api/preferences', 'text');
 });
 
 $('refresh').addEventListener('click', () => refresh().catch(error => toast(error.message)));
@@ -1015,13 +710,16 @@ async function startVoice() {
 $('voice-toggle').addEventListener('click', () => peer ? stopVoice() : startVoice());
 window.addEventListener('pagehide', stopVoice);
 
-if (token) Promise.all([refresh(), refreshProjects(), refreshSettings()]).catch(() => showLogin());
+if (token) refresh().catch(() => showLogin());
 else showLogin();
 
 setInterval(() => {
   if (token && !$('workspace').classList.contains('hidden') && document.visibilityState === 'visible') {
-    refreshTasks().catch(() => {});
-    refreshSecretary().catch(() => {});
-    api('/api/overview').then(renderOverview).catch(() => {});
+    const view = canonicalView(new URL(window.location.href).searchParams.get('view'));
+    if (view === 'plan') {
+      refreshTasks().catch(() => {});
+      refreshSecretary().catch(() => {});
+    }
+    if (view === 'home') api('/api/overview').then(renderOverview).catch(() => {});
   }
 }, 20_000);

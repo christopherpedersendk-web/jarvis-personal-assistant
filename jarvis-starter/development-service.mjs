@@ -41,21 +41,22 @@ export class DevelopmentService {
     return report;
   }
 
-  async test(id) {
+  async test(id, basis) {
     if (this.busy.has(id)) throw new Error('Projektet testes allerede.');
     this.busy.add(id);
     try {
+      await this.projectAgent.assertBasis?.(id, basis);
       const report = await this.boundTest(id);
       return await this.record(id, report);
     } finally { this.busy.delete(id); }
   }
 
-  async developAndRepair(id, request) {
+  async developAndRepair(id, request, basis) {
     if (this.busy.has(id)) throw new Error('Projektet er allerede i gang.');
     this.busy.add(id);
     const changes = [];
     try {
-      const first = await this.projectAgent.develop(id, request);
+      const first = await this.projectAgent.develop(id, request, basis);
       changes.push({ revision: first.project.revision, files: first.changedFiles });
       let report = await this.boundTest(id);
       let repairs = 0;

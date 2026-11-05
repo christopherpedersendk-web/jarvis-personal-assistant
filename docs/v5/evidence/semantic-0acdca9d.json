@@ -1,0 +1,679 @@
+{
+  "status": "failed",
+  "candidateCommit": "9e322c71e595c6762f9af925a648f7816d7d38f3",
+  "applicationTree": "4b1e8f05b5dd289236deaa587b17ae2ac01c8935",
+  "workingTreeDirty": false,
+  "datasetVersion": "da-memory-v1",
+  "datasetSha256": "2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895",
+  "runtime": "v22.23.4",
+  "embeddingRuntime": "@huggingface/transformers@3.8.1",
+  "model": "Xenova/multilingual-e5-small",
+  "modelRevision": "0b7ea4d6ad2e9d527e013a65b805a4b4df72f648",
+  "modelFiles": [
+    {
+      "path": "config.json",
+      "bytes": 658,
+      "sha256": "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 443,
+      "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 17082730,
+      "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+    },
+    {
+      "path": "onnx/model_quantized.onnx",
+      "bytes": 118308185,
+      "sha256": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+    }
+  ],
+  "synthetic": true,
+  "externalPersonalDataProcessing": false,
+  "remoteModelCalls": 0,
+  "metric": "correct-source-retrieval@5; ikke måling af genererede svars faktuelle korrekthed",
+  "threshold": 0.9,
+  "relevantQuestions": 80,
+  "safetyQuestions": 16,
+  "lexicalHits": 41,
+  "vectorHits": 75,
+  "hybridHits": 62,
+  "lexicalRecallAt5": 0.5125,
+  "vectorRecallAt5": 0.9375,
+  "hybridRecallAt5": 0.775,
+  "invalidSourceLeaks": 0,
+  "missingEvidencePolicy": "Spørgsmål uden gyldig kilde indgår ikke i recall. Kandidater er ikke bekræftede svar; ugyldige/konfliktende kilder må aldrig genopstå.",
+  "correction": "passed",
+  "forgetting": "passed",
+  "providerUnavailableFallback": "passed",
+  "measurements": {
+    "documents": 76,
+    "coldLoadMs": 2137.94756,
+    "initialIndexMs": 514.1999799999999,
+    "warmRetrievalP50Ms": 12.588436000000002,
+    "warmRetrievalP95Ms": 41.281383000000005,
+    "eventLoopP95Ms": 19.005439,
+    "startRssBytes": 60829696,
+    "peakSampledRssBytes": 698007552,
+    "totalMs": 4576.914635
+  },
+  "index": {
+    "cachedDocuments": 75,
+    "provider": "local",
+    "running": false,
+    "queued": 0,
+    "embeddedDocuments": 77,
+    "embeddedQueries": 99
+  },
+  "provider": {
+    "status": "ready",
+    "provider": "local",
+    "model": "Xenova/multilingual-e5-small",
+    "modelRevision": "0b7ea4d6ad2e9d527e013a65b805a4b4df72f648",
+    "runtimeVersion": "3.8.1",
+    "manifestSha256": "28cc221f9d7adbfec09c512c6ab98f5fc2c307f507b5ddd432e89cd4abd783d7",
+    "network": "disabled",
+    "running": false,
+    "queued": 0,
+    "failureCode": null,
+    "requests": 110,
+    "embeddedTexts": 176,
+    "completed": 110,
+    "failed": 0,
+    "cancelled": 0,
+    "totalQueueMs": 1.2490789999942535,
+    "totalInferenceMs": 1255.1914840000027,
+    "maxQueueMs": 0.1216709999998784,
+    "maxInferenceMs": 68.72741499999984
+  },
+  "failingCases": [
+    {
+      "id": "Q03",
+      "category": "paraphrase",
+      "question": "Hvornår bør mine mest koncentrationskrævende opgaver ligge?",
+      "relevant": [
+        "memory:concentration"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-14",
+        "memory:distractor-28",
+        "memory:phone-charge",
+        "memory:laundry",
+        "memory:photo-privacy"
+      ],
+      "vectorTop5": [
+        "memory:meetings",
+        "memory:concentration",
+        "memory:reminders",
+        "memory:commute",
+        "memory:distractor-23"
+      ],
+      "hybridTop5": [
+        "memory:laundry",
+        "memory:distractor-14",
+        "memory:distractor-28",
+        "memory:phone-charge",
+        "memory:photo-privacy"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q04",
+      "category": "negation-or-boundary",
+      "question": "Hvilke betingelser hjælper mig med at holde fokus?",
+      "relevant": [
+        "memory:concentration"
+      ],
+      "lexicalTop5": [
+        "memory:learning-style"
+      ],
+      "vectorTop5": [
+        "memory:meetings",
+        "memory:communication",
+        "memory:hotel",
+        "memory:noise",
+        "memory:yoga"
+      ],
+      "hybridTop5": [
+        "memory:learning-style",
+        "memory:meetings",
+        "memory:communication",
+        "memory:hotel",
+        "memory:noise"
+      ],
+      "lexicalHit": false,
+      "vectorHit": false,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q33",
+      "category": "paraphrase",
+      "question": "Hvornår træner jeg mit fremmedsprog, og hvor længe?",
+      "relevant": [
+        "memory:learning-time"
+      ],
+      "lexicalTop5": [
+        "memory:books",
+        "memory:travel-train"
+      ],
+      "vectorTop5": [
+        "memory:language",
+        "memory:meetings",
+        "memory:learning-style",
+        "memory:yoga",
+        "memory:learning-time"
+      ],
+      "hybridTop5": [
+        "memory:travel-train",
+        "memory:books",
+        "memory:language",
+        "memory:meetings",
+        "memory:learning-style"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q34",
+      "category": "paraphrase",
+      "question": "Hvilken lille læringsvane har jeg knyttet til dagens første måltid?",
+      "relevant": [
+        "memory:learning-time"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-14",
+        "memory:garden-water"
+      ],
+      "vectorTop5": [
+        "memory:garden-water",
+        "memory:meetings",
+        "memory:dinner-time",
+        "memory:breakfast",
+        "memory:borrowed-tool"
+      ],
+      "hybridTop5": [
+        "memory:garden-water",
+        "memory:distractor-14",
+        "memory:meetings",
+        "memory:dinner-time",
+        "memory:breakfast"
+      ],
+      "lexicalHit": false,
+      "vectorHit": false,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q35",
+      "category": "paraphrase",
+      "question": "Hvor meget må min korte ferie samlet koste?",
+      "relevant": [
+        "memory:travel-budget"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-24",
+        "memory:meetings",
+        "memory:communication",
+        "memory:language",
+        "memory:cat"
+      ],
+      "vectorTop5": [
+        "memory:travel-budget",
+        "memory:travel-train",
+        "memory:meetings",
+        "memory:communication",
+        "memory:distractor-1"
+      ],
+      "hybridTop5": [
+        "memory:meetings",
+        "memory:communication",
+        "memory:travel-train",
+        "memory:distractor-1",
+        "memory:language"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q43",
+      "category": "paraphrase",
+      "question": "Hvilket værktøj skylder jeg min ven at returnere?",
+      "relevant": [
+        "memory:borrowed-tool"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-20",
+        "memory:distractor-3",
+        "memory:distractor-5",
+        "memory:distractor-27",
+        "memory:maja-gift"
+      ],
+      "vectorTop5": [
+        "memory:borrowed-tool",
+        "memory:bike-service",
+        "memory:data-privacy",
+        "memory:distractor-26",
+        "memory:distractor-23"
+      ],
+      "hybridTop5": [
+        "memory:distractor-20",
+        "memory:distractor-3",
+        "memory:maja-gift",
+        "memory:distractor-5",
+        "memory:distractor-27"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q45",
+      "category": "paraphrase",
+      "question": "Hvad foretrækker jeg at spise som dagens første måltid?",
+      "relevant": [
+        "memory:breakfast"
+      ],
+      "lexicalTop5": [
+        "memory:meetings",
+        "memory:distractor-12",
+        "memory:travel-train",
+        "memory:diet-negation",
+        "memory:garden-water"
+      ],
+      "vectorTop5": [
+        "memory:breakfast",
+        "memory:garden-water",
+        "memory:dinner-time",
+        "memory:reminders",
+        "memory:meetings"
+      ],
+      "hybridTop5": [
+        "memory:garden-water",
+        "memory:meetings",
+        "memory:diet-negation",
+        "memory:music-volume",
+        "memory:distractor-12"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q47",
+      "category": "paraphrase",
+      "question": "Hvor meget tid vil jeg bruge på madlavning efter en lang arbejdsdag?",
+      "relevant": [
+        "memory:dinner-time"
+      ],
+      "lexicalTop5": [
+        "memory:weekend",
+        "memory:learning-time",
+        "memory:distractor-35",
+        "memory:coffee",
+        "memory:shoes"
+      ],
+      "vectorTop5": [
+        "memory:dinner-time",
+        "memory:distractor-1",
+        "memory:meetings",
+        "memory:garden-water",
+        "memory:borrowed-tool"
+      ],
+      "hybridTop5": [
+        "memory:garden-water",
+        "memory:learning-time",
+        "memory:weekend",
+        "memory:learning-style",
+        "memory:coffee"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q51",
+      "category": "paraphrase",
+      "question": "Hvad kunne jeg have lyst til på en afslappet fridag?",
+      "relevant": [
+        "memory:weekend"
+      ],
+      "lexicalTop5": [
+        "memory:breakfast",
+        "memory:bike-service",
+        "memory:reminders",
+        "memory:language",
+        "memory:distractor-9"
+      ],
+      "vectorTop5": [
+        "memory:distractor-34",
+        "memory:breakfast",
+        "memory:distractor-20",
+        "memory:weekend",
+        "memory:borrowed-tool"
+      ],
+      "hybridTop5": [
+        "memory:breakfast",
+        "memory:reminders",
+        "memory:language",
+        "memory:bike-service",
+        "memory:distractor-9"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q55",
+      "category": "paraphrase",
+      "question": "Hvad vil jeg tage med for at være forberedt på uventet nedbør?",
+      "relevant": [
+        "memory:rain-packing"
+      ],
+      "lexicalTop5": [
+        "memory:dinner-time",
+        "memory:music-volume",
+        "memory:distractor-12",
+        "memory:commute",
+        "memory:hotel"
+      ],
+      "vectorTop5": [
+        "memory:rain-packing",
+        "memory:bike-service",
+        "memory:language",
+        "memory:communication",
+        "memory:reminders"
+      ],
+      "hybridTop5": [
+        "memory:hotel",
+        "memory:dinner-time",
+        "memory:commute",
+        "memory:distractor-12",
+        "memory:music-volume"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q56",
+      "category": "negation-or-boundary",
+      "question": "Kan regntøjet blive hjemme, når prognosen siger tørvejr?",
+      "relevant": [
+        "memory:rain-packing"
+      ],
+      "lexicalTop5": [
+        "memory:concentration",
+        "memory:dog-travel",
+        "memory:distractor-2",
+        "memory:noise",
+        "memory:travel-train"
+      ],
+      "vectorTop5": [
+        "memory:rain-packing",
+        "memory:laundry",
+        "memory:garden-water",
+        "memory:borrowed-tool",
+        "memory:distractor-9"
+      ],
+      "hybridTop5": [
+        "memory:noise",
+        "memory:concentration",
+        "memory:dog-travel",
+        "memory:distractor-2",
+        "memory:learning-style"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q60",
+      "category": "negation-or-boundary",
+      "question": "Må emballagen af karton komme i den almindelige skraldespand?",
+      "relevant": [
+        "memory:recycling"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-24",
+        "memory:communication",
+        "memory:quiet",
+        "memory:language",
+        "memory:cat"
+      ],
+      "vectorTop5": [
+        "memory:recycling",
+        "memory:distractor-14",
+        "memory:parking",
+        "memory:distractor-24",
+        "memory:borrowed-tool"
+      ],
+      "hybridTop5": [
+        "memory:distractor-24",
+        "memory:language",
+        "memory:distractor-1",
+        "memory:borrowed-tool",
+        "memory:distractor-14"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q63",
+      "category": "paraphrase",
+      "question": "Hvornår ønsker jeg at få et varsel om næste dags planer?",
+      "relevant": [
+        "memory:reminders"
+      ],
+      "lexicalTop5": [
+        "memory:meetings",
+        "memory:cat",
+        "memory:hotel",
+        "memory:distractor-34",
+        "memory:maja-gift"
+      ],
+      "vectorTop5": [
+        "memory:reminders",
+        "memory:meetings",
+        "memory:garden-water",
+        "memory:distractor-34",
+        "memory:communication"
+      ],
+      "hybridTop5": [
+        "memory:meetings",
+        "memory:distractor-34",
+        "memory:communication",
+        "memory:quiet",
+        "memory:hotel"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q65",
+      "category": "paraphrase",
+      "question": "Hvornår er min ønskede periode uden forstyrrelser?",
+      "relevant": [
+        "memory:quiet"
+      ],
+      "lexicalTop5": [
+        "memory:distractor-23",
+        "memory:photo-privacy",
+        "memory:music-volume",
+        "memory:garden-water",
+        "memory:rain-packing"
+      ],
+      "vectorTop5": [
+        "memory:meetings",
+        "memory:communication",
+        "memory:reminders",
+        "memory:yoga",
+        "memory:distractor-34"
+      ],
+      "hybridTop5": [
+        "memory:distractor-23",
+        "memory:garden-water",
+        "memory:rain-packing",
+        "memory:music-volume",
+        "memory:photo-privacy"
+      ],
+      "lexicalHit": false,
+      "vectorHit": false,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q66",
+      "category": "negation-or-boundary",
+      "question": "Må rutinemæssige beskeder vække mig ved midnat?",
+      "relevant": [
+        "memory:quiet"
+      ],
+      "lexicalTop5": [
+        "memory:communication",
+        "memory:distractor-21",
+        "memory:distractor-24",
+        "memory:distractor-12",
+        "memory:distractor-35"
+      ],
+      "vectorTop5": [
+        "memory:communication",
+        "memory:rain-packing",
+        "memory:meetings",
+        "memory:reminders",
+        "memory:borrowed-tool"
+      ],
+      "hybridTop5": [
+        "memory:communication",
+        "memory:distractor-1",
+        "memory:laundry",
+        "memory:dinner-time",
+        "memory:language"
+      ],
+      "lexicalHit": false,
+      "vectorHit": false,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q68",
+      "category": "negation-or-boundary",
+      "question": "Er en solrig vindueskarm et godt sted til den grønne stueplante?",
+      "relevant": [
+        "memory:plant"
+      ],
+      "lexicalTop5": [
+        "memory:laundry",
+        "memory:distractor-31",
+        "memory:board-games"
+      ],
+      "vectorTop5": [
+        "memory:rain-packing",
+        "memory:distractor-10",
+        "memory:laundry",
+        "memory:distractor-9",
+        "memory:garden-water"
+      ],
+      "hybridTop5": [
+        "memory:laundry",
+        "memory:distractor-31",
+        "memory:board-games",
+        "memory:rain-packing",
+        "memory:distractor-10"
+      ],
+      "lexicalHit": false,
+      "vectorHit": false,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q71",
+      "category": "paraphrase",
+      "question": "Må et nyt webbaseret analyseværktøj få mine personlige notater automatisk?",
+      "relevant": [
+        "memory:data-privacy"
+      ],
+      "lexicalTop5": [
+        "memory:cat",
+        "memory:learning-style",
+        "memory:distractor-24",
+        "memory:communication",
+        "memory:language"
+      ],
+      "vectorTop5": [
+        "memory:data-privacy",
+        "memory:distractor-23",
+        "memory:quiet",
+        "memory:distractor-19",
+        "memory:language"
+      ],
+      "hybridTop5": [
+        "memory:learning-style",
+        "memory:language",
+        "memory:communication",
+        "memory:distractor-1",
+        "memory:distractor-24"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    },
+    {
+      "id": "Q79",
+      "category": "paraphrase",
+      "question": "Hvordan vil jeg helst kontaktes om almindelig koordinering?",
+      "relevant": [
+        "memory:communication"
+      ],
+      "lexicalTop5": [
+        "memory:breakfast",
+        "memory:books",
+        "memory:reminders",
+        "memory:dinner-time",
+        "memory:quiet"
+      ],
+      "vectorTop5": [
+        "memory:communication",
+        "memory:meetings",
+        "memory:reminders",
+        "memory:data-privacy",
+        "memory:board-games"
+      ],
+      "hybridTop5": [
+        "memory:reminders",
+        "memory:quiet",
+        "memory:breakfast",
+        "memory:books",
+        "memory:dinner-time"
+      ],
+      "lexicalHit": false,
+      "vectorHit": true,
+      "hybridHit": false,
+      "invalidSourceLeaks": []
+    }
+  ],
+  "reviewedHeadCommit": "0acdca9df4ea5fa7b28fab88ee9e2bd51db0cbed",
+  "workflowRun": 42002595243,
+  "artifactId": 13403675087
+}

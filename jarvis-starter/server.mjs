@@ -31,6 +31,7 @@ import { recoverStateBundle, writeStateBundle } from './state-bundle.mjs';
 import { reviewMonitorAnswer } from './monitor-observation.mjs';
 import { BoundedJobQueue } from './bounded-queue.mjs';
 import { ActionJournal, retainActionJournal } from './action-journal.mjs';
+import { overviewSummary, uiBootstrap, historyPage } from './ui-read-model.mjs';
 import { loadBundledSkills } from './skills-registry.mjs';
 import { ProactivePlanner } from './proactive-planner.mjs';
 import { integrationCatalog } from './integration-catalog.mjs';
@@ -214,8 +215,9 @@ async function bodyText(req, limit = 12_000) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function bodyJson(req, limit = 12_000) {
+async function bodyJson(req, limit = 12_000, allowEmpty = false) {
   const text = await bodyText(req, limit);
+  if (allowEmpty && !text.trim()) return {};
   try { return JSON.parse(text); } catch { throw new Error('Ugyldig JSON.'); }
 }
 
@@ -227,6 +229,13 @@ function save() {
 // restores the original in-memory collections before the next v5 mutation.
 function mutateV5(keys, action) {
   return stateStore.transact(keys, action);
+}
+
+function checkTextBasis(key, input) {
+  if (Object.hasOwn(input, 'expectedText') && (typeof input.expectedText !== 'string' || input.expectedText !== (state[key] || ''))) {
+    const error = new Error('Teksten er ændret siden dit grundlag. Hent og gennemgå den nyeste gemte tekst; din kladde er bevaret.');
+    error.code = 'REVISION_CONFLICT'; error.status = 409; throw error;
+  }
 }
 
 // Older domain objects also mutate their shared state before calling save().
@@ -656,17 +665,7 @@ async function route(req, res) {
       catch (error) { return json(res, 409, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/overview') {
-      const currentTasks = taskEngine.list();
-      const latest = currentTasks.flatMap(task => (task.runs || []).map(run => ({ title: task.title, ...run })))
-        .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
-      return json(res, 200, { summary: {
-        inboxCount: (state.inbox || []).filter(item => !item.read).length,
-        approvalCount: (state.approvals || []).filter(item => item.status === 'pending').length,
-        runningCount: currentTasks.filter(item => item.status === 'running').length,
-        scheduledCount: currentTasks.filter(item => item.status === 'scheduled').length,
-        projectCount: projectAgent.list().length,
-        latestTask: latest ? { title: latest.title, status: latest.status, at: latest.at } : null,
-      } });
+      return json(res, 200, { summary: overviewSummary(state, taskEngine.list(), projectAgent.list()) });
     }
     if (req.method === 'GET' && path === '/api/meals') return json(res, 200,
       { profile: meals.profile(), plans: meals.plans(), household: meals.household(), recipes: meals.recipes(), inventory: meals.inventory() });
@@ -1133,8 +1132,18 @@ async function route(req, res) {
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/state') {
+      const query = new URL(req.url, 'http://localhost').searchParams;
+      if (query.get('scope') === 'bootstrap') return json(res, 200, uiBootstrap(state, {
+        tasks: taskEngine.list(), projects: projectAgent.list(), configured: validApiKey,
+        pushEnabled: notificationsEnabled(pushConfig), voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1',
+      }));
       const { codeProposals, ...safeState } = state;
       return json(res, 200, { ...safeState, tasks: taskEngine.list(), codeProposals: codeAgent.list(), projects: projectAgent.list(), usage: taskEngine.currentUsage(), pushEnabled: notificationsEnabled(pushConfig), configured: validApiKey, voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1' });
+    }
+    if (req.method === 'GET' && path === '/api/history') {
+      const query = new URL(req.url, 'http://localhost').searchParams;
+      try { return json(res, 200, historyPage(state.history, { cursor: query.get('cursor'), limit: query.get('limit') || 20 })); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     if (req.method === 'GET' && path === '/api/secretary') return json(res, 200, {
       playbook: state.playbook, memories: secretary.listMemories({ includeProposed: false }),
@@ -1142,8 +1151,11 @@ async function route(req, res) {
       pushEnabled: notificationsEnabled(pushConfig),
     });
     if (req.method === 'POST' && path === '/api/playbook') {
-      try { return json(res, 200, { playbook: await secretary.savePlaybook((await bodyJson(req)).content) }); }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      try {
+        const input = await bodyJson(req); rejectSecrets(input.content);
+        const playbook = await mutateV5(['playbook'], async () => { checkTextBasis('playbook', input); return secretary.savePlaybook(input.content); });
+        return json(res, 200, { playbook });
+      } catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     if (req.method === 'GET' && path === '/api/memories') return json(res, 200, { memories: secretary.listMemories({ includeProposed: true }) });
     if (req.method === 'POST' && path === '/api/memories') {
@@ -1194,8 +1206,8 @@ async function route(req, res) {
     }
     const projectItem = path.match(/^\/api\/projects\/([0-9a-f-]{36})$/);
     if (req.method === 'DELETE' && projectItem) {
-      try { return json(res, 200, await projectAgent.archive(projectItem[1])); }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      try { return json(res, 200, await projectAgent.archive(projectItem[1], await bodyJson(req, 12_000, true))); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     const projectRestore = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/restore$/);
     if (req.method === 'POST' && projectRestore) {
@@ -1209,15 +1221,16 @@ async function route(req, res) {
     const projectDevelop = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/develop$/);
     if (req.method === 'POST' && projectDevelop) {
       try {
-        const result = await developmentService.developAndRepair(projectDevelop[1], (await bodyJson(req)).request);
+        const input = await bodyJson(req);
+        const result = await developmentService.developAndRepair(projectDevelop[1], input.request, input);
         return json(res, 200, { ...result, changedFiles: [...new Set(result.changes.flatMap(x => x.files))], packagesAwaitingApproval: result.project.pendingPackages });
       }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     const projectTest = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/test$/);
     if (req.method === 'POST' && projectTest) {
-      try { return json(res, 200, { test: await developmentService.test(projectTest[1]) }); }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      try { return json(res, 200, { test: await developmentService.test(projectTest[1], await bodyJson(req, 12_000, true)) }); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     const projectInstall = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/install$/);
     if (req.method === 'POST' && projectInstall) {
@@ -1229,8 +1242,8 @@ async function route(req, res) {
     }
     const projectRollback = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/rollback$/);
     if (req.method === 'POST' && projectRollback) {
-      try { return json(res, 200, { project: await projectAgent.rollback(projectRollback[1]) }); }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      try { return json(res, 200, { project: await projectAgent.rollback(projectRollback[1], await bodyJson(req, 12_000, true)) }); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     if (req.method === 'GET' && path === '/api/code') return json(res, 200, { files: EDITABLE_FILES, proposals: codeAgent.list() });
     if (req.method === 'POST' && path === '/api/code') {
@@ -1268,19 +1281,27 @@ async function route(req, res) {
     }
     const taskAction = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/action$/);
     const taskDelete = path.match(/^\/api\/tasks\/([0-9a-f-]{36})$/);
+    if (req.method === 'PATCH' && taskDelete) {
+      try { return json(res, 200, { task: await taskEngine.update(taskDelete[1], await bodyJson(req)) }); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
+    }
     if (req.method === 'DELETE' && taskDelete) {
       try { return json(res, 200, { task: await taskEngine.remove(taskDelete[1]) }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'POST' && taskAction) {
-      try { return json(res, 200, { task: await taskEngine.action(taskAction[1], (await bodyJson(req)).action) }); }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      try {
+        const input = await bodyJson(req);
+        return json(res, 200, { task: await taskEngine.action(taskAction[1], input.action, { expectedRevision: input.expectedRevision }) });
+      }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
     if (req.method === 'POST' && path === '/api/preferences') {
       const input = await bodyJson(req);
       if (typeof input.text !== 'string' || input.text.length > 10000) return json(res, 400, { error: 'Noterne skal være tekst på højst 10.000 tegn.' });
       rejectSecrets(input.text);
-      await mutateV5(['preferences'], async () => { state.preferences = input.text; await save(); });
+      try { await mutateV5(['preferences'], async () => { checkTextBasis('preferences', input); state.preferences = input.text; await save(); }); }
+      catch (error) { if (error.status === 409) return json(res, 409, { error: error.message, code: error.code }); throw error; }
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/message') {
@@ -1406,6 +1427,8 @@ async function route(req, res) {
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Metoden understøttes ikke.' });
   const files = { '/': 'index.html', '/app.js': 'app.js', '/v5-plan.js': 'v5-plan.js', '/v5.css': 'v5.css', '/organizer.js': 'organizer.js', '/intelligence.js': 'intelligence.js', '/intelligence.css': 'intelligence.css', '/meals.js': 'meals.js', '/meals.css': 'meals.css', '/memory-v49.js': 'memory-v49.js', '/memory-v49.css': 'memory-v49.css', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
+  files['/job-policy.js'] = 'job-policy.js';
+  files['/v5-projects.js'] = 'v5-projects.js';
   const file = files[path];
   if (!file) return json(res, 404, { error: 'Siden findes ikke.' });
   const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';

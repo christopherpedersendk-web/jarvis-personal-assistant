@@ -6,7 +6,13 @@ import { currentClaim, claimConflicts } from './personal-claims.mjs';
 import { containsSecret } from './privacy.mjs';
 import { resolveHouseholdAttendance } from './meal-planner.mjs';
 
-const STOP = new Set('jeg mig min mine mit du din dine dit det den der de er var har havde kan skal vil hvad hvem hvor hvornår hvordan og eller af fra for med som til på om i at en et også lige noget nogle hos'.split(' '));
+// Function words are not identifying evidence. Keep negation/boundary words
+// such as ikke, aldrig, ingen, uden and kun: removing them can reverse meaning.
+const STOP = new Set(('jeg mig min mine mit du din dine dit det den der de er var har havde kan skal vil hvad hvem hvor hvornår hvordan ' +
+  'hvilken hvilket hvilke bør må kunne ville skulle være været blive bliver blev meget mest mere mindre lidt få får fået ved ' +
+  'dem han hun vi vores jer jeres sig sin sine sit denne dette disse så end helst gerne og eller af fra for med som til på om i at en et også lige noget nogle hos').split(' '));
+
+export const HYBRID_RETRIEVAL_STRATEGY = 'semantic-primary-exact-lexical-4-to-1-v1';
 
 function terms(value, max = 600) {
   return (String(value || '').normalize('NFKC').toLocaleLowerCase('da-DK').match(/[\p{L}\p{N}]{2,}/gu) || [])
@@ -196,10 +202,18 @@ function lexicalResults(query, documents) {
   const loweredQuery = String(query).trim().toLocaleLowerCase('da-DK');
   return documents.map((doc, index) => {
     const words = documentTerms[index];
+    const bodyWords = new Set(terms(doc.text));
+    const exactTerms = queryTerms.filter(term => bodyWords.has(term));
+    // An incidental hit on one word in a long natural-language question must
+    // not receive the same fusion vote as a complete, distinctive exact match.
+    const completeExactMatch = exactTerms.length === queryTerms.length;
+    const rareLimit = Math.max(1, Math.ceil(documents.length / (queryTerms.length === 1 ? 20 : 5)));
+    const distinctive = exactTerms.some(term => term.length >= 4 && (frequencies.get(term) || 0) <= rareLimit);
     let score = 0;
     for (const term of queryTerms) {
       const hits = words.filter(word => word === term).length;
-      const close = hits ? 0 : words.some(word => word.startsWith(term) || term.startsWith(word) && word.length >= 4) ? 0.35 : 0;
+      const close = hits ? 0 : term.length >= 4 && words.some(word => word.length >= 4 &&
+        (word.startsWith(term) || term.startsWith(word))) ? 0.35 : 0;
       const count = hits || close;
       if (!count) continue;
       const idf = Math.log(1 + (documents.length - (frequencies.get(term) || 0) + 0.5) / ((frequencies.get(term) || 0) + 0.5));
@@ -207,7 +221,8 @@ function lexicalResults(query, documents) {
     }
     if (loweredQuery.length >= 3 && `${doc.label} ${doc.text}`.toLocaleLowerCase('da-DK').includes(loweredQuery)) score += 3;
     if (queryTerms.some(term => doc.label.toLocaleLowerCase('da-DK').includes(term))) score += 0.5;
-    return { ...doc, score: Number(score.toFixed(3)) };
+    return { ...doc, score: Number(score.toFixed(3)), lexicalEvidence: { exactTerms: exactTerms.length,
+      queryTerms: queryTerms.length, completeExactMatch, distinctive, strong: completeExactMatch && distinctive } };
   }).filter(doc => doc.score > 0).sort((a, b) => b.score - a.score ||
     Number(Boolean(b.confirmation)) - Number(Boolean(a.confirmation)) ||
     (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0) || a.id.localeCompare(b.id));
@@ -271,24 +286,43 @@ export class PersonalKnowledge {
     if (controller.signal.aborted) return fallback('cancelled');
     if (!semantic || typeof semantic !== 'object' || Array.isArray(semantic)) return fallback('invalid-result');
     const current = select(getDocuments());
+    // A correction during inference invalidates the mixed snapshot. Return the
+    // current lexical view immediately; the next read incrementally re-embeds it.
+    if (current.some(doc => before.get(doc.id) !== signature(doc))) return fallback('source-changed');
     const lexical = lexicalResults(query, current);
     const lexicalRanks = new Map(lexical.map((doc, index) => [doc.id, index + 1]));
+    const lexicalById = new Map(lexical.map(doc => [doc.id, doc]));
     const semanticOrder = current.filter(doc => before.get(doc.id) === signature(doc) && Object.hasOwn(semantic, doc.id) &&
       typeof semantic[doc.id] === 'number' && Number.isFinite(semantic[doc.id]) && semantic[doc.id] > 0 && semantic[doc.id] <= 1)
       .sort((a, b) => semantic[b.id] - semantic[a.id] || a.id.localeCompare(b.id));
     const semanticRanks = new Map(semanticOrder.map((doc, index) => [doc.id, index + 1]));
-    // Reciprocal-rank fusion avoids mixing uncalibrated BM25-like scores with
-    // E5 cosine values, whose absolute values commonly lie around 0.7–1.0.
-    const matches = current.map(doc => {
-      const lexicalRank = lexicalRanks.get(doc.id), semanticRank = semanticRanks.get(doc.id);
-      return { ...doc,
-        score: (lexicalRank ? 0.4 / (60 + lexicalRank) : 0) + (semanticRank ? 0.6 / (60 + semanticRank) : 0),
-        retrieval: { lexicalRank: lexicalRank || null, semanticRank: semanticRank || null,
-          semanticSimilarity: semanticRank ? semantic[doc.id] : null },
-      };
-    }).filter(doc => doc.score > 0).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, boundedLimit);
-    return { matches, mode: semanticOrder.length ? 'local-hybrid' : 'local-lexical',
-      semantic: { status: current.some(doc => before.get(doc.id) !== signature(doc)) ? 'source-changed' : 'ready' },
+    if (!semanticOrder.length) return fallback('no-current-scores');
+    // The fixed Danish evaluation exposed RRF's missing-list bias: any weak
+    // lexical overlap outvoted a good semantic-only paraphrase. Use a stable,
+    // inspectable candidate allocation instead of mixing incompatible scores.
+    // Four semantic candidates retain their order; each fifth slot may add one
+    // complete distinctive exact match. The prefix is independent of limit.
+    const exact = lexical.filter(doc => doc.lexicalEvidence.strong);
+    const selected = new Set(), ranked = [];
+    let semanticAt = 0, exactAt = 0, lexicalAt = 0;
+    const take = (list, at) => { while (at < list.length && selected.has(list[at].id)) at++; return at; };
+    while (ranked.length < boundedLimit) {
+      semanticAt = take(semanticOrder, semanticAt); exactAt = take(exact, exactAt); lexicalAt = take(lexical, lexicalAt);
+      let doc, selectedBy;
+      if (ranked.length % 5 === 4 && exactAt < exact.length) { doc = exact[exactAt++]; selectedBy = 'exact-lexical-complement'; }
+      else if (semanticAt < semanticOrder.length) { doc = semanticOrder[semanticAt++]; selectedBy = 'semantic'; }
+      else if (lexicalAt < lexical.length) { doc = lexical[lexicalAt++]; selectedBy = 'lexical-remainder'; }
+      else break;
+      selected.add(doc.id);
+      const semanticRank = semanticRanks.get(doc.id), lexicalRank = lexicalRanks.get(doc.id);
+      ranked.push({ ...doc, score: 1 / (ranked.length + 1), retrieval: {
+        strategy: HYBRID_RETRIEVAL_STRATEGY, selectedBy, lexicalRank: lexicalRank || null, semanticRank: semanticRank || null,
+        semanticSimilarity: semanticRank ? semantic[doc.id] : null,
+        lexicalEvidence: lexicalById.get(doc.id)?.lexicalEvidence || null,
+      } });
+    }
+    return { matches: ranked, mode: 'local-hybrid',
+      semantic: { status: 'ready', fusion: HYBRID_RETRIEVAL_STRATEGY },
       answerability: 'sources-only' };
   }
 

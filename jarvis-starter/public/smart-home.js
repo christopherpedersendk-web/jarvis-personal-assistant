@@ -141,12 +141,30 @@
       await refreshHome();
     } catch (error) { el('home-settings-status').textContent = error.message; }
   });
-  document.addEventListener('jarvis:refreshed', () => refreshHome().catch(() => {}));
-  document.addEventListener('DOMContentLoaded', () => {});
-  if (token) {
-    api('/api/smart-home/settings').then(s => { el('sonos-household').value = s.sonosHouseholdId || ''; }).catch(() => {});
-    api('/api/smart-home/hue/settings').then(s => { el('hue-ip').value = s.bridgeIp || ''; if (s.paired) loadHue().catch(() => {}); }).catch(() => {});
-    refreshHome().catch(() => {});
-  }
-  setInterval(() => { if (token && document.visibilityState === 'visible') refreshHome().catch(() => {}); }, 30_000);
+  const relevant = () => !el('tab-smart-home').classList.contains('hidden') || !el('tab-settings').classList.contains('hidden') ||
+    (!el('tab-home').classList.contains('hidden') && el('home-more-details').open);
+  let settingsLoaded = false, pendingRefresh = null;
+  for (const id of ['sonos-household', 'hue-ip']) el(id).addEventListener('input', () => { el(id).dataset.dirty = 'true'; });
+  const refreshVisible = async () => {
+    if (!token || el('workspace').classList.contains('hidden') || !relevant()) return;
+    if (pendingRefresh) return pendingRefresh;
+    pendingRefresh = (async () => {
+      if (!settingsLoaded && !el('tab-settings').classList.contains('hidden')) {
+        const [sonos, hue] = await Promise.all([api('/api/smart-home/settings'), api('/api/smart-home/hue/settings')]);
+        if (!el('sonos-household').dataset.dirty) el('sonos-household').value = sonos.sonosHouseholdId || '';
+        if (!el('hue-ip').dataset.dirty) el('hue-ip').value = hue.bridgeIp || '';
+        settingsLoaded = true;
+      }
+      // Connection observations are local snapshots. Network resource reads
+      // remain bound to the existing explicit "Hent"/pair controls.
+      await refreshHome();
+    })().finally(() => { pendingRefresh = null; });
+    return pendingRefresh;
+  };
+  document.addEventListener('jarvis:refreshed', () => refreshVisible().catch(() => {}));
+  document.addEventListener('jarvis:view-changed', () => refreshVisible().catch(() => {}));
+  el('home-more-details').addEventListener('toggle', () => refreshVisible().catch(() => {}));
+  el('logout').addEventListener('click', () => { settingsLoaded = false;
+    for (const id of ['sonos-household', 'hue-ip', 'sonos-token']) { el(id).value = ''; delete el(id).dataset.dirty; } });
+  setInterval(() => { if (document.visibilityState === 'visible') refreshVisible().catch(() => {}); }, 30_000);
 })();

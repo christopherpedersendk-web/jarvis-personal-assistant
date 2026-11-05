@@ -1,8 +1,8 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { atomicStateWrite } from './state-schema.mjs';
+import { atomicStateWrite, durableExclusiveBackup, readPrivateStateText } from './state-schema.mjs';
 import { createJobTransitions } from './job-state-transition.mjs';
 
 // Explicitly allow-listed, non-server-executable targets for the first release.
@@ -22,8 +22,9 @@ async function checkJavascript(source) {
 }
 
 export class CodeAgent {
-  constructor({ root, backupRoot, state, save, transact, propose }) {
-    Object.assign(this, { root, backupRoot, state, save, propose });
+  constructor({ root, backupRoot, state, save, transact, propose,
+    backupWriter = durableExclusiveBackup, publish = atomicStateWrite }) {
+    Object.assign(this, { root, backupRoot, state, save, propose, backupWriter, publish });
     this.transact = transact || createJobTransitions(state);
     this.state.codeProposals ||= [];
     for (const proposal of this.state.codeProposals) if (['applying', 'rollingback'].includes(proposal.status)) proposal.status = 'unknown';
@@ -47,9 +48,11 @@ export class CodeAgent {
     if (!EDITABLE_FILES.includes(file)) throw new Error('Denne fil kan ikke redigeres af kodeagenten.');
     if (typeof request !== 'string' || !request.trim() || request.length > 2000) throw new Error('Beskriv ændringen med 1–2.000 tegn.');
     if (this.state.codeProposals.filter(x => x.status === 'pending').length >= 5) throw new Error('Godkend eller afvis eksisterende forslag først.');
+    if (this.state.codeProposals.filter(x => ['pending', 'applying', 'rollingback', 'unknown'].includes(x.status)).length >= 20)
+      throw new Error('For mange uafklarede kodehandlinger. Gennemgå udfaldene, før du opretter flere forslag.');
     this.busy = true;
     try {
-      const original = await readFile(join(this.root, file), 'utf8');
+      const original = await readPrivateStateText(join(this.root, file));
       const { summary, content } = await this.propose({ file, request, original });
       if (typeof summary !== 'string' || !summary.trim() || typeof content !== 'string' || !content.trim() || content.length > 80_000) {
         throw new Error('Modellen leverede ikke en gyldig filændring.');
@@ -60,7 +63,9 @@ export class CodeAgent {
         originalHash: digest(original), original, content, status: 'pending', createdAt: new Date().toISOString() };
       return await this.transact(['codeProposals'], async () => {
         this.state.codeProposals.unshift(proposal);
-        this.state.codeProposals = this.state.codeProposals.slice(0, 20);
+        const unsettled = new Set(['pending', 'applying', 'rollingback', 'unknown']);
+        let settled = 0;
+        this.state.codeProposals = this.state.codeProposals.filter(item => unsettled.has(item.status) || ++settled <= 20);
         await this.save(); return this.inspect(proposal.id);
       });
     } finally { this.busy = false; }
@@ -81,12 +86,16 @@ export class CodeAgent {
       this.busy = true;
       try {
         const destination = join(this.root, p.file);
-        const current = await readFile(destination, 'utf8');
+        const current = await readPrivateStateText(destination);
         if (digest(current) !== digest(p.content)) throw new Error('Filen er siden blevet ændret. Automatisk tilbagerulning er ikke sikker.');
-        const backup = await readFile(join(this.backupRoot, p.id, p.file), 'utf8');
+        const backup = await readPrivateStateText(join(this.backupRoot, p.id, p.file));
         if (digest(backup) !== p.originalHash) throw new Error('Backup matcher ikke det gennemgåede originalindhold.');
         await this.checkpoint(id, item => { item.status = 'rollingback'; });
-        try { await atomicStateWrite(destination, backup); }
+        if (digest(await readPrivateStateText(destination)) !== digest(p.content)) {
+          await this.checkpoint(id, item => { item.status = 'unknown'; });
+          throw new Error('Filen blev ændret inden tilbagerulning. Ingen nyere ændringer overskrevet; gennemgå filen igen.');
+        }
+        try { await this.publish(destination, backup); }
         catch (error) { await this.checkpoint(id, item => { item.status = error.statePublished ? 'unknown' : 'applied'; }).catch(() => {}); throw error; }
         return await this.checkpoint(id, item => { item.status = 'rolledback'; });
       } finally { this.busy = false; }
@@ -101,18 +110,17 @@ export class CodeAgent {
     this.busy = true;
     try {
       const destination = join(this.root, p.file);
-      const actual = await readFile(destination, 'utf8');
+      const actual = await readPrivateStateText(destination);
       if (digest(actual) !== p.originalHash) throw new Error('Filen er ændret siden forslaget. Opret et nyt forslag.');
       const backupFile = join(this.backupRoot, p.id, p.file);
       await mkdir(dirname(backupFile), { recursive: true, mode: 0o700 });
-      try { await writeFile(backupFile, actual, { mode: 0o600, flag: 'wx' }); }
-      catch (error) { if (error.code !== 'EEXIST' || digest(await readFile(backupFile, 'utf8')) !== p.originalHash) throw error; }
+      await this.backupWriter(backupFile, actual);
       await this.checkpoint(id, item => { if (item.status !== 'pending') throw new Error('Forslaget er ændret.'); item.status = 'applying'; });
-      if (digest(await readFile(destination, 'utf8')) !== p.originalHash) {
+      if (digest(await readPrivateStateText(destination)) !== p.originalHash) {
         await this.checkpoint(id, item => { item.status = 'unknown'; });
         throw new Error('Filen blev ændret inden publicering. Ingen ændring udført; gennemgå filen igen.');
       }
-      try { await atomicStateWrite(destination, p.content); }
+      try { await this.publish(destination, p.content); }
       catch (error) { await this.checkpoint(id, item => { item.status = error.statePublished ? 'unknown' : 'pending'; }).catch(() => {}); throw error; }
       return await this.checkpoint(id, item => { item.status = 'applied'; item.appliedAt = new Date().toISOString(); });
     } finally { this.busy = false; }
