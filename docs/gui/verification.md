@@ -77,3 +77,28 @@ CI-artifacts angiver konkret SHA, Git-/app-træ, browserversioner, asset-/fixtur
 - Faktiske screenshots af desktop og mobil er gennemgået. Tre konkrete CSS-rettelser til disclosures, tom Hjem-ramme og knapafstand følger med næste kandidat.
 
 Artifacts: [unit](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949/artifacts/13415834353) og [browser/screenshots/traces](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949/artifacts/13416549000). ZIP-hashes er henholdsvis `e94d1c3ce6d0d819a1082f0f7f2855d29bf9416a31ebf56b847a4241ee6d80d0` og `ccfd3946e8e35917d8609f6ccc0d6b86165dadd61b53f90c4e0dea0826da8797`.
+
+## Anden faktiske CI – b859a71
+
+[Run 42034114557](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42034114557) kørte `b859a71ffa2769b3e3f12b3acf5af0c6caef93c1`, Git-træ `efff8519d99bba9f7abbe7e2b647d801d3ef5a21`, app-træ `77e62f8b24cbebe5500a3320c4c55cc65824c9c6`. Begge checkouts var rene. Assets var uændrede under browserkørslen.
+
+| Testlag | Faktisk resultat | Miljø / begrænsning |
+|---|---|---|
+| Fuld Node-regression | **976/976 bestået**, 0 fejl/skips, 31.327199 sekunder | Unit-job: Node **24.22.2**; workflowen vælger major 24 |
+| GUI-matrix | **36/36 bestået** | Chromium **156.0.8078.80**, WebKit **27.2**, Playwright 1.64.1, browser-job Node **24.22.1** |
+| Isolerede API-kontroller | Nul runtimefejl, eksterne requests eller forbudte writes | Faste syntetiske fixtures; ingen liveintegrationstest |
+| Dyb v5-browserregression | **Fejlet på første desktop-forløb** | Samtalefeltets bund var 1073,5 px ved skærmhøjde 950 px. Senere assertions og de andre device-forløb blev ikke nået |
+
+GUI-matrixen dokumenterer de tre tilstande på alle seks bredder samt søgning, fokus/returfokus, eksplicit chatkontekst, forsinket svar og readonly kalender. Den dybe regression er fortsat en selvstændig, ikke godkendt gate på denne kandidat.
+
+De målte kontraststikprøver ved 1024 px var: composer-tekst **16,866:1**, feltgrænse **3,510:1**, fokusring **8,198:1**, Send **9,203:1** og aktiv navigation **7,179:1**. Det dokumenterer de målte kombinationer, ikke en fuldstændig kontrastcertificering af alle komponenter. Body, textarea, toolbarbutton og synlige selects arver samme sans-serif-stack i begge engines.
+
+Gennemgangen af de faktiske screenshots viste overskydende højdefordeling i desktop-grid og for stor historik på I dag. Næste kandidat fastlægger toolbarens række og beregner loggens disponible højde ud fra den faktiske composer og bundnavigation. Handlinger og fejl beholder deres højde; siden kan stadig rulle ved utilstrækkelig skærmplads. Den oprindelige first-screen-assertion er bevaret, og desktop-afstanden mellem toolbar og indhold bliver målt særskilt.
+
+En konkret kodeaudit fandt også sene svar efter logout i secretary-læsning, opskriftsimport og direkte Nemlig-læsninger samt risiko for at rydde et nyere kalender-ID efter gemning. Disse afgrænsede guards og målrettede regressionscases indgår i næste kandidat. AI-manglende-opsætning får en synlig lokal vej til eksisterende serveropsætning.
+
+Artifacts: [unit](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42034114557/artifacts/13417986386) og [browser/screenshots/traces](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42034114557/artifacts/13418241469). ZIP-hashes: `8e6f917f89b8e384be3313cb39d734530ae1cc110c9dd6df093d329e6839216b` og `f896f7261b43f2e7f5021ae60e469bb03af6076807e7f0bc4a9648db074cb4ce`.
+
+## Lokal kontrol af rettelser efter CI2
+
+`npm test` med Node **24.22.1**: **988/988 bestået**, 0 fejl/skips, **29.547465024 sekunder**. De 12 ekstra cases dækker forsinkede secretary-læsninger og kalender-/opskrifts-/Nemlig-responses, ejerskift, logout, nyere kladder og bekræftet gemning efterfulgt af læsefejl. Den målrettede måltids-/kalenderregression består **34/34**. Disse tests bruger kode-/DOM-dobler og isolerede domæner; layout- og deep-browserresultater for næste kandidat afventes fortsat.

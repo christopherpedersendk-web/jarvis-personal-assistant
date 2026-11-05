@@ -10,6 +10,7 @@ const mealSelection = new Map();
 const mealDirty = new Set();
 const mealDraftKey = 'jarvis:v5:meal-drafts';
 const mealDraftControllers = new Map();
+const mealPendingLocks = new Set();
 const mealServerSignatures = new WeakMap();
 let mealDraftStorageAvailable = true;
 let mealRecoveredDrafts = {};
@@ -113,8 +114,9 @@ function mealApi(path, method = 'GET', body) {
   return api(path, { method, ...(body !== undefined ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
 }
 
-function mealSessionCurrent(generation) {
-  return generation === mealSessionGeneration && Boolean(localStorage.getItem('jarvisAccessToken'));
+function mealSessionCurrent(generation, owner) {
+  const activeOwner = localStorage.getItem('jarvisAccessToken');
+  return generation === mealSessionGeneration && Boolean(activeOwner) && (owner === undefined || owner === activeOwner);
 }
 
 function mealField(label, control) {
@@ -163,12 +165,15 @@ function mealLockControls(scope) {
   const disabled = controls.map(control => control.disabled);
   for (const control of controls) control.disabled = true;
   if (scope) scope.setAttribute('aria-busy', 'true');
-  return () => {
+  const unlock = () => {
+    if (!mealPendingLocks.delete(unlock)) return;
     for (let i = 0; i < controls.length; i++) {
       if (controls[i].isConnected && controls[i].dataset.keepDisabled !== 'true') controls[i].disabled = disabled[i];
     }
     if (scope?.isConnected) scope.removeAttribute('aria-busy');
   };
+  mealPendingLocks.add(unlock);
+  return unlock;
 }
 
 function mealAction(label, operation, status, primary = false) {
@@ -1661,11 +1666,20 @@ async function refreshNemlig() {
 }
 
 let calendarSelectionDirty = false;
-mealEl('meal-google-calendar-id').addEventListener('input', () => { calendarSelectionDirty = true; mealDirty.add('calendar-selection'); });
+let calendarSelectionSaving = false;
+let calendarStatusSequence = 0;
+let mealNemligSearchSequence = 0;
+let mealNemligBasketSequence = 0;
+mealEl('meal-google-calendar-id').addEventListener('input', () => {
+  calendarSelectionDirty = true; mealDirty.add('calendar-selection');
+  mealEl('meal-calendar-draft-status').textContent = 'Kalendervalget har ugemte ændringer.';
+  mealPersistDrafts();
+});
 async function refreshGoogle() {
-  const generation = mealSessionGeneration;
+  const generation = mealSessionGeneration, owner = localStorage.getItem('jarvisAccessToken');
+  const request = ++calendarStatusSequence;
   const data = await mealApi('/api/google/calendar/status');
-  if (!mealSessionCurrent(generation)) return;
+  if (!mealSessionCurrent(generation, owner) || request !== calendarStatusSequence) return;
   const calendarInput = mealEl('meal-google-calendar-id');
   if (!calendarSelectionDirty && document.activeElement !== calendarInput) calendarInput.value = data.calendarId || 'primary';
   mealEl('meal-google-status').textContent = !data.configured
@@ -1770,16 +1784,18 @@ mealEl('meal-plan-form').addEventListener('submit', async event => {
 
 mealEl('meal-recipe-form').addEventListener('submit', async event => {
   event.preventDefault();
+  const generation = mealSessionGeneration, owner = localStorage.getItem('jarvisAccessToken');
   const unlock = mealLockControls(event.currentTarget);
   mealEl('meal-recipe-status').textContent = 'Gemmer kilden i din private opskriftsindbakke …';
   try {
     await mealApi('/api/recipes', 'POST', { text: mealEl('meal-recipe-text').value,
       urls: mealEl('meal-recipe-urls').value.split('\n').map(value => value.trim()).filter(Boolean), source: { channel: 'web' } });
+    if (!mealSessionCurrent(generation, owner)) return;
     mealEl('meal-recipe-text').value = ''; mealEl('meal-recipe-urls').value = '';
     mealClearDraft('recipe-capture'); mealRegisterRecipeCaptureDraft();
     mealEl('meal-recipe-status').textContent = 'Gemt som udkast. Gennemgå opskriften nedenfor, før du godkender den til madplaner.';
     await refreshRecipes();
-  } catch (error) { mealEl('meal-recipe-status').textContent = error.message; }
+  } catch (error) { if (mealSessionCurrent(generation, owner)) mealEl('meal-recipe-status').textContent = error.message; }
   finally { unlock(); }
 });
 mealEl('meal-recipes-refresh').addEventListener('click', () => refreshRecipes().catch(error => toast(error.message)));
@@ -1790,14 +1806,38 @@ mealEl('meal-google-connect').addEventListener('click', async () => {
 });
 mealEl('meal-google-calendar-form').addEventListener('submit', async event => {
   event.preventDefault();
+  if (calendarSelectionSaving) return;
+  const generation = mealSessionGeneration, owner = localStorage.getItem('jarvisAccessToken');
+  const input = mealEl('meal-google-calendar-id'), submitted = input.value;
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  const status = mealEl('meal-calendar-draft-status');
+  let confirmed = false;
+  calendarSelectionSaving = true; submit.disabled = true;
+  calendarSelectionDirty = true; mealDirty.add('calendar-selection'); mealPersistDrafts();
+  status.textContent = 'Gemmer kalendervalget …';
   try {
-    await mealApi('/api/google/calendar/select', 'POST', { calendarId: mealEl('meal-google-calendar-id').value.trim() });
-    calendarSelectionDirty = false;
-    mealClearDraft('calendar-selection'); mealRegisterCalendarDraft();
+    await mealApi('/api/google/calendar/select', 'POST', { calendarId: submitted.trim() });
+    if (!mealSessionCurrent(generation, owner)) return;
+    confirmed = true; calendarStatusSequence++;
+    if (input.value === submitted) {
+      calendarSelectionDirty = false;
+      mealClearDraft('calendar-selection'); mealRegisterCalendarDraft();
+      status.textContent = 'Kalendervalget er gemt.';
+    } else {
+      mealPersistDrafts();
+      status.textContent = 'Det sendte kalendervalg er gemt. Dine nyere ændringer er stadig en ugemt kladde.';
+    }
     mealCalendarCache = null; showHouseholdCalendar();
     await Promise.all([refreshGoogle(), refreshHouseholdCalendar()]);
+    if (!mealSessionCurrent(generation, owner)) return;
     mealEl('meal-google-events').replaceChildren();
-  } catch (error) { mealEl('meal-google-status').textContent = `Kalendervalget blev ikke gemt: ${error.message}`; }
+  } catch (error) {
+    if (mealSessionCurrent(generation, owner)) status.textContent = confirmed
+      ? `Kalendervalget blev gemt, men status kunne ikke opdateres: ${error.message}. Eventuelle nyere ændringer er bevaret.`
+      : `Gemningen kunne ikke bekræftes: ${error.message}. Din kladde er bevaret.`;
+  } finally {
+    if (mealSessionCurrent(generation, owner)) { calendarSelectionSaving = false; submit.disabled = false; mealPersistDrafts(); }
+  }
 });
 mealEl('meal-google-load').addEventListener('click', async () => {
   if (typeof JarvisCalendar === 'object') { await JarvisCalendar.load(); return; }
@@ -1816,9 +1856,13 @@ mealEl('meal-google-disconnect').addEventListener('click', async () => {
 });
 mealEl('meal-nemlig-search-form').addEventListener('submit', async event => {
   event.preventDefault();
-  try { const { products } = await mealApi('/api/nemlig/search', 'POST', { query: mealEl('meal-nemlig-search').value }); showNemligProducts(products); }
-  catch (error) { toast(error.message); }
-  finally { await refreshNemlig().catch(() => {}); } // Local observation only, never a new retailer probe.
+  const generation = mealSessionGeneration, owner = localStorage.getItem('jarvisAccessToken'), request = ++mealNemligSearchSequence;
+  const current = () => mealSessionCurrent(generation, owner) && request === mealNemligSearchSequence;
+  try {
+    const { products } = await mealApi('/api/nemlig/search', 'POST', { query: mealEl('meal-nemlig-search').value });
+    if (current()) showNemligProducts(products);
+  } catch (error) { if (current()) toast(error.message); }
+  finally { if (current()) await refreshNemlig().catch(() => {}); } // Local observation only, never a new retailer probe.
 });
 mealEl('meal-nemlig-propose').addEventListener('click', async () => {
   if (!mealSelection.size) return toast('Vælg først mindst én vare.');
@@ -1829,9 +1873,11 @@ mealEl('meal-nemlig-propose').addEventListener('click', async () => {
   finally { await refreshNemlig().catch(() => {}); }
 });
 mealEl('meal-nemlig-view-basket').addEventListener('click', async () => {
-  try { const { basket } = await mealApi('/api/nemlig/basket'); showBasket(basket); }
-  catch (error) { toast(error.message); }
-  finally { await refreshNemlig().catch(() => {}); }
+  const generation = mealSessionGeneration, owner = localStorage.getItem('jarvisAccessToken'), request = ++mealNemligBasketSequence;
+  const current = () => mealSessionCurrent(generation, owner) && request === mealNemligBasketSequence;
+  try { const { basket } = await mealApi('/api/nemlig/basket'); if (current()) showBasket(basket); }
+  catch (error) { if (current()) toast(error.message); }
+  finally { if (current()) await refreshNemlig().catch(() => {}); }
 });
 
 function mealRegisterRecipeCaptureDraft() {
@@ -1870,6 +1916,10 @@ for (const eventName of ['input', 'change', 'click']) document.addEventListener(
 });
 mealEl('logout')?.addEventListener('click', () => {
   mealSessionGeneration++; mealLoaded = false; mealDirty.clear(); mealRecoveredDrafts = {}; mealDraftControllers.clear(); mealSelection.clear();
+  for (const unlock of [...mealPendingLocks]) unlock();
+  calendarSelectionSaving = false; calendarStatusSequence++; mealNemligSearchSequence++; mealNemligBasketSequence++;
+  mealEl('meal-google-calendar-form').querySelector('button[type="submit"]').disabled = false;
+  mealEl('meal-calendar-draft-status').textContent = ''; mealEl('meal-google-status').textContent = '';
   mealCalendarCache = null; mealCalendarReadSequence++; mealCalendarReading = false; mealCalendarRenderSignature = '';
   mealEl('meal-family-calendar-comparison').replaceChildren();
   mealEl('meal-family-calendar-status').textContent = 'Ingen kalenderdækning er læst i denne session.';

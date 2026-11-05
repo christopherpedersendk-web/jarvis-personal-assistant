@@ -49,6 +49,9 @@ const initialAssetHashes = await publicAssetHashes();
 const candidateIdentity = await guiIdentity();
 const accessibilityReports = [];
 const todayReports = [];
+const deviceReports = [];
+const failedDevices = [];
+let completed = false;
 const serverSocket = createServer();
 await new Promise((resolve, reject) => serverSocket.listen(0, '127.0.0.1', error => error ? reject(error) : resolve()));
 const port = serverSocket.address().port;
@@ -725,6 +728,9 @@ async function verifyHistory(page, label) {
   assert.equal(await page.locator('#messages .bubble').count(), 20, `${label}: bootstrap is bounded to the latest twenty messages`);
   assert.match(await page.locator('#history-count').innerText(), /20 af 65/);
   await page.locator('#history-older').focus(); await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat-attach-context',
+    `${label}: the explicit context control remains in the normal keyboard order before history and composer`);
+  await page.keyboard.press('Tab');
   // Chromium makes a genuinely scrollable region keyboard-focusable; WebKit
   // may go directly to the composer. Both must retain the same logical order,
   // with no unrelated control or focus trap inserted between these regions.
@@ -1146,7 +1152,7 @@ async function verifyAccessibility(page, width, height, label) {
   try {
     await page.setViewportSize(reduced);
     for (const [view, control, labelText] of [
-      ['home', '#message', 'Besked til JARVIS'], ['plan', '#personal-task-title', 'Hvad vil du nå?'], ['meals', '#meal-adults', 'Voksne som standard'],
+      ['home', '#message', 'Din besked'], ['plan', '#personal-task-title', 'Hvad vil du nå?'], ['meals', '#meal-adults', 'Voksne som standard'],
       ['knowledge', '#knowledge-query', 'Hvad vil du finde?'], ['projects', '#project-title', 'Nyt projekt'], ['memory', '#preferences', 'Hukommelsesnoter'],
       ['smart-home', '#smart-home-load-hue', 'Opdater Hue-lys'],
     ]) {
@@ -1396,11 +1402,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await verifyMealLeftovers(page, label, day, recipeId, rawTitle);
 }
 
-async function runDevice(type, width, height, label) {
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
-  await context.route('**/*', route => new URL(route.request().url()).origin === origin
-    ? route.continue() : route.abort('blockedbyclient'));
-  const page = await context.newPage();
+async function runDevice(type, width, height, label, page, evidence) {
   const basketMutations = [];
   const prohibitedPlanningActivations = [];
   const jobWrites = [], projectWrites = [], prohibitedCodeActions = [];
@@ -1413,7 +1415,7 @@ async function runDevice(type, width, height, label) {
     if (request.method() !== 'GET' && (path.startsWith('/api/google/calendar') || path.endsWith('/action') && path.startsWith('/api/tasks') || path === '/api/proactive/settings'))
       prohibitedPlanningActivations.push(path);
   });
-  page.on('pageerror', error => errors.push(`${label}: ${error.message}`));
+  page.on('pageerror', error => { errors.push(`${label}: ${error.message}`); evidence.runtimeErrors.push(error.message); });
   await signIn(page);
   for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'watches', 'settings']) {
     assert.equal(await page.locator(`#tab-${view}`).count(), 1, `${label}: missing view ${view}`);
@@ -1579,8 +1581,41 @@ async function runDevice(type, width, height, label) {
   assert.deepEqual(prohibitedCodeActions, [], `${label}: project/approval views cannot generate code, run an installer/test or apply code`);
   await navigate(page, 'home');
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });
-  await context.close();
   return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts and dependency review without model/installer activity, field-bound settings drafts, claim correction/replacement/history, lazy legacy-note history/read-only archive, organizer drafts/conflicts, household precedence/guests/holiday/absence/portions, explicit revision-bound planned leftovers/unlink/unknown pricing, manual shopping quantities/basis review/reset/exclusion without retailer activity, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
+}
+
+async function attemptDevice(type, width, height, label) {
+  const evidence = { label, engine: type, viewport: { width, height }, status: 'running',
+    startedAt: new Date().toISOString(), runtimeErrors: [] };
+  deviceReports.push(evidence);
+  let context, page;
+  try {
+    context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+    await context.route('**/*', route => new URL(route.request().url()).origin === origin
+      ? route.continue() : route.abort('blockedbyclient'));
+    page = await context.newPage();
+    const summary = await runDevice(type, width, height, label, page, evidence);
+    assert.deepEqual(evidence.runtimeErrors, [], `${label}: browser runtime errors`);
+    evidence.status = 'passed';
+    return summary;
+  } catch (error) {
+    evidence.status = 'failed'; evidence.error = error.stack || String(error); evidence.url = page?.url() || null;
+    if (page) {
+      const filename = `${label}-failure.png`;
+      await page.screenshot({ path: join(screenshotDir, filename), fullPage: true, animations: 'disabled' })
+        .then(() => { evidence.failureScreenshot = filename; })
+        .catch(failure => { evidence.screenshotError = failure.message; });
+    }
+    failedDevices.push({ label, error: error.message });
+    return `${label}: FAILED — ${evidence.error}`;
+  } finally {
+    evidence.finishedAt = new Date().toISOString();
+    await context?.close().catch(error => {
+      evidence.cleanupError = error.message;
+      if (evidence.status !== 'failed') { evidence.status = 'failed'; failedDevices.push({ label, error: `Context cleanup: ${error.message}` }); }
+      console.error(`${label}: context cleanup failed: ${error.message}`);
+    });
+  }
 }
 
 try {
@@ -1596,24 +1631,29 @@ try {
     : existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : chromium.executablePath();
   browser = await chromium.launch({ headless: true, executablePath: chromiumPath, args: ['--no-sandbox'] });
   const reports = [];
-  reports.push(await runDevice('chromium', 1390, 950, 'desktop'));
-  reports.push(await runDevice('chromium', 390, 844, 'mobile'));
+  reports.push(await attemptDevice('chromium', 1390, 950, 'desktop'));
+  reports.push(await attemptDevice('chromium', 390, 844, 'mobile'));
   await browser.close(); browser = undefined;
   if (existsSync(webkit.executablePath())) {
     browser = await webkit.launch({ headless: true });
-    reports.push(await runDevice('webkit', 1390, 950, 'webkit-desktop'));
-    reports.push(await runDevice('webkit', 390, 844, 'webkit-mobile'));
+    reports.push(await attemptDevice('webkit', 1390, 950, 'webkit-desktop'));
+    reports.push(await attemptDevice('webkit', 390, 844, 'webkit-mobile'));
   } else if (process.env.JARVIS_REQUIRE_WEBKIT === 'yes') throw new Error('WebKit is required by the v5 CI gate, but its binary is absent.');
   else reports.push('WebKit: PENDING; browser binary unavailable in this development environment');
-  assert.deepEqual(errors, [], 'browser runtime errors');
-  assert.deepEqual(await publicAssetHashes(), initialAssetHashes, 'public assets changed while browser evidence was being collected');
   console.log(reports.join('\n'));
   console.log(`Synthetic screenshots: ${screenshotDir}`);
+  assert.deepEqual(errors, [], 'browser runtime errors');
+  assert.deepEqual(await publicAssetHashes(), initialAssetHashes, 'public assets changed while browser evidence was being collected');
+  assert.equal(failedDevices.length, 0, `Deep v5 device failures: ${JSON.stringify(failedDevices)}`);
+  completed = true;
 } finally {
   try {
     const finalAssetHashes = await publicAssetHashes();
     await writeFile(join(screenshotDir, 'accessibility-report.json'), JSON.stringify({
       generatedAt: new Date().toISOString(), ...candidateIdentity, candidateRevision: candidateIdentity.candidateCommit,
+      status: completed ? deviceReports.length === 4 ? 'passed' : 'partial' : 'failed',
+      devices: deviceReports, failures: failedDevices,
+      fixtureScope: 'Each device uses a fresh browser context. The disposable local server state is shared, as in the original v5 regression; later cases can observe earlier synthetic writes, including writes preceding a failed case. No retries or live integrations.',
       publicAssetHashes: initialAssetHashes, assetsUnchangedDuringRun: JSON.stringify(initialAssetHashes) === JSON.stringify(finalAssetHashes),
       reports: accessibilityReports, today: todayReports, limitations: ['Selected computed-style checks are not a full accessibility certification.',
         'Calendar browser evidence uses synthetic HTTP cache responses and the real card projection; it is not a live Google or production check.',

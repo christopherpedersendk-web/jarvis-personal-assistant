@@ -287,7 +287,13 @@
 <section id="settings-notifications" class="settings-subview hidden" aria-label="Notifikationer"></section>
 <section id="settings-integrations" class="settings-subview hidden" aria-label="Integrationer"></section>
 <section id="settings-automations" class="settings-subview hidden" aria-label="Automatiseringer"></section>
-<section id="settings-system" class="settings-subview hidden" aria-label="System og opdateringer"></section>
+<section id="settings-system" class="settings-subview hidden" aria-label="System og opdateringer">
+  <section id="ai-setup" class="panel gui-settings-group" tabindex="-1" aria-labelledby="ai-setup-title">
+    <h2 id="ai-setup-title">AI-forbindelse på serveren</h2>
+    <p class="muted small-text">Chat og stemme bruger serverens OpenAI-forbindelse. Åbn <code>.env</code> på serveren, angiv din API-nøgle i <code>OPENAI_API_KEY</code>, og genstart JARVIS.</p>
+    <p class="muted small-text">API-nøgle, login-token, serverbinding og tilladelse til softwareinstallation er serverindstillinger, som ikke kan ændres i browseren. Del ikke nøglen i samtalen.</p>
+  </section>
+</section>
 <section id="settings-device" class="settings-subview hidden" aria-label="Denne enhed"></section></div>
         <div id="settings-legacy" class="hidden">
         <section class="panel intelligence-panel">
@@ -398,7 +404,6 @@
 <section id="settings-nest-info" class="gui-settings-group">
 <h3>Google Nest-dørklokke</h3>
           <p class="muted small-text">Under forberedelse: kræver Google Device Access, separat OAuth-adgang og en Pub/Sub-subscription. Dørklokke-data er endnu ikke forbundet. Ingen kamerabilleder gemmes af JARVIS.</p>
-          <p class="muted small-text">API-nøgle, login-token, serverbinding og tilladelse til softwareinstallation er sikkerhedskritiske serverindstillinger og kan endnu ikke ændres i browseren.</p>
 
 </section>
 </section>

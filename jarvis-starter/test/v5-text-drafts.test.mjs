@@ -7,17 +7,19 @@ const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf
 const bootstrapSource = source.slice(source.indexOf('const savedDrafts ='), source.indexOf('\nfunction canonicalView('));
 const savedSource = source.slice(source.indexOf('function markDraftSaved('), source.indexOf('\nfunction showTextDraftReview('));
 const saveSource = source.slice(source.indexOf('async function saveTextDraft('), source.indexOf('\nfor (const id of Object.keys(savedDrafts))'));
+const updateSource = source.slice(source.indexOf('function updateDraft('), source.indexOf('\nfunction markDraftSaved('));
+const secretarySource = source.slice(source.indexOf('let secretaryReadSequence ='), source.indexOf("\n$('save-playbook').addEventListener"));
 const storageKey = 'jarvis:v5:unsaved-text';
 function fixture(api, { initialDraft = true, saved = null, owner = 'synthetic-owner-session' } = {}) {
   const nodes = new Map(), storage = new Map(saved === null ? [] : [[storageKey, JSON.stringify(saved)]]);
   const $ = id => { if (id.endsWith('-review-conflict')) return null;
-    if (!nodes.has(id)) nodes.set(id, { value: '', textContent: '', disabled: false, classList: { remove() {} } }); return nodes.get(id); };
+    if (!nodes.has(id)) nodes.set(id, { value: '', textContent: '', disabled: false, classList: { remove() {}, add() {} }, replaceChildren() { this.textContent = ''; } }); return nodes.get(id); };
   let persists = 0, reviews = 0, refreshes = 0;
-  const context = vm.createContext({ $, token: owner, api,
+  const context = vm.createContext({ $, token: owner, api, document: { activeElement: null },
     sessionStorage: { getItem: key => storage.get(key) ?? null,
       setItem: (key, value) => { persists++; storage.set(key, value); }, removeItem: key => storage.delete(key) },
     showTextDraftReview: () => reviews++, refresh: async () => refreshes++ });
-  vm.runInContext(`${bootstrapSource}\n${savedSource}\n${saveSource}`, context);
+  vm.runInContext(`${bootstrapSource}\n${updateSource}\n${savedSource}\n${saveSource}\n${secretarySource}`, context);
   const savedDrafts = vm.runInContext('savedDrafts', context);
   if (initialDraft) {
     Object.assign(savedDrafts.preferences, { dirty: true, value: 'Afsendt tekst', serverValue: 'Oprindelig tekst', latestServerValue: 'Oprindelig tekst' });
@@ -25,7 +27,8 @@ function fixture(api, { initialDraft = true, saved = null, owner = 'synthetic-ow
   }
   return { $, savedDrafts, storage, persist: () => context.persistTextDrafts(),
     save: () => context.saveTextDraft('preferences', '/api/preferences', 'text'),
-    setOwner: value => { context.token = value; }, logout: () => { context.token = ''; context.clearTextDrafts(); },
+    secretary: () => context.refreshSecretary(),
+    setOwner: value => { context.token = value; }, logout: () => { context.token = ''; context.clearTextDrafts(); context.clearSecretary(); },
     counts: () => ({ persists, reviews, refreshes }) };
 }
 
@@ -120,4 +123,45 @@ test('GUI-T11 changing the authenticated owner also invalidates an in-flight tex
   assert.equal(f.$('preferences-draft-status').textContent, 'Anden session');
   assert.equal(f.savedDrafts.preferences.serverValue, 'Oprindelig tekst');
   f.logout(); await f.save(); assert.equal(writes, 1);
+});
+
+
+for (const outcome of ['success', 'failure']) test(`GUI-T11 a delayed secretary ${outcome} after logout cannot restore playbook or private summaries`, async () => {
+  let release;
+  const wait = new Promise(resolve => { release = resolve; });
+  const f = fixture(async path => {
+    assert.equal(path, '/api/secretary'); await wait;
+    if (outcome === 'failure') throw new Error('Privat fejl fra tidligere session');
+    return { playbook: 'Privat serverinstruktion fra tidligere session', inbox: [], approvals: [], pushEnabled: true };
+  });
+  for (const id of ['secretary-inbox', 'approvals', 'secretary-count', 'push-status']) f.$(id).textContent = 'Privat indhold';
+  const reading = f.secretary(); f.logout();
+  release(); await reading;
+  for (const id of ['secretary-inbox', 'approvals', 'secretary-count', 'push-status']) assert.equal(f.$(id).textContent, '');
+  assert.equal(f.$('playbook').value, ''); assert.equal(f.savedDrafts.playbook.serverValue, null);
+  assert.equal(f.storage.has(storageKey), false);
+});
+
+test('GUI-T11 delayed secretary reads are bound to the original session and cannot rebase a newer playbook draft', async () => {
+  let release;
+  const wait = new Promise(resolve => { release = resolve; });
+  const f = fixture(async () => { await wait; return { playbook: 'Gammel sessions tekst', inbox: [], approvals: [] }; });
+  const reading = f.secretary(); f.setOwner('another-synthetic-owner');
+  Object.assign(f.savedDrafts.playbook, { dirty: true, value: 'Ny kladde', serverValue: 'Nyt basis', latestServerValue: 'Nyt basis' });
+  f.$('playbook').value = 'Ny kladde';
+  release(); await reading;
+  assert.equal(f.$('playbook').value, 'Ny kladde');
+  assert.equal(f.savedDrafts.playbook.latestServerValue, 'Nyt basis');
+});
+
+test('GUI-T11 latest secretary response wins and same-session reads keep the exact unsaved playbook basis', async () => {
+  const releases = [];
+  const f = fixture(async () => new Promise(resolve => releases.push(resolve)));
+  const first = f.secretary(), second = f.secretary();
+  releases[1]({ playbook: 'Aktuelt grundlag', inbox: [], approvals: [] }); await second;
+  Object.assign(f.savedDrafts.playbook, { dirty: true, value: 'Ugemt forbedring' }); f.$('playbook').value = 'Ugemt forbedring';
+  releases[0]({ playbook: 'Ældre svar', inbox: [], approvals: [] }); await first;
+  assert.equal(f.$('playbook').value, 'Ugemt forbedring');
+  assert.equal(f.savedDrafts.playbook.serverValue, 'Aktuelt grundlag');
+  assert.equal(f.savedDrafts.playbook.latestServerValue, 'Aktuelt grundlag');
 });

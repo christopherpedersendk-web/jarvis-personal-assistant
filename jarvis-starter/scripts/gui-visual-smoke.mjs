@@ -81,6 +81,8 @@ async function layout(page, evidence, name, screenshot = true) {
   const result = await page.evaluate(() => {
     const width = document.documentElement.clientWidth;
     const visible = element => Boolean(element.getClientRects().length);
+    const toolbar = document.querySelector('.workspace-toolbar').getBoundingClientRect();
+    const content = document.querySelector('#workspace-main').getBoundingClientRect();
     const font = element => element ? { fontFamily: getComputedStyle(element).fontFamily,
       tag: element.tagName, id: element.id || null, visible: visible(element) } : null;
     const primary = [...document.querySelectorAll('.gui-nav-primary a[data-tab]')].filter(visible).map(element => {
@@ -88,7 +90,8 @@ async function layout(page, evidence, name, screenshot = true) {
       return { view: element.dataset.tab, text: element.innerText.trim(), width: rect.width, height: rect.height,
         left: rect.left, right: rect.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
     });
-    return { width, scrollWidth: document.documentElement.scrollWidth, primary,
+    return { width, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, primary,
+      contentStart: content.top, toolbarEnd: toolbar.bottom, contentTopGap: content.top - toolbar.bottom,
       fontSamples: { body: font(document.body), message: font(document.querySelector('#message')),
         button: font([...document.querySelectorAll('button')].find(visible)),
         select: font([...document.querySelectorAll('select')].find(visible)) },
@@ -105,6 +108,8 @@ async function layout(page, evidence, name, screenshot = true) {
   });
   evidence.layouts.push({ name, ...result });
   assert.ok(result.scrollWidth <= result.width + 2, `${name}: horizontal document overflow ${JSON.stringify(result)}`);
+  if (result.width >= 768) assert.ok(result.contentTopGap >= -1 && result.contentTopGap <= 32,
+    `${name}: the sidebar must not stretch the gap between the toolbar and main content: ${result.contentTopGap}px`);
   assert.deepEqual(result.primary.map(link => link.view), ['home', 'plan', 'smart-home', 'watches']);
   assert.equal(await page.locator('.tab-nav a[data-tab="settings"]:visible, .gui-mobile-settings:visible').count(), 1,
     `${name}: secondary settings stays directly reachable`);
@@ -369,6 +374,13 @@ async function verifyCase(browser, engine, width, mode) {
       await page.locator(`[data-settings-tab="${section}"]`).click();
       await page.locator(`#settings-${section}`).waitFor({ state: 'visible' });
       await layout(page, evidence, `settings-${section}`, section === 'system');
+    }
+    if (mode === 'normal' && width === 1024) {
+      try {
+        await page.setViewportSize({ width, height: 600 });
+        await layout(page, evidence, 'short-settings-device');
+      } finally { await page.setViewportSize({ width, height: evidence.height }); }
+      evidence.checks.push('T13: short desktop view keeps main content directly below the toolbar instead of stretching a blank grid row');
     }
     await page.locator('[data-settings-tab="system"]').click();
     await waitText(page, '#update-status', /testet|test|GitHub/i);

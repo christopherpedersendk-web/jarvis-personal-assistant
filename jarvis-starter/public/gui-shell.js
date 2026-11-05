@@ -2,10 +2,29 @@
 // draft controllers retain identity across all destinations.
 (() => {
   let navigate, routeNow, attachedContext = null, activeOverlay = null, returnFocus = null;
+  let historyLayoutFrame = 0;
   const byId = id => document.getElementById(id);
   const node = (tag, text, css) => { const el = document.createElement(tag); if (text) el.textContent = text; if (css) el.className = css; return el; };
   const move = (selector, id) => { const el = document.querySelector(selector), target = byId(id); if (el && target && el !== target && !el.contains(target)) target.append(el); return el; };
   const visible = el => Boolean(el && !el.hidden && !el.closest?.('.hidden,[hidden]'));
+  function scheduleHistoryLayout() {
+    if (historyLayoutFrame) return;
+    historyLayoutFrame = requestAnimationFrame(() => {
+      historyLayoutFrame = 0;
+      const host = byId('home-chat-host'), messages = byId('messages');
+      const chat = messages?.closest('.chat-panel');
+      if (!visible(host) || !messages || !chat || !host.contains(chat)) return;
+      const log = messages.getBoundingClientRect(), panel = chat.getBoundingClientRect();
+      const viewportHeight = Math.min(window.innerHeight, globalThis.visualViewport?.height || window.innerHeight);
+      const navigation = window.innerWidth < 768 ? document.querySelector('.tab-nav')?.getBoundingClientRect().height || 0 : 0;
+      // Budget only the scrollable history. Keep fields, feedback and Send at
+      // their natural size, including wrapped text and the actual bottom bar.
+      // Document coordinates prevent page scrolling from expanding the log.
+      const remaining = viewportHeight - (log.top + window.scrollY) - Math.max(0, panel.bottom - log.bottom) - navigation - 16;
+      const value = `${Math.max(64, Math.min(360, Math.floor(remaining)))}px`;
+      if (host.style.getPropertyValue('--gui-home-history-max') !== value) host.style.setProperty('--gui-home-history-max', value);
+    });
+  }
   function section(id, title, parent) {
     const el = node('section', '', 'panel gui-settings-group'); el.id = id;
     if (title) el.append(node('h2', title)); byId(parent)?.append(el); return el;
@@ -119,7 +138,17 @@
     byId('logout')?.addEventListener('click', () => { overlay(null); setContext(null); });
     globalThis.visualViewport?.addEventListener('resize', () => {
       document.documentElement.style.setProperty('--gui-viewport-height', `${globalThis.visualViewport.height}px`);
+      scheduleHistoryLayout();
     });
+    window.addEventListener('resize', scheduleHistoryLayout);
+    document.addEventListener('jarvis:refreshed', scheduleHistoryLayout);
+    if (globalThis.ResizeObserver) {
+      const historyResize = new ResizeObserver(scheduleHistoryLayout);
+      historyResize.observe(home);
+      historyResize.observe(host);
+      if (chat) historyResize.observe(chat);
+    }
+    scheduleHistoryLayout();
   }
   function open(panel) {
     const route = routeNow(); navigate(route.view, { ...route, panel, preserveDestination: true });
@@ -166,6 +195,7 @@
     }
     if (route.attention) { const details = byId('home-approvals'); if (details) details.open = true; }
     overlay(route.panel);
+    scheduleHistoryLayout();
     const attach = byId('chat-attach-context'); if (attach) attach.title = `Vedhæft ${route.label}${route.sourceId ? ' · ' + route.sourceId : ''}`;
   }
   function setContext(value) {
@@ -174,6 +204,7 @@
     const label = byId('chat-context-label'); if (label) label.textContent = attachedContext
       ? `${attachedContext.label}${attachedContext.sourceId ? ` · ${attachedContext.sourceId}` : ' · hele siden'}` : 'Ingen vedhæftet kontekst';
     const clear = byId('chat-context-clear'); if (clear) clear.hidden = !attachedContext;
+    scheduleHistoryLayout();
   }
   function openJobEditor(category) {
     navigate(category === 'monitor' ? 'watches' : 'plan', { section: 'tasks', kind: 'agent' });

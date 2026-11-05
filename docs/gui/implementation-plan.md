@@ -6,6 +6,7 @@ Dette arbejde implementerer den godkendte GUI-specifikation (R01–R18 og T01–
 
 - Isoleret branch: `feature/gui-redesign`.
 - Publiceringsbasis: remote `118f932dc53574b9de454f300ee7200f22eeeeaa`, træ `3a4620b59b3d4c1164119de88eed46da9d45593a`, identisk med lokal `cda86ce87724544782d71f93d846f57b151e8134`. De sidste to upstream-ændringer til 320 px indstillinger og Hjem-reflowtest er også bevaret.
+- Efter første publicering er upstreams `e33cb15d3799ff2f2d5999d83e4910d055646568` (lokal `3aa734a40ec77e85ad7a1acaaff74fc55f0f2ef3`, træ `da0adc59d281f4df857165ea3e5ec1106a83a690`) også sammenholdt. Dens ekstra native formvaliderings- og manglende HTTP-diagnostik er bevaret i den dybe browserrunner. PR #8 har fortsat `feature/v5-foundation` som base; den eksisterende PR #7/releaseplan er ikke ændret.
 - Oprindelig lokal basiscommit: `70eaf81ba64b20613b7cd073c265cced5418c3fa`.
 - Oprindeligt basistræ: `b153cf9dde2c51ffc6e3be7fdcf66db541bb7189`.
 - Træet er ved arbejdets start sammenholdt med `feature/v5-foundation`, remote `2f94679d` (den fulde remote-identitet registreres ved publicering).

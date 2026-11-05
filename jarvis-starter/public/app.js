@@ -330,6 +330,26 @@ document.addEventListener('jarvis:view-changed', () => {
   if (token && !$('workspace').classList.contains('hidden')) refreshActiveCore().catch(error => toast(error.message));
 });
 
+function openAiSetup(event) {
+  if (event && (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+  event?.preventDefault();
+  selectTab('settings', { section: 'system' });
+  const url = new URL(window.location.href); url.hash = 'ai-setup';
+  history.replaceState(history.state, '', url);
+  const target = $('ai-setup');
+  target?.focus({ preventScroll: true }); target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderAiReadiness() {
+  const readiness = $('chat-readiness'); if (!readiness) return;
+  readiness.classList.toggle('hidden', aiReady);
+  if (aiReady) { readiness.replaceChildren(); return; }
+  if (readiness.querySelector('[data-ai-setup]')) return;
+  const copy = document.createElement('span'); copy.textContent = 'Samtalen er ikke klar. Serverens OpenAI API-nøgle mangler. ';
+  const link = document.createElement('a'); link.href = '?view=settings&section=system#ai-setup';
+  link.dataset.aiSetup = ''; link.textContent = 'Se AI-opsætning'; link.addEventListener('click', openAiSetup);
+  readiness.replaceChildren(copy, link);
+}
+
 async function refresh() {
   const sessionToken = token;
   const state = await api('/api/state?scope=bootstrap');
@@ -345,9 +365,8 @@ async function refresh() {
   renderOverview(state);
   document.dispatchEvent(new CustomEvent('jarvis:refreshed'));
   updateDraft('preferences', state.preferences || '');
+  renderAiReadiness();
   await refreshActiveCore();
-  const readiness = $('chat-readiness');
-  if (readiness) { readiness.classList.toggle('hidden', aiReady); readiness.textContent = aiReady ? '' : 'Samtalen er ikke klar. Serverens API-nøgle mangler; se System og opdateringer.'; }
 }
 
 const taskStatus = {
@@ -381,7 +400,14 @@ async function refreshTasks() {
   } catch (error) { if (request === taskRefreshSequence && owner === token) watches.error(error.message); throw error; }
 }
 
+let secretaryReadSequence = 0;
+function clearSecretary() {
+  secretaryReadSequence++;
+  for (const id of ['secretary-inbox', 'approvals']) $(id).replaceChildren();
+  $('secretary-count').textContent = ''; $('push-status').textContent = '';
+}
 function renderSecretary(data) {
+  if (!token) return;
   updateDraft('playbook', data.playbook || '');
   $('push-status').textContent = data.pushEnabled ? 'Push: opsat' : 'Push: ikke opsat';
   $('secretary-count').textContent = `${(data.inbox || []).filter(x => !x.read).length} NYE`;
@@ -425,7 +451,15 @@ function renderSecretary(data) {
   }
 }
 
-async function refreshSecretary() { renderSecretary(await api('/api/secretary')); }
+async function refreshSecretary() {
+  const owner = token, epoch = textDraftGeneration, request = ++secretaryReadSequence;
+  const current = () => Boolean(owner && token === owner && epoch === textDraftGeneration && request === secretaryReadSequence);
+  if (!current()) return;
+  try {
+    const data = await api('/api/secretary');
+    if (current()) renderSecretary(data);
+  } catch (error) { if (current()) throw error; }
+}
 
 $('save-playbook').addEventListener('click', async () => {
   await saveTextDraft('playbook', '/api/playbook', 'content');
@@ -526,6 +560,7 @@ $('logout').addEventListener('click', () => {
   stopVoice();
   localStorage.removeItem('jarvisAccessToken');
   clearTextDrafts();
+  clearSecretary();
   try {
     for (const key of ['jarvis:v5:memory-note-draft', 'jarvis:v5:memory-claim-draft', 'jarvis:v5:memory-mode'])
       sessionStorage.removeItem(key);
@@ -623,7 +658,7 @@ function stopVoice() {
 
 async function startVoice() {
   if (startingVoice) return;
-  if (!aiReady) { toast('AI mangler opsætning. Se System og opdateringer.'); selectTab('settings', { section: 'system' }); return; }
+  if (!aiReady) { toast('AI mangler opsætning. Se OpenAI-forbindelsen på serveren.'); openAiSetup(); return; }
   startingVoice = true;
   $('voice-toggle').disabled = true;
   $('voice-status').textContent = 'Opretter sikker stemmeforbindelse …';

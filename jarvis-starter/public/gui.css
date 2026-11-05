@@ -107,7 +107,7 @@ button.full { width: 100%; }
 .brand small { margin-top: 1px; color: var(--gui-muted); font-size: 11px; line-height: 16px; font-weight: 400; letter-spacing: 0; }
 .brand-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 10px; color: var(--gui-accent-text); background: var(--gui-accent); font-size: 22px; font-weight: 750; }
 .status-tag { padding: 6px 10px; border: 1px solid var(--gui-separator); color: var(--gui-muted); font-size: 12px; line-height: 18px; max-width: 55%; overflow-wrap: anywhere; text-align: right; }
-.workspace { display: grid; grid-template-columns: var(--gui-sidebar-width) minmax(0, 1fr); column-gap: 32px; row-gap: 0; align-items: start; }
+.workspace { display: grid; grid-template-columns: var(--gui-sidebar-width) minmax(0, 1fr); grid-template-rows: max-content minmax(0, 1fr); column-gap: 32px; row-gap: 0; align-items: start; }
 .tab-nav { position: sticky; top: 24px; grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 0; min-height: calc(100dvh - 132px); padding: 0 16px 0 0; margin: 0; background: transparent; border: 0; border-right: 1px solid var(--gui-separator); border-radius: 0; box-shadow: none; overflow: visible; }
 .gui-nav-primary { display: flex; flex-direction: column; gap: 8px; }
 .gui-nav-secondary { margin-top: auto; padding-top: 32px; }
@@ -218,9 +218,13 @@ button.full { width: 100%; }
 #tab-home .hero-panel .action-row button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--gui-control-border); border-radius: 8px; color: var(--gui-text); background: var(--gui-surface-raised); font-size: 13px; box-shadow: none; }
 #tab-home .chat-panel { min-height: 0; height: auto; padding: 24px; }
 .chat-panel { gap: 12px; }
+.chat-panel > :not(.messages) { flex-shrink: 0; }
+.chat-panel > [role="status"] { margin: 0; }
+.chat-panel > [role="status"]:empty { display: none; }
 .chat-panel .section-heading { margin: 0; }
 .messages { flex: 0 1 auto; min-height: 0; max-height: 360px; padding: 0 0 4px; gap: 12px; overscroll-behavior: contain; }
 #tab-home .messages { min-height: 0; max-height: 360px; }
+#home-chat-host .messages:not(:has(> .empty)) { max-height: var(--gui-home-history-max, clamp(64px, calc(100dvh - 720px), 360px)); }
 .messages:empty { display: none; }
 .messages:has(> .empty), #tab-home .messages:has(> .empty) { flex: 0 0 auto; min-height: 0; max-height: none; padding: 4px 0 8px; }
 .empty { margin: 0; max-width: none; color: var(--gui-muted); text-align: left; font-size: 14px; line-height: 22px; }
