@@ -143,11 +143,24 @@ async function runDevice(type, width, height, label) {
   await page.locator('[data-claim-id] button').first().click();
   await page.locator('#knowledge-query').fill('Syntetisk personligt faktum');
   await page.locator('#knowledge-search-form button').click();
-  await page.locator('.knowledge-result button').first().waitFor({ state: 'visible' });
-  await page.locator('.knowledge-result button').first().click();
+  const exactClaimResult = page.locator('.knowledge-result').filter({ hasText: 'syntetisk_emne' }).first();
+  await exactClaimResult.locator('button').waitFor({ state: 'visible' });
+  await exactClaimResult.locator('button').click();
+  const selectedSource = new URL(page.url()).searchParams.get('source');
+  assert.match(selectedSource || '', /^claim:/,
+    `${label}: source navigation selected another record: ${selectedSource}`);
+  const selectedId = selectedSource.slice('claim:'.length);
+  await page.waitForTimeout(700);
+  const sourceDiagnostic = await page.evaluate(() => ({
+    cards: [...document.querySelectorAll('[data-claim-id]')].map(card => ({
+      id: card.dataset.claimId, selected: card.classList.contains('source-target'), visible: Boolean(card.getClientRects().length),
+    })),
+    status: document.querySelector('#tab-knowledge > .source-open-status')?.textContent || '',
+  }));
+  console.log(`${label} R11 source diagnostic: ${JSON.stringify({ selectedId, ...sourceDiagnostic, pageErrors: errors })}`);
   await page.locator('[data-claim-id].source-target').first().waitFor({ state: 'visible' });
-  assert.match(new URL(page.url()).searchParams.get('source') || '', /^claim:/,
-    `${label}: source navigation must retain the exact knowledge record ID`);
+  assert.equal(await page.locator('[data-claim-id].source-target').first().getAttribute('data-claim-id'), selectedId,
+    `${label}: highlighted card must match the exact selected source revision`);
   await page.goBack();
   assert.equal(new URL(page.url()).searchParams.get('source'), null,
     `${label}: going back must restore the pre-source route`);

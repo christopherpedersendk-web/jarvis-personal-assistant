@@ -6,7 +6,7 @@ Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema
 
 **M1 published and verified:** commit `7161a873137c5c0f3933d875eb33f78b12bd3209`, exact tree `cbb6e412decd451ba9f980396d4edb8b29c8e5b9`, app subtree `78ce80b4bde0853e15490baf43f17cc92f13fa51`: [Actions run `41983867576`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41983867576) **243/243 Node 22 tests and Chromium/WebKit 4/4 succeeded**. A **new M5 UI iteration** is now local-only: the memory editor becomes a single visible entry point with a mode selector and session-scoped draft recovery, and source-route/focus assertions are added to browser smoke. Its browser evidence must be obtained from its own new commit; do not reuse `41983867576` for M5 acceptance.
 
-**M5 first browser verdict:** published commit `66acb7f0a00b1d8427ce69c3a7450d1b34ccd933`, app subtree `45758ad42f14fcc5edfa6df514b8abb60c258ae9`, [CI `41984714363`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41984714363) **243 Node 22 tests passed; Chromium desktop browser FAILED** on a real R11 source-highlight timing defect. The asynchronous claim refresh replaced the exact source element after it had been highlighted. A local correction now waits for the refresh promise before highlighting. **No browser acceptance of this change until the corrected CI is green.**
+**M5 browser evidence remains open:** published commit `66acb7f0a00b1d8427ce69c3a7450d1b34ccd933`, app subtree `45758ad42f14fcc5edfa6df514b8abb60c258ae9`, [CI `41984714363`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41984714363) **243 Node 22 tests passed; Chromium desktop browser FAILED** looking for a claim source highlight after selecting the first lexical result. The event now awaits asynchronous refresh in published `4582edae` but [CI `41985321179`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41985321179) **failed the same browser assertion**. Root cause remains under investigation; the next fixture binds selection to the exact claim subject, validates the URL source ID, and logs DOM status. **No browser acceptance until corrected CI is green.**
 
 ## Provenance
 
@@ -55,6 +55,6 @@ The concrete staged M7 decision path, candidate binding and blockers are in `rel
 
 ## Continuation
 
-1. Publish the **R11 source-route correction** as a fast-forward child of `66acb7f0`, verify the exact Git tree, and run Node 22 plus all four Chromium/WebKit browser workflows. Record actual source-route, focus and restored note draft verdicts.
+1. Publish the **R11 exact-source diagnostic fixture** as a fast-forward child of `4582edae`, verify the exact Git tree, and run Node 22 plus all four Chromium/WebKit browser workflows. Use the observed URL/DOM evidence to fix any remaining defect; do not weaken the source-ID assertion.
 2. Complete the remaining background/project/multi-file write sweep, a genuine local Danish semantic provider and independent ≥90% source@5 evaluation. A shared backend memory schema still needs a safe migration; do not rewrite historic records speculatively.
 3. Arrange actual physical iPhone/desktop acceptance and an administrator-controlled recovery rehearsal. M7 merge, stable tag, release and installation remain **separate authorisations**.
