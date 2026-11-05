@@ -335,6 +335,7 @@ form, form > *, .task-form > *, .v5-fields > *, .time-pair > div, .gui-settings-
 .meal-warning { color: var(--gui-warning); background: #302b22; border-color: #9f855d; }
 .meal-calendar-comparison { font-size: 13px; }
 .home-device-card, .home-event { color: var(--gui-text); background: transparent; border-color: var(--gui-separator); }
+#home-smart-home:empty { display: none; }
 .smart-home-grid, .system-health-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 16px; }
 .home-player { gap: 12px; }
 .home-player strong { min-width: 0; overflow-wrap: anywhere; }
@@ -422,7 +423,7 @@ footer { color: var(--gui-muted); font-size: 12px; line-height: 18px; padding: 2
   .panel, .tab-view > .panel, .system-settings-group > .panel, .gui-settings-group { padding: 16px; }
   .section-heading { gap: 8px; }
   .section-heading h2 { font-size: 18px; }
-  #tab-home { display: flex; flex-direction: column; gap: 20px; }
+  #tab-home { display: flex; flex-direction: column; align-items: stretch; gap: 20px; }
   #home-chat-host { width: 100%; gap: 16px; }
   #home-intelligence { display: flex; flex-direction: column; width: 100%; gap: 0; padding: 16px; }
   #tab-home .hero-panel { padding: 0; gap: 0; }

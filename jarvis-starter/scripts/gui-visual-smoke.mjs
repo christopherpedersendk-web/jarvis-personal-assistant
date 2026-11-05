@@ -81,12 +81,17 @@ async function layout(page, evidence, name, screenshot = true) {
   const result = await page.evaluate(() => {
     const width = document.documentElement.clientWidth;
     const visible = element => Boolean(element.getClientRects().length);
+    const font = element => element ? { fontFamily: getComputedStyle(element).fontFamily,
+      tag: element.tagName, id: element.id || null, visible: visible(element) } : null;
     const primary = [...document.querySelectorAll('.gui-nav-primary a[data-tab]')].filter(visible).map(element => {
       const rect = element.getBoundingClientRect();
       return { view: element.dataset.tab, text: element.innerText.trim(), width: rect.width, height: rect.height,
         left: rect.left, right: rect.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
     });
     return { width, scrollWidth: document.documentElement.scrollWidth, primary,
+      fontSamples: { body: font(document.body), message: font(document.querySelector('#message')),
+        button: font([...document.querySelectorAll('button')].find(visible)),
+        select: font([...document.querySelectorAll('select')].find(visible)) },
       visibleMain: [...document.querySelectorAll('.tab-view')].filter(visible).map(element => element.id),
       localNavigation: [...document.querySelectorAll('.gui-subnav,.gui-settings-nav')].filter(visible).map(element => {
         const rect = element.getBoundingClientRect();
@@ -130,6 +135,35 @@ async function reachable(page, selector) {
   return result;
 }
 
+async function dialogKeyboard(page, evidence, { trigger, dialog, input, close }) {
+  const open = async () => {
+    await page.locator(trigger).focus(); await page.keyboard.press('Enter');
+    await page.locator(dialog).waitFor({ state: 'visible' });
+    await page.waitForFunction(selector => document.activeElement === document.querySelector(selector), input);
+  };
+  await open();
+  await page.locator(dialog).evaluate(panel => {
+    const fields = [...panel.querySelectorAll('a[href],button,input,textarea,select,[tabindex="0"]')]
+      .filter(element => !element.disabled && !element.hidden && !element.closest('.hidden,[hidden]') && element.getClientRects().length);
+    if (fields.length < 2) throw new Error('Dialog keyboard fixture needs distinct focus edges.');
+    window.guiDialogEdges = { first: fields[0], last: fields.at(-1) };
+    fields.at(-1).focus();
+  });
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement === window.guiDialogEdges.first), true,
+    `${dialog}: Tab stays inside the dialog at the last focusable control`);
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement === window.guiDialogEdges.last), true,
+    `${dialog}: Shift+Tab stays inside the dialog at the first focusable control`);
+  await page.keyboard.press('Escape'); await page.locator(dialog).waitFor({ state: 'hidden' });
+  assert.equal(await page.locator(trigger).evaluate(element => document.activeElement === element), true,
+    `${dialog}: Escape restores focus to the opening control`);
+  await open(); await page.locator(close).click(); await page.locator(dialog).waitFor({ state: 'hidden' });
+  assert.equal(await page.locator(trigger).evaluate(element => document.activeElement === element), true,
+    `${dialog}: the explicit close control restores focus to the opening control`);
+  evidence.checks.push(`T14: ${dialog} initial focus, both keyboard edges, Escape/close and focus return`);
+}
+
 async function navigationAndContext(page, fixture, evidence) {
   const sourceId = `organizer:${GUI_IDS.collection}:${GUI_IDS.item}`;
   await page.goto(`${origin}/?view=knowledge&source=${encodeURIComponent(sourceId)}&filter=mine`, { waitUntil: 'domcontentloaded' });
@@ -144,8 +178,32 @@ async function navigationAndContext(page, fixture, evidence) {
   await page.goBack(); await page.reload({ waitUntil: 'domcontentloaded' }); await target.waitFor({ state: 'visible' });
   assert.equal(new URL(page.url()).searchParams.get('source'), sourceId);
 
-  await page.locator('#global-search-open').click(); await page.locator('#knowledge-query').fill('gave');
+  await dialogKeyboard(page, evidence, { trigger: '#global-search-open', dialog: '#tab-knowledge', input: '#knowledge-query', close: '#global-search-close' });
+  await page.locator('#global-search-open').click();
+  await page.locator('#knowledge-query').fill('syntetisk-ingen-traeffere-928');
   await page.locator('#knowledge-search-form button[type="submit"]').click();
+  await waitText(page, '#knowledge-search-status', /^0 træffer/);
+  assert.equal(await page.locator('.knowledge-result').count(), 0);
+  assert.match(await page.locator('#knowledge-results').innerText(), /Ingen direkte træffere/);
+  assert.equal(await page.locator('#knowledge-query').inputValue(), 'syntetisk-ingen-traeffere-928');
+  await page.locator('#knowledge-query').fill('gave');
+  await page.locator('#knowledge-search-form button[type="submit"]').click();
+  await waitText(page, '#knowledge-search-status', /^1 træffer/);
+  fixture.searchError = true;
+  try {
+    await page.locator('#knowledge-query').fill('gave med syntetisk fejl');
+    await page.locator('#knowledge-search-form button[type="submit"]').click();
+    await waitText(page, '#knowledge-search-status', /Syntetisk søgefejl/);
+    const status = await page.locator('#knowledge-search-status').innerText();
+    assert.doesNotMatch(status, /^0 træffer/, 'a failed search cannot become a successful empty result');
+    if (await page.locator('.knowledge-result').count()) assert.match(status, /tidligere|forrige/i,
+      'retained results must be explicitly identified as belonging to an earlier search');
+    assert.equal(await page.locator('#knowledge-query').inputValue(), 'gave med syntetisk fejl');
+  } finally { fixture.searchError = false; }
+  evidence.checks.push('T09/T12: successful empty search and failed search with retained query and truthful prior-result status');
+  await page.locator('#knowledge-query').fill('gave');
+  await page.locator('#knowledge-search-form button[type="submit"]').click();
+  await waitText(page, '#knowledge-search-status', /^1 træffer/);
   await page.locator('.knowledge-result').getByRole('button', { name: 'Åbn kilde', exact: true }).click();
   await target.waitFor({ state: 'visible' }); await page.goBack();
   await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
@@ -155,6 +213,7 @@ async function navigationAndContext(page, fixture, evidence) {
   await target.waitFor({ state: 'visible' });
   evidence.checks.push('T01/T02/T09: exact old source, back/forward/reload and search return');
 
+  await dialogKeyboard(page, evidence, { trigger: '#global-chat-open', dialog: '#global-chat-panel', input: '#message', close: '#global-chat-close' });
   await page.locator('#global-chat-open').click();
   await page.locator('#chat-attach-context').click();
   const attached = await page.locator('#chat-context-label').innerText();
@@ -249,6 +308,20 @@ async function verifyCase(browser, engine, width, mode) {
     assert.equal(await page.locator('#plan-calendar').getByRole('button', { name: /^(Opret|Redigér|Slet) (aftale|begivenhed)/ }).count(), 0);
     await layout(page, evidence, 'calendar');
     evidence.checks.push('T04/T15: cached read-only calendar, local dates and no calendar write controls');
+    if (mode === 'normal' && width === 390) {
+      fixture.calendarDisconnected = true;
+      try {
+        await navigate(page, 'home');
+        await waitText(page, '#today-calendar', /ukendt eller ikke læst/);
+        assert.equal(await page.locator('#today-calendar [data-agenda-source-id]').count(), 0);
+        assert.doesNotMatch(await page.locator('#today-calendar').innerText(), /Ingen registrerede aftaler i den dækkede periode/);
+        await navigate(page, 'plan', 'calendar');
+        await waitText(page, '#calendar-read-status', /Kalenderen er ikke tilsluttet/);
+        assert.equal(await page.locator('#plan-calendar [data-calendar-event-id]').count(), 0);
+        await layout(page, evidence, 'calendar-disconnected');
+      } finally { fixture.calendarDisconnected = false; }
+      evidence.checks.push('T03/T04: explicitly disconnected calendar differs from an empty covered period; no invented event sources');
+    }
     await navigate(page, 'plan', 'meals');
     if (mode === 'normal') await page.locator(`[data-record-key="plan:${GUI_IDS.mealPlan}"]`).waitFor({ state: 'visible' });
     await layout(page, evidence, 'meals');

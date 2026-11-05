@@ -426,7 +426,7 @@ document.getElementById('knowledge-search-form').addEventListener('submit', asyn
       results.append(entry);
     }
     status.textContent = `${data.matches.length} træffer · lokal søgning · ingen eksterne modelkald`;
-  } catch (error) { if (current()) status.textContent = error.message; }
+  } catch (error) { if (current()) status.textContent = `Søgningen mislykkedes: ${error.message}${results.children.length ? '. Tidligere viste resultater er ikke opdateret for denne søgning.' : ''}`; }
 });
 
 async function refreshProactiveSettings() {

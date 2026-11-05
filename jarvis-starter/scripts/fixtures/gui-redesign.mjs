@@ -5,6 +5,7 @@ import { MealPlanner } from '../../meal-planner.mjs';
 import { integrationCatalog } from '../../integration-catalog.mjs';
 import { uiBootstrap } from '../../ui-read-model.mjs';
 import { buildCommandCenter } from '../../organizer-core.mjs';
+import { buildPersonalAgenda } from '../../proactive-planner.mjs';
 
 export const GUI_NOW = '2026-11-05T09:15:00.000Z';
 export const GUI_ZONE = 'Europe/Copenhagen';
@@ -102,16 +103,20 @@ export async function createGuiFixture(mode = 'normal') {
   const state = { ...mealsState, schemaVersion: 1, stateRevision: 1, history, tasks, projects: [], inbox: [], approvals: [],
     personalTasks: populated ? [personal] : [],
     preferences: '', playbook: '' };
-  const calendarSnapshot = () => ({ ...calendar, cacheState: mode === 'error' ? 'unavailable' : 'ready',
-    ready: mode !== 'error', rangeCovered: true, requestedRange: null, fetchedAt: calendar.lastReadAt,
-    expiresAt: '2026-11-05T09:19:00.000Z', events });
+  const calendarStatus = () => fixture.calendarDisconnected ? { ...calendar, connected: false,
+    connectionState: 'not_connected', lastReadAt: null, lastReadError: '', coverage: null } : calendar;
+  const calendarSnapshot = () => ({ ...calendarStatus(),
+    cacheState: fixture.calendarDisconnected ? 'not_connected' : mode === 'error' ? 'unavailable' : 'ready',
+    ready: !fixture.calendarDisconnected && mode !== 'error', rangeCovered: !fixture.calendarDisconnected,
+    requestedRange: null, fetchedAt: fixture.calendarDisconnected ? null : calendar.lastReadAt,
+    expiresAt: fixture.calendarDisconnected ? null : '2026-11-05T09:19:00.000Z', events: fixture.calendarDisconnected ? [] : events });
   const usage = { day: '2026-11-05', started: 0, limit: 10 };
   const requests = [];
   let messageGate = null;
   let messageReceived = null;
   let messageWaiter = null;
   const fixture = {
-    mode, now: GUI_NOW, tasks, requests, calendar, homeOutcome: 'success',
+    mode, now: GUI_NOW, tasks, requests, calendar, homeOutcome: 'success', searchError: false, calendarDisconnected: false,
     holdMessage: false,
     async waitForMessage() {
       if (messageReceived) return messageReceived;
@@ -129,7 +134,7 @@ export async function createGuiFixture(mode = 'normal') {
         return ok({ answer: history.at(-1).text });
       }
       if (method === 'POST' && path === '/api/knowledge/search') {
-        if (mode === 'error') return failure('Syntetisk søgefejl.');
+        if (mode === 'error' || fixture.searchError) return failure('Syntetisk søgefejl.');
         const matches = populated && String(body?.query || '').toLocaleLowerCase('da').includes('gave') ? [{
           id: `organizer:${GUI_IDS.collection}:${GUI_IDS.item}`, type: 'organizer',
           title: collection.title, label: collection.title, updatedAt: collection.updatedAt, text: collection.items[0].text, score: 1,
@@ -158,7 +163,7 @@ export async function createGuiFixture(mode = 'normal') {
       if (path === '/api/meals') return mode === 'error' ? failure('Syntetisk madplansfejl.') : ok({
         profile: meals.profile(), household: meals.household(), plans: meals.plans(), recipes: meals.recipes(), inventory: meals.inventory(),
       });
-      if (path === '/api/google/calendar/status') return ok(calendar);
+      if (path === '/api/google/calendar/status') return ok(calendarStatus());
       if (path === '/api/google/calendar/events') return mode === 'error' ? failure('Syntetisk kalenderfejl.') : ok({ events });
       if (path === '/api/google/calendar/cache') {
         const first = url.searchParams.get('startDate') || '2026-11-02';
@@ -197,8 +202,9 @@ export async function createGuiFixture(mode = 'normal') {
       });
       if (path === '/api/dashboard') {
         if (mode === 'error') return failure('Syntetisk dagsoversigt kunne ikke læses.');
-        return ok(buildCommandCenter({ state, organizer: { upcoming: () => [] }, now: new Date(GUI_NOW),
-          calendarSnapshot: calendarSnapshot() }));
+        const input = { state, organizer: { upcoming: () => [] }, now: new Date(GUI_NOW) };
+        return ok({ ...buildCommandCenter({ ...input, calendarSnapshot: calendarSnapshot() }),
+          agenda: buildPersonalAgenda(input), recentDigests: [] });
       }
       return null;
     },

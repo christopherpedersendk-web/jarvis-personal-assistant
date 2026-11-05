@@ -71,7 +71,22 @@ async function signIn(page) {
 async function uiWrite(page, method, path, action, statuses = [200]) {
   const waiting = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === method);
   await action();
-  const response = await waiting;
+  const response = await waiting.catch(async error => {
+    // A browser may block an invalid native form before fetch() runs. Preserve
+    // evidence of that real failure, including WebKit-specific validity rules,
+    // instead of silently treating a missing HTTP write as successful.
+    const diagnostic = await page.evaluate(() => ({
+      invalid: [...document.querySelectorAll('form :invalid')].map(control => ({
+        id: control.id, type: control.type, message: control.validationMessage,
+        validity: Object.fromEntries(['badInput', 'customError', 'patternMismatch', 'rangeOverflow', 'rangeUnderflow',
+          'stepMismatch', 'tooLong', 'tooShort', 'typeMismatch', 'valueMissing'].map(key => [key, control.validity?.[key] === true])),
+      })).slice(0, 12),
+      taskStatus: document.querySelector('#personal-task-status')?.textContent || '',
+      followStatus: document.querySelector('#follow-up-status')?.textContent || '',
+      focused: document.activeElement?.id || null,
+    })).catch(() => ({ unavailable: true }));
+    throw new Error(`${method} ${path}: no HTTP response (${error.message}); browser state: ${JSON.stringify(diagnostic)}`);
+  });
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
   await page.waitForFunction(() => !document.querySelector('.meal-family-day[aria-busy="true"], .meal-card[aria-busy="true"], #meal-family-form[aria-busy="true"], #meal-recipe-form[aria-busy="true"], .project-card[aria-busy="true"], #project-form[aria-busy="true"], #code-form[aria-busy="true"], #personal-claim-form[aria-busy="true"], .memory-v49-card[aria-busy="true"], #memory-workbench-form[aria-busy="true"], #personal-task-form [type="submit"]:disabled, #follow-up-form [type="submit"]:disabled, #capacity-form [type="submit"]:disabled'));
@@ -574,6 +589,29 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
   } finally { page.off('request', trackCalendar); }
 }
 
+async function verifySharedShoppingEntry(page, label, expected) {
+  const writes = [];
+  const track = request => { if (!['GET', 'HEAD'].includes(request.method())) writes.push({ method: request.method(), path: new URL(request.url()).pathname }); };
+  page.on('request', track);
+  try {
+    await navigate(page, 'notes');
+    const link = page.locator(`#meal-shopping-links [data-meal-plan-id="${expected.id}"]`);
+    await link.waitFor({ state: 'visible' }); assert.equal(await link.count(), 1);
+    await link.click();
+    const original = page.locator(`[data-record-key="plan:${expected.id}"].source-target`);
+    await original.waitFor({ state: 'visible' });
+    const url = new URL(page.url());
+    assert.equal(url.searchParams.get('view'), 'plan'); assert.equal(url.searchParams.get('section'), 'meals');
+    assert.equal(url.searchParams.get('source'), `meal-plan:${expected.id}`);
+    assert.equal(Number(await original.getAttribute('data-revision')), expected.revision);
+    const saved = (await fixtureRead(page, '/api/meals')).plans.filter(plan => plan.id === expected.id);
+    assert.equal(saved.length, 1, `${label}: the second entry cannot create a copied shopping list`);
+    assert.equal(saved[0].revision, expected.revision);
+    assert.deepEqual(saved[0].shoppingList, expected.shoppingList);
+    assert.deepEqual(writes, [], `${label}: opening the shared original shopping list is read-only`);
+  } finally { page.off('request', track); }
+}
+
 async function verifyShoppingChoices(page, label, previous) {
   const id = previous.id, sourceDate = previous.dishes[0].date;
   const plan = page.locator(`[data-record-key="plan:${id}"]`);
@@ -613,6 +651,8 @@ async function verifyShoppingChoices(page, label, previous) {
     assert.deepEqual(chosen.input, { expectedRevision: initial.body.plan.revision, items: [{ name: 'ris', quantity: 1000, unit: 'g' }] });
     assert.equal(chosen.body.plan.shoppingList[0].quantity, 1000);
     assert.equal(chosen.body.plan.shoppingNeedsReview, false);
+    assert.equal(chosen.body.plan.status, 'shopping_ready');
+    await verifySharedShoppingEntry(page, label, chosen.body.plan);
 
     await source.getByLabel('Lås denne ret ved nye forslag', { exact: true }).check();
     const locked = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
@@ -1380,8 +1420,8 @@ async function runDevice(type, width, height, label) {
   }
   await page.locator('#tab-home .chat-panel').waitFor({ state: 'visible' });
   await waitForTodayCards(page, label);
-  assert.match(await page.locator('#tab-home .hero-panel h1').innerText(), /Christopher/,
-    `${label}: the Danish greeting lost its word spacing`);
+  assert.equal((await page.locator('#tab-home .hero-panel h1').innerText()).trim(), 'I dag',
+    `${label}: the Danish Today heading retains its explicit word spacing without inventing a user name`);
   assert.equal(await page.locator('#system-health-details').isVisible(), false,
     `${label}: normal technical system details must not crowd Today`);
   assert.equal(await page.locator('#message').isVisible(), true, `${label}: message input hidden`);
@@ -1402,6 +1442,13 @@ async function runDevice(type, width, height, label) {
   await page.locator('#personal-task-purpose').fill('Verificér den separate planlægningsarbejdsgang');
   const pastLocalTime = await page.evaluate(() => JarvisPlan.fromInstant(new Date(Date.now() - 120_000).toISOString()).slice(0, 16));
   await page.locator('#personal-task-deadline').fill(pastLocalTime);
+  const nativeTaskValidity = await page.locator('#personal-task-form').evaluate(form => ({
+    valid: form.checkValidity(), invalid: [...form.querySelectorAll(':invalid')].map(control => ({
+      id: control.id, type: control.type, message: control.validationMessage,
+      stepMismatch: control.validity?.stepMismatch === true,
+    })),
+  }));
+  assert.equal(nativeTaskValidity.valid, true, `${label}: native task form invalid before submit: ${JSON.stringify(nativeTaskValidity)}`);
   const createdTask = await uiWrite(page, 'POST', '/api/personal-tasks',
     () => page.locator('#personal-task-form button[type="submit"]').click(), [201]);
   await page.locator(`[data-personal-task-id="${createdTask.body.task.id}"]`).waitFor({ state: 'visible' });

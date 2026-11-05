@@ -4,24 +4,26 @@ ID'erne henviser til den normative GUI-specifikation. Historiske v5-Rxx-ID'er ha
 
 | Krav | Implementeringsområde | Test / observerbart resultat | Status |
 |---|---|---|---|
-| R01 Bevar produktet | Eksisterende modeller/API'er, flytning af DOM | T01: samme ID, type, data, kilder og rettigheder; fuld Node-regression | Node-kontrakter verificeret; kandidat-CI afventer |
-| R02 Navigation | Router, hovednavigation og lokale underfaner | T02: gamle links, præcis kilde, tilbage/frem og genindlæsning | Node-kontrakter verificeret; kandidat-CI afventer |
-| R03 I dag | Dagsoversigt, kompakt chat og relevant fejl | T03: normal/tom/frakoblet er forskellige, korrekt lokal dag | Node-kontrakter verificeret; kandidat-CI afventer |
-| R04 Opgaver og kalender | Planlægningsgrupper og kalender | T01/T04: projekter bevarer detaljer; kalender uden uunderstøttet skrivning | Node-kontrakter verificeret; kandidat-CI afventer |
-| R05 Madplan | Eksisterende måltids- og indkøbseditorer | T05: gemt kontra forslag; samme listeidentitet; ingen skjult overførsel | Node-kontrakter verificeret; kandidat-CI afventer |
-| R06 Noter og hukommelse | Noter i Planlægning, hukommelse i Indstillinger | T01: ubekræftet forbliver ubekræftet; samme kilde og objekt | Node-kontrakter verificeret; kandidat-CI afventer |
-| R07 Hjem | Eksisterende smart home-kontroller | T06: bekræftet resultat kontra fejl; utilgængelige kapabiliteter | Node-kontrakter verificeret; kandidat-CI afventer |
-| R08 Overvågninger | Monitorvisning og fælles jobeditor | T07: pause/revision; gammel observation og nyere fejl samtidigt | Node-kontrakter verificeret; kandidat-CI afventer |
-| R09 Indstillinger | Seks kategorier og integrationskatalog | T04/T11: kapabiliteter, korrekt lokal gemning og kladder | Node-kontrakter verificeret; kandidat-CI afventer |
-| R10 System og opdatering | Systemstatus og deploymentkontroller | T08: konkret testet målversion; ændret SHA må ikke genbruge godkendelse | Node-kontrakter verificeret; kandidat-CI afventer |
-| R11 Søgning | Global søgning og kildekoordinator | T09: originalt objekt; tom, indlæser og fejl adskilt | Node-kontrakter verificeret; kandidat-CI afventer |
-| R12 Samtale og kontekst | Én flytbar chat og eksisterende message-API | T10: kontekst fast ved afsendelse, sen respons og nyere kladde bevares | Node-kontrakter verificeret; kandidat-CI afventer |
-| R13 Kladder | Eksisterende draft- og revisionsværn | T11: navigation, fejl, konflikt og logout; ingen fantomgemning | Node-kontrakter verificeret; kandidat-CI afventer |
-| R14 Tilstande | Domænevisninger og feedback | T06/T12: data, kapabilitet og handling vises særskilt | Node-kontrakter verificeret; kandidat-CI afventer |
-| R15 Visuelt system | Tokens og fælles kontrolstyling | T12: faktisk tekstkontrast ≥4,5:1 og nødvendig kontrolgrænse ≥3:1 | Afventer browser |
-| R16 Responsivitet | Side-/bundnavigation, paneler og safe area | T13/T14: seks CSS-bredder, ingen afklipning, fokus og handlinger kan nås | Afventer browser; fysisk keyboard særskilt |
-| R17 Sprog og input | Danske labels, tid og tastatur | T14/T15: fokus, 24-timersvisning, tidszone og dato uden tid | Node-kontrakter verificeret; kandidat-CI afventer |
-| R18 Aflevering | Testværktøjer, CI og disse dokumenter | T15: diff, screenshots, præcis kandidatidentitet og ærlige resultater | 930-test baseline registreret; endelig kandidat-CI afventer |
+| R01 Bevar produktet | `gui-shell.js`, `index.html`, bevarede domænemodeller/API’er | T01: samme ID, type, data, kilder og rettigheder; fuld Node-regression | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R02 Navigation | `gui-navigation.js`, `gui-shell.js`, `app.js`, `index.html` | T02: gamle links, præcis kilde, tilbage/frem og genindlæsning | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R03 I dag | `organizer.js`, `gui-today.js`, `app.js`, `gui.css` | T03: normal/tom/frakoblet er forskellige, korrekt lokal dag | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R04 Opgaver og kalender | `v5-plan.js`, `gui-calendar.js`, `v5-projects.js`, `gui-shell.js` | T01/T04: projekter bevarer detaljer; kalender uden uunderstøttet skrivning | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R05 Madplan | `meals.js`, `gui-today.js`, oprindeligt `plan.shoppingList` | T05: gemt kontra forslag; samme listeidentitet; ingen skjult overførsel | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R06 Noter og hukommelse | `organizer.js`, `memory-v49.js`, `v5-plan.js`, `gui-shell.js` | T01: ubekræftet forbliver ubekræftet; samme kilde og objekt | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R07 Hjem | `smart-home.js`, `index.html`, `gui.css` | T06: bekræftet resultat kontra fejl; utilgængelige kapabiliteter | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R08 Overvågninger | `gui-watches.js`, `job-policy.js`, `app.js` | T07: pause/revision; gammel observation og nyere fejl samtidigt | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R09 Indstillinger | `gui-shell.js`, `settings-drafts.js`, `intelligence.js` | T04/T11: kapabiliteter, korrekt lokal gemning og kladder | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R10 System og opdatering | `system-health.js`, `update-manager.mjs`, `server.mjs` | T08: konkret testet målversion; ændret SHA må ikke genbruge godkendelse | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R11 Søgning | `intelligence.js`, `gui-navigation.js`, `gui-shell.js` | T09: originalt objekt; tom, indlæser og fejl adskilt | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R12 Samtale og kontekst | `chat-draft.js`, `gui-shell.js`, `app.js` | T10: kontekst fast ved afsendelse, sen respons og nyere kladde bevares | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R13 Kladder | `settings-drafts.js`, `chat-draft.js`, `app.js`, bevarede domænecontrollere | T11: navigation, fejl, konflikt og logout; ingen fantomgemning | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R14 Tilstande | `gui-calendar.js`, `gui-watches.js`, `smart-home.js`, `system-health.js` | T06/T12: data, kapabilitet og handling vises særskilt | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R15 Visuelt system | `gui.css`, `index.html` | T12: faktisk tekstkontrast ≥4,5:1 og nødvendig kontrolgrænse ≥3:1 | Afventer browser |
+| R16 Responsivitet | `gui.css`, `gui-shell.js` | T13/T14: seks CSS-bredder, ingen afklipning, fokus og handlinger kan nås | Afventer browser; fysisk keyboard særskilt |
+| R17 Sprog og input | `gui-navigation.js`, `gui-today.js`, `gui-calendar.js`, `v5-plan.js` | T14/T15: fokus, 24-timersvisning, tidszone og dato uden tid | CI Node bestået; fuldt browserflow afventer korrigeret fixture |
+| R18 Aflevering | `scripts/gui-evidence.mjs`, `scripts/*visual-smoke.mjs`, `.github/workflows/gui-redesign.yml`, `docs/gui/` | T15: diff, screenshots, præcis kandidatidentitet og ærlige resultater | 976/976 CI Node; første browserkørsels faktiske resultater dokumenteret |
+
+Første CI: [`e454ec0`, run 42032130949](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949). Node: **976/976**. Browser: **12/36** fejltilstandsforløb bestod; normal/tom stoppede ved manglende `agenda` i testfixture. Den dybe regression stoppede ved en gammel velkomsttekst-assertion. Disse to testopsætningsfejl er rettet og afventer ny browserkørsel. Ingen af de blokerede forløb tælles som bestået.
 
 ## Testlag og deres grænser
 

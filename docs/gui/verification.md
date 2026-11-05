@@ -64,3 +64,16 @@ Lokale resultater er fra den reviewbare arbejdsgren efter integration af `186e85
 | Dybe v5-browserflows | **Afventer kandidatbundet CI** | Fire desktop/mobil-forløb, upstreams nye assertions bevaret |
 
 CI-artifacts angiver konkret SHA, Git-/app-træ, browserversioner, asset-/fixturehashes og faktisk resultat. Et fejlet eller ikke kørt scenarie forbliver fejlet eller afventer. Fysisk keyboard/safe-area, virkelige integrationer og produktionsdeployment er ikke testet her.
+
+## Første faktiske CI – e454ec0
+
+[Run 42032130949](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949) kørte den præcise commit `e454ec0776ecea85314b68a3d0e8e8f08781fc7d`, Git-træ `5286fca212deb2a1209848d2646c9baff29e1e7f`, app-træ `83b9238cdc41b12dc656f52997049deaea53b232`. `trackedChanges` var tom, og browserens assets var uændrede gennem kørslen.
+
+- CI Node 24.22.1: **976/976 bestået**, 0 fejl/skips, 31.686149 sekunder.
+- Chromium **156.0.8078.80** og WebKit **27.2** startede i det fastlåste Playwright-miljø.
+- Alle **36** GUI-scenarier blev forsøgt; de **12 fejltilstandsforløb** bestod. De 24 normal-/tomforløb stoppede før skærmenes øvrige kontroller, fordi den syntetiske dashboardresponse manglede `agenda`, som den rigtige server føjer til `buildCommandCenter`. Fixture er rettet til samme responsekontrakt; resultaterne afventer genkørsel.
+- Den dybe v5-smoke stoppede ved en gammel forventning om et hardcodet personnavn i overskriften. Det nye GUI bruger den specificerede titel **I dag**. Assertionen er tilpasset til den faktiske titel og ordmellemrum; resten af forløbet er endnu ikke godkendt fra denne kørsel.
+- Der var nul registrerede runtimefejl, eksterne requests eller ikke tilladte writes i GUI-matrixen. Dette gør ikke de 24 blokerede forløb bestået.
+- Faktiske screenshots af desktop og mobil er gennemgået. Tre konkrete CSS-rettelser til disclosures, tom Hjem-ramme og knapafstand følger med næste kandidat.
+
+Artifacts: [unit](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949/artifacts/13415834353) og [browser/screenshots/traces](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42032130949/artifacts/13416549000). ZIP-hashes er henholdsvis `e94d1c3ce6d0d819a1082f0f7f2855d29bf9416a31ebf56b847a4241ee6d80d0` og `ccfd3946e8e35917d8609f6ccc0d6b86165dadd61b53f90c4e0dea0826da8797`.
