@@ -85,6 +85,18 @@
   }
   function mount(options) {
     navigate = options.navigate; routeNow = options.getRoute;
+    // Native WebKit focus scrolling can place an input behind fixed mobile
+    // navigation, even when scroll-margin and available page padding are set.
+    // Keep a focused field in the unobscured part of the viewport.
+    document.addEventListener('focusin', event => {
+      const target = event.target, nav = document.querySelector('.tab-nav');
+      if (!target?.matches?.('input, textarea, select, button, [tabindex]') ||
+          !target.closest?.('.workspace') || target.closest('.tab-nav, .gui-overlay') ||
+          !nav || getComputedStyle(nav).position !== 'fixed') return;
+      const field = target.getBoundingClientRect(), bar = nav.getBoundingClientRect();
+      const overlap = field.bottom + 16 - bar.top;
+      if (overlap > 0 && field.top < bar.bottom) window.scrollBy(0, overlap);
+    }, true);
     const home = byId('tab-home'), host = node('div'); host.id = 'home-chat-host'; home.prepend(host);
     for (const css of ['.hero-panel', '.chat-panel']) move(`#legacy-layout ${css}`, 'home-chat-host');
     for (const [css, dest] of [['.tasks-panel','plan-agent'],['.projects-panel','tab-projects'],['.code-panel','settings-system']]) move(`#legacy-layout ${css}`, dest);

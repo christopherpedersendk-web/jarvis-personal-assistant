@@ -407,7 +407,7 @@ footer { color: var(--gui-muted); font-size: 12px; line-height: 18px; padding: 2
 }
 
 @media (max-width: 767px) {
-  :root { --gui-sidebar-width: 0px; }
+  :root { --gui-sidebar-width: 0px; scroll-padding-bottom: calc(var(--gui-bottom-clearance) + 24px); }
   .shell { padding: 16px 16px calc(var(--gui-bottom-clearance) + 24px); }
   .topbar { padding: 0 0 16px; min-height: 44px; gap: 12px; }
   .brand { font-size: 19px; gap: 8px; }
