@@ -2,6 +2,46 @@
 
 ## Aktuel gate – 5. november 2026
 
+**Seneste lokale kodekandidat: `435ff753f1137f140d401dba4377cee9b7d6535c`**, root-træ `d76b92395cc48d8241804f113d5ea4639ea4d769`, app-træ **`ce3358810137a2a36a995dcb4c800168a9bd6008`**. I separat rent worktree `jarvis-v5-verify-435ff75`:
+
+```sh
+cd jarvis-starter
+npm test -- --test-reporter=tap --test-reporter-destination=/workspace/scratch/0a910068d923/v5-435ff75-regression.tap
+```
+
+**930/930 bestået, 0 fejl, 0 skipped**, Node **24.22.1**,23.078,730197 ms, exit0 og rent worktree efter kørsel. TAP-filens SHA-256 er `d3674e60d281ea8da8c6c95ca5b0642f7a3a07dc9f0ab79f16db29b5f8201335`. De to B4/H2-reproduktioner nedenfor er rettet; nye12 tests var8 røde/4 grønne før rettelse og12/12 efter. Bred128-test-regression og separat23-test-peerreview bestod uden fund. Det er syntetiske, faktiske kanal-/jobkodekald med modelstubs, ikke fysisk tale eller ekstern modelbehandling. Browser-scriptet kontrollerer nu også de tre indlæste I dag-kort, præcise tastaturkilder/polling/back/kladder, faktisk dokumentreload og cacheversionsafvisning; den syntetiske kalenderfixture er tydeligt adskilt fra live Google. **Faktisk Node22-/browser-/model-/audit-/performance-CI på dette app-træ afventer stadig.**
+
+### Lokal parret performance – appce335881
+
+Kørt sekventielt fra det rene kodecheckpoint med Node24.22.1, samme benchmarkSHA `6f12ebae3b0d85648dc58c302711fc58c38aaeb540e4660e9ca2482af67f5b1a` og fixtureSHA `ed5f76624359bb2f2f6a0fcb2f31752ea1454b9cae7af26d404bad0f7c13962f`. Rå rapporter: `evidence/local-performance-baseline-435ff75.json` og `evidence/local-performance-candidate-435ff75.json`. Baselinecheckouten er rekonstrueret commit ecc2944 med præcis verificeret v4.9.1-apptræ900407cb; det er ikke en ny baseline.
+
+```sh
+node scripts/v5-perf.mjs --app /workspace/scratch/0a910068d923/jarvis-v491-perf/jarvis-starter --label v4.9.1 --output /workspace/scratch/0a910068d923/v5-local-435ff75/performance-baseline.json
+node scripts/v5-perf.mjs --label candidate-435ff75 --output /workspace/scratch/0a910068d923/v5-local-435ff75/performance-candidate.json
+```
+
+| Måling, samme syntetiske fixture | v4.9.1 | Appce335881 |
+|---|---:|---:|
+| Fuld state, bytes / lokal API-p95 |165.621 /15,312 ms|165.818 /18,489 ms|
+| Normal bootstrap, bytes / p95 |ikke tilgængelig|7.123 /3,880 ms|
+| Lille overview, bytes / p95 |ikke tilgængelig|117 /2,731 ms|
+| Leksikalsk retrieval-p95 |15,061 ms|24,803 ms|
+| Varig skrivning-p95 |12,793 ms|166,323 ms|
+| Lokale reads under simuleret modelventetid-p95 |16,079 ms|14,488 ms|
+| Samplet peak-RSS |88.481.792 B|91.267.072 B|
+
+Kandidatens tre jobs ventede0/229/467 ms i kø og kørte250/238/230 ms; simuleret200 ms modelventetid måltes til p95201,439 ms. Tre syntetiske modelkald, nul rigtige model-/tool-/basketkald, nul aktiverede recurringjobs og nul uventede netværksforsøg. Instruktionstekst6.669→6.852 tegn er ikke et token- eller faktureringsmål. Payloadfordelen er tydelig; fuld state, retrieval og især durable writes var **langsommere** i denne prøve. Storage-/runnerårsagen til den høje writehale er ikke isoleret, og én kort serie er ikke et SLA eller bevis for generel hastighed. Den planlagte Node22-CI-måling skal bevares som separat serie, ikke erstatte dette resultat.
+
+### Første samlede checkpoint – fejlresultat bevaret
+
+Samlet lokal checkpoint **`3be322bd90dd764798ab6239e5dc92d4e8696ffa`**, root-træ `deadfbd2df8253e6123a289b1fa3f2516ce9f1c4`, app-træ `155e774661ef5a42e7bafc3a5752afc46c2c89de`, testet i separat rent `jarvis-v5-verify-3be322b` med `cd jarvis-starter && npm test`, Node **24.22.1**: **917/918 bestået, 1 fejl, 0 skipped**, 26.269,412697 ms. Fejlen er `v5-discord-durability.test.mjs` / “Discord start during an old handler cancels waiting work and never overwrites new generation receipts or sends old replies”: det første syntetiske kontrolpunkt blev ikke nået. Årsagen undersøges; et timingproblem i testhjælperen må ikke antages uden reproduktion. Ingen assertions fjernes, og dette checkpoint kaldes ikke grønt. Alle nyere slices er nu commitbundet, men samlet CI/browser/model/performance afventer et verificeret opfølgningscheckpoint.
+
+Den efterfølgende tværgående gennemgang fandt to konkrete, lokale P1-reproduktioner på dette checkpoint: B4-talekonteksten brugte stadig `memoryContext().slice(0, 2500)` og kunne miste en notes afsluttende forbehold/gyldighed, selv om PersonalKnowledge var rettet; H2-baggrundsjob kunne få både den bundne 1.0.0-procedure og registryens aktuelle 1.1.0 ind i instructions. Begge kræver rettelse og regression på de faktisk anvendte kanal-/jobkald. De er kode-/testfund, ikke hændelser fra produktion. K2-browserdækningen udvides også til de faktiske tre I dag-kort og præcise links; eksisterende DOM-tests og et tidligt screenshot alene dokumenterer ikke disse browserforløb.
+
+Discord-årsagen er efterfølgende bevist som en **fixture-race**, ikke en demonstreret produktionsfejl: den gamle waiter gav 2.000 tomme eventloop-omgange, mens de krævede fsync/rename-checkpoints stadig ventede. Otte parallelle isolerede suiter gav **4/8 røde** før rettelsen. Med kontrolleret holdt writer opgav waiteren efter31 ms, men der var korrekt nul handlerkald og committed fase `waiting`; frigivelse afsluttede samme operation én gang. Den nye testbarriere observerer de faktiske journal-/handler-/køpromises og bevarer alle oprindelige assertions. Processing-testen holder writer gennem2.001 loop-omgange og kræver stadig nul handler/svar før publicering. Efter rettelsen: **17/17** fokuseret, **136/136** i samme otte parallelle kørsler, **47/47** i `node --test --test-concurrency=8 test/v5-discord-durability.test.mjs test/v5-discord.test.mjs test/discord-gateway.test.mjs test/v5-queue.test.mjs test/v46-features.test.mjs test/v47-personal-intelligence.test.mjs test/v5-stability.test.mjs`, 0 skip,2.162,8 ms. Testblob `3cd2ce1b8503db5dafc666059f5ee5645e0327a1`; produktionsblob `discord-gateway.mjs` er uændret `6d6ffd02e4a88f0c8d8f90b9330767fca0abee02`. En ny fuld kandidatregression er fortsat nødvendig.
+
+### Seneste publicerede runtimecheckpoint – historisk i forhold til ovenstående samlede kode
+
 **Seneste publicerede runtimecheckpoint: `2f94679d0e5d800fb3623134e7368bb69c77f178`**, lokal `70eaf81ba64b20613b7cd073c265cced5418c3fa`, root-træ `b153cf9dde2c51ffc6e3be7fdcf66db541bb7189`, app-træ `b519b67f04ccbdf90a7d8971ac28934f689876eb`. [CI42016975993](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42016975993) testede mergecommit `212712a8e142dd7b2255783022f3e45f9821ccfe` med identisk app-træ.
 
 - `npm test`: **674/674 Node22.23.4**, 0 fejl/skip,24.012,411746 ms. Separat rent lokalt worktree:674/674 Node24.22.1,12.906,056449 ms.

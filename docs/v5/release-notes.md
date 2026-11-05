@@ -22,6 +22,7 @@
 - Opdateringsjournalen beskytter også godkendelser mod diskfejl, samtidighed og afbrudt staging. Det faktisk viste tag/SHA bindes til handlingen; skjulte ignorerede testfiler, symlinks og ændret checkoutgrundlag kan ikke tælle som testet Git-indhold. Ukendt udfald låser nye handlinger og kræver kontrol.
 - I dags tre lokale kort forbinder aktuelle personlige opgaver/opfølgninger, eksplicit husstand/måltider og tidsstemplet kalendercache. Præcise kalenderkilder åbner kun samme gemte observation; gammel eller ufuldstændig dækning er ikke fri tid. Historiske monitorændringer erstatter ikke et nyere ukendt resultat.
 - Gennemgåede opskrifters præcise trin kan hentes i de fælles web-/Discord-/talekontrakter. Manglende eller uafklaret materiale opfindes ikke. Hukommelsens kategori og gyldighed følger den faktiske modelkontekst, så en bekræftet plan ikke bliver til en udført handling.
+- Tale- og kodekontekst bevarer hele hukommelsesposter med forbehold, kilde og gyldighed; ved pladsgrænsen udelades hele poster med synlig markering. Et automatiseret jobs gennemgåede procedureversion er også den eneste procedurebody i det faktiske modelkald, uden stiltiende tilføjelse af en nyere version.
 
 ## Evidens og begrænsninger
 

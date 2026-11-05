@@ -9,6 +9,8 @@ Opdateret 5. november 2026. **Alle P0 og P1 skal være løst og verificeret før
 - Aktivt isoleret worktree: jarvis-v5-resume, lokal branch **feature/v5-resume**. Det gamle jarvis-v5-work på fa92e039df4a2b7182843d091ffc7f5127d5a2c0 med17 eksisterende ændrede stier er bevaret.
 - Remote: **feature/v5-foundation**, [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7).
 - Seneste publicerede runtimecheckpoint: **2f94679d0e5d800fb3623134e7368bb69c77f178**, lokal **70eaf81ba64b20613b7cd073c265cced5418c3fa**, root-træ **b153cf9dde2c51ffc6e3be7fdcf66db541bb7189**, app-træ **b519b67f04ccbdf90a7d8971ac28934f689876eb**.
+- Første samlede checkpoint, fejlresultat bevaret: **3be322bd90dd764798ab6239e5dc92d4e8696ffa**, root-træ **deadfbd2df8253e6123a289b1fa3f2516ce9f1c4**, app-træ **155e774661ef5a42e7bafc3a5752afc46c2c89de**. Separat rent worktree `jarvis-v5-verify-3be322b`: `npm test`, Node24.22.1, **917/918 bestået, 1 fejl, 0 skipped**,26.269,412697 ms. Discord-genstarttestens første syntetiske kontrolpunkt blev ikke nået; den efterfølgende dokumenterede fixture-rettelse og nye kørsel er nedenfor. Det oprindelige resultat ommærkes ikke som bestået.
+- **Seneste testede kodecheckpoint: 435ff753f1137f140d401dba4377cee9b7d6535c**, root-træ **d76b92395cc48d8241804f113d5ea4639ea4d769**, app-træ **ce3358810137a2a36a995dcb4c800168a9bd6008**. Rent `jarvis-v5-verify-435ff75`: **930/930 bestået, 0 fejl/skip**, Node24.22.1,23.078,730197 ms. Kommando: `npm test -- --test-reporter=tap --test-reporter-destination=/workspace/scratch/0a910068d923/v5-435ff75-regression.tap`. Efterfølgende dokumentopdatering ændrer ikke det testede app-træ. CI22, de fire browserprofiler samt ny model/audit/performance er endnu ikke kørt på dette indhold.
 - Lokal historik er rekonstrueret. Publicér præcise commitblobs gennem Git Data API med faktisk remote-parent, matchende tree og forventet ref-SHA; aldrig force-push denne lokale historik.
 
 ## Verificeret publiceret checkpoint
@@ -21,11 +23,11 @@ Opdateret 5. november 2026. **Alle P0 og P1 skal være løst og verificeret før
 - Browserjobbet fejlede ved kendt tom claim-kildereference. Runtimecheckpointet indeholdt ikke UI-rettelsen; resten af browsermatrixen kørte ikke. Det er ikke bevis for nyere UI.
 - Performancejob bestod; seneste gennemgåede før/efter-tal er særskilt bundet til tidligere appc1f92729 i verification.md. Ingen tal tilskrives en anden revision.
 
-## Næste samlede indhold – endnu ikke endeligt kandidatbundet
+## Samlet indhold – commitbundet, samlet accept afventer
 
 Eksisterende implementering omfatter fælles serialiseret durable state, privat/public recoveryjournal, actionjournal, bounded queues, eksplicit jobpolitik, deterministic planning, personlige claims, lokal semantik/fallback, husstand/opskrifter/stock/Nemlig, danske editorer, source-/draftkontrakter og schema-/rollbackværn. Kravmatricen indeholder alle56 A–L-krav og13 R-fund.
 
-Den aktuelle arbejdsændring samler:
+Checkpoint3be322bd og opfølgning435ff753 samler:
 
 - G1/G3: absolutte manuelle indkøbsmængder/udeladelser bevares med oprindeligt behov, lagerfradrag, kilde/revision og nyt review ved ændret grundlag. Aliasbaseret ingrediensspecifik kostregel deles af pris, liste, varematch og retained proposal. Modelviews viser samme aktuelle review; et blokeret behov kaldes ikke klar.
 - E1/R11: struktureret planlagt restemad med originalvalg/låse/unlink; ingen antagelse om madlavning/forbrug/lager. Eksakte måltidsdatoer og produktobservationers indkøbslinjer kan åbnes uden nyt produktvalg.
@@ -43,7 +45,7 @@ Fokuserede tests er dokumenteret i kravmatrix/verification. De overlapper og må
 
 ## Åbne gates og næste handling
 
-1. Alle delspor er frosset. Updaterens 172 relevante tests, 106 context/planning/retrieval-tests, 131 I dag-/kildetests samt senest 30 updater-UI/durability/readmodel-tests er grønne på deres angivne arbejdsindhold; de overlapper og er ikke en samlet kandidat. Den præcise organizer-kildekoordinator er desuden reproduceret rød, rettet og verificeret i en 70-test UI-/kildekørsel. Commit og kør nu hele npm test i separat rent worktree. Registrér app-træ/resultat.
+1. Samlet lokal regression er nu **930/930** på435ff753/appce335881. Discord-fixture-racen er reproduceret og rettet med hændelsesbarrierer; produktionskode og sikkerhedsassertions er bevaret. Tværgående B4/H2-fund er rettet: hele hukommelsesposter i tale/kode og kun jobbets præcise procedurebody/hash i modelkaldet. Tolv nye kanaltests og uafhængig review er grønne. Browserens tre I dag-kort, kilde/back/fokus/kladde og cacheversionsafvisning er nu med i scriptet, men faktisk browserkørsel afventer CI.
 2. Genkontrollér main, baseline-tag og remote udviklings-HEAD. Publicér kun identisk tree til eksisterende draft PR uden merge/tag. Kør Node22, Chromium/WebKit desktop1390×950 og mobil390×844, ægte model/audit og parret performance.
 3. Bevar fejlede tests; ret årsag, ikke assertions eller fast datasæt. Download/hashverificér aktuelle artifacts og opdatér alle kravstatusser og release-/recoverydokumenter.
 4. Fysisk iPhone/desktop, faktisk zoom/mikrofon, manuel tilgængelighed og administratorens isolerede restore-/runtimekontrol er **afventer manuel verifikation**. Intet er erstattet med emulering eller generelle “ingen issues”.
