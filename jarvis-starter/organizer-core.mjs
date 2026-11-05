@@ -38,6 +38,14 @@ function calendarDaysBetween(today, date) {
   return Math.round((b - a) / 86_400_000);
 }
 
+function checkUpdatedAt(record, expected, label) {
+  // Legacy tool calls may omit a revision. Interactive editors always provide
+  // the version they actually reviewed; an empty/malformed version is not an
+  // instruction to disable the check.
+  if (expected !== undefined && (typeof expected !== 'string' || !expected || expected !== record.updatedAt))
+    throw new Error(`${label} er opdateret på en anden enhed. Hent den nyeste version, før du gemmer.`);
+}
+
 export class OrganizerCore {
   constructor({ state, save, now = () => new Date() }) {
     this.state = state;
@@ -63,6 +71,13 @@ export class OrganizerCore {
     return collection;
   }
 
+  nextUpdatedAt(previous) {
+    // Two writes in the same millisecond must still have distinct optimistic
+    // versions, including a clock that moves backwards after restart.
+    const earlier = Date.parse(previous || '');
+    return new Date(Math.max(this.now().getTime(), Number.isFinite(earlier) ? earlier + 1 : 0)).toISOString();
+  }
+
   async create({ title, type }) {
     if (!TYPES.has(type)) throw new Error('Ukendt listetype.');
     if (this.list().length >= 80) throw new Error('Du kan højst have 80 lister og notesamlinger.');
@@ -72,18 +87,20 @@ export class OrganizerCore {
     return collection;
   }
 
-  async rename(id, title) {
+  async rename(id, title, { updatedAt } = {}) {
     const collection = this.findCollection(id);
+    checkUpdatedAt(collection, updatedAt, 'Listen');
     collection.title = requiredText(title, 'Titel', 100);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return collection;
   }
 
-  async archive(id) {
+  async archive(id, { updatedAt } = {}) {
     const collection = this.findCollection(id);
+    checkUpdatedAt(collection, updatedAt, 'Listen');
     collection.archived = true;
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return collection;
   }
@@ -95,7 +112,7 @@ export class OrganizerCore {
     const item = { id: randomUUID(), text: requiredText(text, 'Tekst', 350), notes, date: calendarDate(date), annual: Boolean(annual), done: false,
       createdAt: this.now().toISOString(), updatedAt: this.now().toISOString() };
     collection.items.push(item);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return item;
   }
@@ -104,7 +121,7 @@ export class OrganizerCore {
     const collection = this.findCollection(id);
     const item = collection.items.find(x => x.id === itemId);
     if (!item) throw new Error('Punktet findes ikke.');
-    if (changes.updatedAt && changes.updatedAt !== item.updatedAt) throw new Error('Punktet er opdateret på en anden enhed. Opdatér visningen, før du gemmer.');
+    checkUpdatedAt(item, changes.updatedAt, 'Punktet');
     if (changes.text !== undefined) item.text = requiredText(changes.text, 'Tekst', 350);
     if (changes.notes !== undefined) {
       if (typeof changes.notes !== 'string' || changes.notes.length > 2500) throw new Error('Noter må højst være 2.500 tegn.');
@@ -116,18 +133,19 @@ export class OrganizerCore {
       if (typeof changes.done !== 'boolean') throw new Error('Afkrydsning skal være sand/falsk.');
       item.done = changes.done;
     }
-    item.updatedAt = this.now().toISOString();
-    collection.updatedAt = item.updatedAt;
+    item.updatedAt = this.nextUpdatedAt(item.updatedAt);
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return item;
   }
 
-  async removeItem(id, itemId) {
+  async removeItem(id, itemId, { updatedAt } = {}) {
     const collection = this.findCollection(id);
     const index = collection.items.findIndex(x => x.id === itemId);
     if (index < 0) throw new Error('Punktet findes ikke.');
+    checkUpdatedAt(collection.items[index], updatedAt, 'Punktet');
     collection.items.splice(index, 1);
-    collection.updatedAt = this.now().toISOString();
+    collection.updatedAt = this.nextUpdatedAt(collection.updatedAt);
     await this.save();
     return { removed: true };
   }

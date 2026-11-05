@@ -3,6 +3,7 @@
 !.env.example
 data/
 node_modules/
+artifacts/
 *.log
 update-staging/
 *.tar.gz

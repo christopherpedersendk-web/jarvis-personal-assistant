@@ -7,17 +7,10 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const token = 'synthetic-v5-http-token-32-characters-long';
-const safeEnv = () => ({
-  ...Object.fromEntries(['PATH', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP'].filter(name => process.env[name])
-    .map(name => [name, process.env[name]])),
-  TZ: 'Europe/Copenhagen', OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY',
-  NEMLIG_ENABLE_LIVE: 'no', NEMLIG_MCP_DIR: '', GOOGLE_OAUTH_CLIENT_ID: '',
-  GOOGLE_OAUTH_CLIENT_SECRET: '', PUSHOVER_APP_TOKEN: '', JARVIS_ALLOW_NPM_INSTALL: 'no',
-  JARVIS_UPDATE_REPO: '', JARVIS_ACCESS_TOKEN: token, JARVIS_HOST: '127.0.0.1',
-});
 
 async function freePort() {
   const probe = createServer();
@@ -42,8 +35,7 @@ async function fixture(t, { legacy = null } = {}) {
   async function start() {
     const port = await freePort(); base = `http://127.0.0.1:${port}`;
     child = spawn(process.execPath, ['server.mjs'], { cwd: appRoot,
-      env: { ...safeEnv(), JARVIS_DATA_DIR: dir, JARVIS_UPDATE_STAGING: join(dir, 'stage'),
-        JARVIS_PROJECT_ROOT: join(dir, 'projects'), JARVIS_PORT: String(port) },
+      env: syntheticServerEnv({ dataDir: dir, accessToken: token, port }),
       stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => logs.push(String(chunk)));
     child.stderr.on('data', chunk => logs.push(String(chunk)));
@@ -156,6 +148,84 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
   assert.ok(overview.raw.length < full.raw.length, 'polling uses a smaller bounded response');
 });
 
+test('D4 HTTP calendar cache is authenticated, local and unknown without a configured source', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  await f.api('GET', '/api/google/calendar/cache', undefined, 401, false);
+  const cache = (await f.api('GET', '/api/google/calendar/cache?startDate=2026-11-05&days=7')).data;
+  assert.equal(cache.canEdit, false); assert.equal(cache.scope, 'calendar.readonly');
+  assert.equal(cache.connectionState, 'not_configured'); assert.equal(cache.cacheState, 'unknown');
+  assert.equal(cache.ready, false); assert.deepEqual(cache.events, []); assert.equal(cache.dinnerDays.length, 7);
+  assert.ok(cache.dinnerDays.every(day => day.status === 'unknown'));
+  await f.api('GET', '/api/google/calendar/cache?startDate=2026-02-31', undefined, 400);
+  await f.api('GET', '/api/google/calendar/cache?days=5000', undefined, 400);
+  await f.api('GET', '/api/google/calendar/cache?start=2026-11-05', undefined, 400);
+  assert.equal((await f.api('GET', '/api/google/calendar/status')).data.lastReadAt, null);
+  assert.deepEqual((await f.api('GET', '/api/state')).data.mealHousehold.days, {}, 'calendar text cannot supply household attendance');
+});
+
+test('H2/I4 fresh installations and implicit task creation never activate new background work', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  const settings = (await f.api('GET', '/api/settings')).data;
+  assert.equal(settings.remindersEnabled, false); assert.equal(settings.discordAlertsEnabled, false);
+  const proactive = (await f.api('GET', '/api/proactive')).data.settings;
+  assert.equal(proactive.dailyEnabled, false); assert.equal(proactive.weeklyEnabled, false); assert.equal(proactive.discordEnabled, false);
+  const task = (await f.api('POST', '/api/tasks', { title: 'Kun et forslag', prompt: 'Ingen model eller konto i denne test', intervalMinutes: 60 }, 201)).data.task;
+  assert.equal(task.status, 'paused'); assert.deepEqual(task.runs, []);
+  assert.equal((await f.api('GET', '/api/tasks')).data.usage.started, 0);
+  assert.deepEqual((await f.api('GET', '/api/jobs')).data.jobs, []);
+});
+
+test('I4 migration keeps recorded v4 background preferences rather than treating them as a new activation', { timeout: 15_000 }, async t => {
+  const f = await fixture(t, { legacy: { settings: { remindersEnabled: true, proactive: { dailyEnabled: true, weeklyEnabled: false, discordEnabled: false } } } });
+  assert.equal((await f.api('GET', '/api/settings')).data.remindersEnabled, true);
+  const current = (await f.api('GET', '/api/proactive')).data.settings;
+  assert.equal(current.dailyEnabled, true); assert.equal(current.weeklyEnabled, false); assert.equal(current.discordEnabled, false);
+});
+
+test('B2 HTTP correction, source review and invalidation survive restart without rewriting history', { timeout: 20_000 }, async t => {
+  const f = await fixture(t);
+  const proposed = (await f.api('POST', '/api/personal-claims', { subject: 'pendling', value: 'Jeg cykler til arbejde.',
+    sourceId: 'note:syntetisk', source: { kind: 'assistant', channel: 'discord' }, status: 'confirmed' }, 201)).data.claim;
+  assert.equal(proposed.status, 'proposed'); assert.deepEqual(proposed.source, { kind: 'user', channel: 'manual', id: 'note:syntetisk' });
+  const edited = (await f.api('PATCH', `/api/personal-claims/${proposed.id}`, { expectedRevision: 1,
+    value: 'Jeg cykler normalt til kontoret.', category: 'preference', sourceId: 'note:gennemgået' })).data.claim;
+  assert.equal(edited.revision, 2); assert.equal(edited.revisions[0].value, proposed.value);
+  await f.api('PATCH', `/api/personal-claims/${proposed.id}`, { expectedRevision: 1, value: 'Gammel kladde' }, 409);
+  const original = (await f.api('POST', `/api/personal-claims/${proposed.id}/confirm`, { expectedRevision: 2 })).data.claim;
+  await f.api('PATCH', `/api/personal-claims/${original.id}`, { expectedRevision: 3, value: 'Ingen historik' }, 409);
+  const correction = (await f.api('POST', '/api/personal-claims', { subject: 'pendling', value: 'Jeg tager nu sporvogn til kontoret.',
+    correctsId: original.id, correctsRevision: 3, sourceId: 'note:rettelse' }, 201)).data.claim;
+  await f.api('POST', `/api/personal-claims/${correction.id}/confirm`, { expectedRevision: 1, supersedesId: original.id }, 409);
+  await f.api('POST', `/api/personal-claims/${correction.id}/confirm`, { expectedRevision: 1, supersedesId: original.id, supersedesRevision: 3 });
+  let matches = (await f.api('POST', '/api/knowledge/search', { query: 'pendling' })).data.matches;
+  assert.ok(matches.some(x => x.id === `claim:${correction.id}`)); assert.ok(!matches.some(x => x.id === `claim:${original.id}`));
+  await f.api('POST', `/api/personal-claims/${correction.id}/invalidate`, { expectedRevision: 2 });
+  matches = (await f.api('POST', '/api/knowledge/search', { query: 'pendling' })).data.matches;
+  assert.ok(!matches.some(x => x.type === 'memory'));
+  await f.stop(); await f.start();
+  const claims = (await f.api('GET', '/api/personal-claims')).data.claims;
+  assert.equal(claims.find(x => x.id === original.id).status, 'superseded');
+  const invalid = claims.find(x => x.id === correction.id);
+  assert.equal(invalid.status, 'invalid'); assert.equal(invalid.revisions[1].status, 'confirmed');
+  assert.equal(invalid.revisions[1].source.id, 'note:rettelse');
+});
+
+test('R03 HTTP organizer rename, archive and item delete use the reviewed version and preserve concurrent edits', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  const collection = (await f.api('POST', '/api/organizer', { title: 'Syntetisk liste', type: 'notes' }, 201)).data.collection;
+  const item = (await f.api('POST', `/api/organizer/${collection.id}/items`, { text: 'Første note' }, 201)).data.item;
+  await f.api('PUT', `/api/organizer/${collection.id}`, { title: 'Gammel titel', updatedAt: collection.updatedAt }, 400);
+  await f.api('DELETE', `/api/organizer/${collection.id}`, { updatedAt: collection.updatedAt }, 400);
+  const updated = (await f.api('PATCH', `/api/organizer/${collection.id}/items/${item.id}`, { text: 'Ny note', updatedAt: item.updatedAt })).data.item;
+  await f.api('DELETE', `/api/organizer/${collection.id}/items/${item.id}`, { updatedAt: item.updatedAt }, 400);
+  const preserved = (await f.api('GET', `/api/organizer/${collection.id}`)).data.collection;
+  assert.equal(preserved.items[0].text, 'Ny note'); assert.equal(preserved.title, collection.title);
+  await f.api('DELETE', `/api/organizer/${collection.id}/items/${item.id}`, { updatedAt: updated.updatedAt });
+  const current = (await f.api('GET', `/api/organizer/${collection.id}`)).data.collection;
+  await f.api('DELETE', `/api/organizer/${collection.id}`, { updatedAt: current.updatedAt });
+  assert.deepEqual((await f.api('GET', '/api/organizer')).data.collections, []);
+});
+
 test('J1 HTTP bootstrap and paged history omit unrelated source payloads without deleting stored data', { timeout: 20_000 }, async t => {
   const history = Array.from({ length: 65 }, (_, i) => ({ role: 'user', text: `Syntetisk besked ${i}`, channel: 'text', at: new Date(Date.UTC(2026, 10, 5, 8, i)).toISOString() }));
   const f = await fixture(t, { legacy: { history, preferences: 'Bevaret note', extraLegacy: { marker: 'bevares-paa-disk' },
@@ -216,6 +286,23 @@ test('v5 HTTP: reviewable household rhythm and inventory never activate retailer
   assert.equal(status.canPlaceOrder, false);
   assert.equal(status.approvalRequired, true);
   assert.equal(status.configured, false);
+});
+
+test('E1 HTTP planned leftovers are revision-bound local allocations, never confirmed stock, consumption or a basket write', { timeout: 20_000 }, async t => {
+  const f = await fixture(t);
+  await f.api('PUT', '/api/meals/household', { adults: 2, children: [] });
+  const plan = (await f.api('POST', '/api/meals/plans', { startDate: '2026-11-09', days: 2, useCalendar: false }, 201)).data.plan;
+  const before = (await f.api('GET', '/api/state')).data;
+  const links = [{ fromDate: plan.dishes[0].date, toDate: plan.dishes[1].date, servings: plan.dishes[1].servings, minutes: 10 }];
+  await f.api('POST', `/api/meals/plans/${plan.id}/leftovers`, { expectedRevision: 0, links }, 409);
+  const linked = (await f.api('POST', `/api/meals/plans/${plan.id}/leftovers`, { expectedRevision: 1, links })).data.plan;
+  assert.equal(linked.revision, 2); assert.deepEqual(linked.plannedLeftovers, links);
+  assert.deepEqual(linked.dishes[1].ingredients, []);
+  const after = (await f.api('GET', '/api/state')).data;
+  for (const key of ['mealInventory', 'mealHousehold', 'nemligProposals', 'shoppingDrafts']) assert.deepEqual(after[key], before[key], key);
+  assert.equal((await f.api('GET', '/api/google/calendar/status')).data.lastReadAt, null);
+  const restored = (await f.api('POST', `/api/meals/plans/${plan.id}/leftovers`, { expectedRevision: 2, links: [] })).data.plan;
+  assert.equal(restored.dishes[1].title, plan.dishes[1].title); assert.deepEqual(restored.dishes[1].ingredients, plan.dishes[1].ingredients);
 });
 
 test('v5 HTTP: Nemlig direct approvals lack one-use revision-bound owner-click intention', { timeout: 20_000 }, async t => {

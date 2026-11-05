@@ -7,19 +7,18 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateReleasePackage, UpdateManager } from '../update-manager.mjs';
 import { exactlyApprovedPackages, ProjectAgent } from '../project-agent.mjs';
+import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
 
 const accessToken = 'a-long-synthetic-test-token-jarvis-v5';
 const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
 
-async function fixture(t, extraEnv = {}) {
+async function fixture(t, { modelKey, preload } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'jarvis-v5-stability-'));
   const port = 27500 + Math.floor(Math.random() * 20000);
   const url = `http://127.0.0.1:${port}`;
-  const processHandle = spawn(process.execPath, ['server.mjs'], {
+  const processHandle = spawn(process.execPath, [...(preload ? ['--import', preload] : []), 'server.mjs'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, JARVIS_DATA_DIR: dataDir, JARVIS_PROJECT_ROOT: join(dataDir, 'projects'),
-      JARVIS_ACCESS_TOKEN: accessToken, JARVIS_PORT: String(port), JARVIS_HOST: '127.0.0.1',
-      OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY', ...extraEnv },
+    env: syntheticServerEnv({ dataDir, accessToken, port, modelKey }),
     stdio: 'ignore',
   });
   t.after(() => processHandle.kill());
@@ -150,10 +149,9 @@ test('R05: action journal survives the final tool round even when the assistant 
   const folder = await mkdtemp(join(tmpdir(), 'jarvis-v5-mock-api-'));
   const mockPath = join(folder, 'mock-openai.mjs');
   await writeFile(mockPath, `
-    const nativeFetch = globalThis.fetch;
     let round = 0;
     globalThis.fetch = (url, options) => {
-      if (!String(url).startsWith('https://api.openai.com/v1/responses')) return nativeFetch(url, options);
+      if (!String(url).startsWith('https://api.openai.com/v1/responses')) throw new Error('Unexpected network in synthetic model fixture');
       round += 1;
       return Promise.resolve({ ok: true, json: async () => ({
         status: 'completed', output: [{ type: 'function_call', call_id: 'call-' + round,
@@ -163,8 +161,8 @@ test('R05: action journal survives the final tool round even when the assistant 
     };
   `);
   const { dataDir, api } = await fixture(t, {
-    OPENAI_API_KEY: 'sk-synthetic-only-not-a-real-key',
-    NODE_OPTIONS: `--import=${mockPath}`,
+    modelKey: 'sk-synthetic-only-not-a-real-key',
+    preload: mockPath,
   });
   const failed = await api('POST', '/api/message', { message: 'Opret tre notesamlinger til testen' });
   assert.equal(failed.status, 500, 'the model exhausted all tool rounds');

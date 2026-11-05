@@ -18,7 +18,7 @@ const record = (id, text) => ({ id, text, status: 'confirmed', confirmed: true, 
   source: { kind: 'user', channel: 'manual' } });
 const testVector = value => Array.from({ length: 384 }, (_, index) => index === 0 ? value : 0);
 
-test('B3 manifest pins genuine multilingual model files, dimensions and audited runtime; no downloader is implicit', async () => {
+test('B3 manifest pins genuine multilingual model files, dimensions and declared runtime; no downloader is implicit', async () => {
   assert.equal(LOCAL_SEMANTIC_MODEL.runtimeVersion, '3.8.1');
   assert.equal(LOCAL_SEMANTIC_MODEL.dimensions, 384);
   assert.match(LOCAL_SEMANTIC_MODEL.revision, /^[a-f0-9]{40}$/);

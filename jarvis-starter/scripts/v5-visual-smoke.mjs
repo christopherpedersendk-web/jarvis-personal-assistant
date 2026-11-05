@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { renderedAccessibilityReport } from './ui-accessibility.mjs';
 import { STATE_SCHEMA_VERSION } from '../state-schema.mjs';
+import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
 
 const { chromium, webkit } = createRequire(import.meta.url)('playwright');
 const token = 'v5-local-visual-smoke-synthetic-access';
@@ -34,16 +35,7 @@ await new Promise((resolve, reject) => serverSocket.listen(0, '127.0.0.1', error
 const port = serverSocket.address().port;
 await new Promise(resolve => serverSocket.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
-const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
-Object.assign(env, {
-  TZ: 'Europe/Copenhagen', JARVIS_HOST: '127.0.0.1', JARVIS_PORT: String(port),
-  JARVIS_ACCESS_TOKEN: token, JARVIS_DATA_DIR: dataDir,
-  JARVIS_PROJECT_ROOT: join(dataDir, 'projects'), JARVIS_UPDATE_STAGING: join(dataDir, 'staging'),
-  JARVIS_UPDATE_REPO: '', OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY',
-  NEMLIG_ENABLE_LIVE: 'no', NEMLIG_MCP_DIR: '', NEMLIG_MCP_UV: '',
-  GOOGLE_OAUTH_CLIENT_ID: '', GOOGLE_OAUTH_CLIENT_SECRET: '',
-  JARVIS_ALLOW_NPM_INSTALL: 'no', DISCORD_BOT_TOKEN: '',
-});
+const env = syntheticServerEnv({ dataDir, accessToken: token, port });
 const server = spawn(process.execPath, ['server.mjs'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = '';
 server.stderr.on('data', chunk => { logs = (logs + String(chunk)).slice(-4000); });
@@ -63,7 +55,7 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
   const response = await waiting;
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
-  await page.waitForFunction(() => !document.querySelector('.meal-family-day[aria-busy="true"], .meal-card[aria-busy="true"], #meal-family-form[aria-busy="true"], #meal-recipe-form[aria-busy="true"], .project-card[aria-busy="true"], #project-form[aria-busy="true"], #code-form[aria-busy="true"], #personal-task-form [type="submit"]:disabled, #follow-up-form [type="submit"]:disabled, #capacity-form [type="submit"]:disabled'));
+  await page.waitForFunction(() => !document.querySelector('.meal-family-day[aria-busy="true"], .meal-card[aria-busy="true"], #meal-family-form[aria-busy="true"], #meal-recipe-form[aria-busy="true"], .project-card[aria-busy="true"], #project-form[aria-busy="true"], #code-form[aria-busy="true"], #personal-claim-form[aria-busy="true"], .memory-v49-card[aria-busy="true"], #memory-workbench-form[aria-busy="true"], #personal-task-form [type="submit"]:disabled, #follow-up-form [type="submit"]:disabled, #capacity-form [type="submit"]:disabled'));
   return { body, input: response.request().postDataJSON(), status: response.status() };
 }
 
@@ -83,10 +75,197 @@ async function navigate(page, view) {
   await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
 }
 
+async function refreshClaims(page, id) {
+  await page.evaluate(async sourceId => {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent('jarvis:v5-sources-changed', {
+      detail: { sourceId, waitUntil: promise => pending.push(promise) },
+    }));
+    await Promise.all(pending);
+  }, `claim:${id}`);
+}
+
+async function verifyClaimCorrection(page, originalId, label) {
+  const original = (await fixtureRead(page, '/api/personal-claims')).claims.find(item => item.id === originalId);
+  const correctedValue = `Syntetisk rettet personligt faktum ${label}`;
+  await page.locator(`[data-claim-id="${originalId}"]`).getByRole('button', { name: 'Ret oplysning', exact: true }).click();
+  await page.locator('#claim-value').fill(correctedValue);
+  await page.locator('#claim-source-id').fill(`syntetisk-kildereference-${label}`);
+  await page.locator('#claim-valid-from').fill('2020-01-01T09:00');
+  await page.locator('#claim-expires-at').fill('2035-01-01T09:00');
+  await page.locator('#claim-value').evaluate(input => { input.focus(); input.setSelectionRange(3, 10); window.syntheticClaimField = input; });
+  await refreshClaims(page, originalId);
+  assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticClaimField,
+    selection: [window.syntheticClaimField.selectionStart, window.syntheticClaimField.selectionEnd] })), { same: true, selection: [3, 10] });
+  await navigate(page, 'home'); await navigate(page, 'knowledge');
+  assert.equal(await page.locator('#claim-value').inputValue(), correctedValue);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await refreshClaims(page, originalId);
+  assert.equal(await page.locator('#claim-value').inputValue(), correctedValue);
+  assert.match(await page.locator('#claim-draft-status').innerText(), new RegExp(`basisrevision ${original.revision}`));
+  const created = await uiWrite(page, 'POST', '/api/personal-claims', () => page.locator('#personal-claim-form [type="submit"]').click(), [201]);
+  const proposalId = created.body.claim.id;
+  assert.equal(created.input.correctsId, originalId); assert.equal(created.input.correctsRevision, original.revision);
+  assert.equal(created.body.claim.status, 'proposed');
+  assert.equal((await fixtureRead(page, '/api/personal-claims')).claims.find(item => item.id === originalId).status, 'confirmed');
+  const proposal = page.locator(`[data-claim-id="${proposalId}"]`);
+  assert.equal(await proposal.getByRole('button', { name: 'Bekræft oplysning', exact: true }).isDisabled(), true,
+    `${label}: creating a correction does not silently choose or replace its original`);
+  await proposal.getByRole('button', { name: 'Redigér forslag', exact: true }).click();
+  await page.locator('#claim-value').fill(`Ugemt lokal rettelse ${label}`);
+  const concurrent = await page.request.patch(`${origin}/api/personal-claims/${proposalId}`, { headers: { Authorization: `Bearer ${token}` },
+    data: { expectedRevision: created.body.claim.revision, value: `Syntetisk samtidig rettelse ${label}` } });
+  assert.equal(concurrent.status(), 200); const latest = (await concurrent.json()).claim;
+  await refreshClaims(page, proposalId);
+  assert.equal(await page.locator('#claim-value').inputValue(), `Ugemt lokal rettelse ${label}`);
+  assert.match(await page.locator('#claim-draft-status').innerText(), /Ændret et andet sted/);
+  assert.equal(await page.locator('#personal-claim-form [type="submit"]').isDisabled(), true);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Hent nyeste oplysning og kassér kladde', exact: true }).click();
+  await page.waitForFunction(value => document.getElementById('claim-value').value === value, latest.value);
+  await page.locator('#claim-value').fill(correctedValue);
+  const saved = await uiWrite(page, 'PATCH', `/api/personal-claims/${proposalId}`, () => page.locator('#personal-claim-form [type="submit"]').click());
+  assert.equal(saved.input.expectedRevision, latest.revision);
+  await page.locator(`#claim-replaces-${proposalId}`).selectOption(originalId);
+  const confirmed = await uiWrite(page, 'POST', `/api/personal-claims/${proposalId}/confirm`, () => proposal.getByRole('button', { name: 'Bekræft oplysning', exact: true }).click());
+  assert.deepEqual(confirmed.input, { expectedRevision: saved.body.claim.revision, supersedesId: originalId, supersedesRevision: original.revision });
+  await proposal.getByText('Bekræftet af dig', { exact: true }).waitFor({ state: 'visible' });
+  const changed = await fixtureRead(page, '/api/personal-claims');
+  assert.equal(changed.claims.find(item => item.id === originalId).status, 'superseded');
+  assert.equal(changed.claims.find(item => item.id === proposalId).status, 'confirmed');
+  await page.locator('#knowledge-query').fill(correctedValue); await page.locator('#knowledge-search-form button').click();
+  const result = page.locator('.knowledge-result').filter({ hasText: correctedValue }).first();
+  await result.getByRole('button', { name: 'Åbn kilde', exact: true }).click();
+  assert.equal(new URL(page.url()).searchParams.get('source'), `claim:${proposalId}`);
+  await page.goBack();
+  // Historical exact sources remain addressable without treating them as active
+  // facts or opening every archived record in the account.
+  await page.evaluate(id => selectTab('knowledge', { sourceId: `claim:${id}` }), originalId);
+  await page.locator(`[data-claim-id="${originalId}"].source-target`).waitFor({ state: 'visible' });
+  assert.match(await page.locator(`[data-claim-id="${originalId}"]`).innerText(), /Erstattet — kun historik/);
+  await page.goBack();
+}
+
+async function verifyOrganizerDraft(page, label) {
+  await page.locator('#collection-type').selectOption('notes');
+  await page.locator('#collection-title').fill(`Syntetisk kladdeliste ${label}`);
+  const created = await uiWrite(page, 'POST', '/api/organizer', () => page.locator('#collection-form [type="submit"]').click(), [201]);
+  const collectionId = created.body.collection.id, collection = page.locator(`[data-collection-id="${collectionId}"]`);
+  await collection.waitFor({ state: 'visible' });
+  const add = collection.locator('[data-organizer-role="add"]'); await add.locator('[name="text"]').fill(`Syntetisk notepunkt ${label}`);
+  const added = await uiWrite(page, 'POST', `/api/organizer/${collectionId}/items`, () => add.locator('[type="submit"]').click(), [201]);
+  const itemId = added.body.item.id, item = page.locator(`[data-organizer-item-id="${collectionId}:${itemId}"]`);
+  await openDetails(item.locator('details.collection-edit'));
+  const editor = item.locator('[data-organizer-role="item-editor"]'), notes = editor.locator('[name="notes"]');
+  const draft = `Ugemt note med præcis kilde ${label}`; await notes.fill(draft);
+  await notes.evaluate(input => { input.focus(); input.setSelectionRange(2, 9); window.syntheticOrganizerNotes = input; });
+  const neighbour = await page.request.post(`${origin}/api/organizer/${collectionId}/items`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { text: `Syntetisk importeret nabo ${label}` },
+  }); assert.equal(neighbour.status(), 201);
+  await page.evaluate(() => refreshOrganizer());
+  assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticOrganizerNotes,
+    selection: [window.syntheticOrganizerNotes.selectionStart, window.syntheticOrganizerNotes.selectionEnd] })), { same: true, selection: [2, 9] });
+  await navigate(page, 'home'); await navigate(page, 'knowledge'); assert.equal(await notes.inputValue(), draft);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await item.waitFor({ state: 'visible' }); assert.equal(await notes.inputValue(), draft);
+  assert.equal(await item.locator('details.collection-edit').evaluate(element => element.open), true);
+  const concurrent = await page.request.patch(`${origin}/api/organizer/${collectionId}/items/${itemId}`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { updatedAt: added.body.item.updatedAt, notes: `Syntetisk samtidighed ${label}` },
+  }); assert.equal(concurrent.status(), 200); const current = (await concurrent.json()).item;
+  await page.evaluate(() => refreshOrganizer());
+  assert.match(await item.innerText(), /Ændret et andet sted/); assert.equal(await notes.inputValue(), draft);
+  assert.equal(await editor.locator('[type="submit"]').isDisabled(), true);
+  page.once('dialog', dialog => dialog.accept());
+  await item.getByRole('button', { name: 'Hent nyeste punkt og kassér kladde', exact: true }).click();
+  await page.waitForFunction(({ id, text }) => document.querySelector(`[data-organizer-item-id="${id}"] [name="notes"]`)?.value === text,
+    { id: `${collectionId}:${itemId}`, text: current.notes });
+  await notes.fill(`Gennemgået note ${label}`);
+  const saved = await uiWrite(page, 'PATCH', `/api/organizer/${collectionId}/items/${itemId}`, () => editor.locator('[type="submit"]').click());
+  assert.equal(saved.input.updatedAt, current.updatedAt); assert.equal(saved.body.item.notes, `Gennemgået note ${label}`);
+}
+
+async function verifySettingsDraft(page, label) {
+  await page.evaluate(() => refreshSettings());
+  const before = await fixtureRead(page, '/api/settings'), draft = before.maxRunsPerDay === 20 ? 21 : 20;
+  await page.locator('#max-runs').fill(String(draft)); await page.locator('#max-runs').focus();
+  await page.evaluate(() => refreshSettings());
+  assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'max-runs');
+  await navigate(page, 'home'); await navigate(page, 'settings');
+  assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-settings').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
+  const changed = structuredClone(before); changed.maxRunsPerDay = draft + 1;
+  changed.basis.maxRunsPerDay.digest = `synthetic-conflicting-basis-${label}`;
+  const routePattern = `${origin}/api/settings`;
+  const handler = route => route.request().method() === 'GET'
+    ? route.fulfill({ json: changed }) : route.continue();
+  await page.route(routePattern, handler); await page.evaluate(() => refreshSettings());
+  assert.equal(await page.locator('#max-runs').inputValue(), String(draft));
+  assert.match(await page.locator('#settings-draft-status').innerText(), /Ændret et andet sted/);
+  assert.equal(await page.locator('#settings-submit').isDisabled(), true);
+  await page.unroute(routePattern, handler);
+  page.once('dialog', dialog => dialog.accept()); await page.locator('#settings-reload').click();
+  await page.waitForFunction(value => document.getElementById('max-runs').value === String(value), before.maxRunsPerDay);
+  const after = await fixtureRead(page, '/api/settings');
+  for (const key of ['maxRunsPerDay', 'remindersEnabled', 'discordAlertsEnabled', 'pushConfigured']) assert.equal(after[key], before[key]);
+  assert.equal(await page.locator('#push-user').inputValue(), ''); assert.equal(await page.locator('#push-token').inputValue(), '');
+}
+
+async function refreshNotes(page) {
+  await page.evaluate(async () => {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent('jarvis:memories-changed', { detail: { waitUntil: promise => pending.push(promise) } }));
+    await Promise.all(pending);
+  });
+}
+
+async function verifyNoteDraft(page, label) {
+  const unsent = await page.locator('#memory-workbench-text').inputValue();
+  await page.locator('#memory-editor-mode').selectOption('note');
+  await page.locator('#memory-workbench-text').fill(`Syntetisk gemt note ${label}`);
+  const created = await uiWrite(page, 'POST', '/api/memories', () => page.locator('#memory-workbench-form [type="submit"]').click(), [201]);
+  await page.locator('#memory-workbench-text').fill(unsent);
+  const id = created.body.memory.id, card = page.locator(`[data-memory-id="${id}"]`);
+  await openDetails(card.locator('details.memory-v49-editor'));
+  const editor = card.locator('form'), input = editor.locator('textarea'), draft = `Ugemt rettelse af noten ${label}`;
+  await input.fill(draft); await input.evaluate(field => { field.focus(); field.setSelectionRange(2, 8); window.syntheticNoteInput = field; });
+  await refreshNotes(page);
+  assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticNoteInput,
+    selection: [window.syntheticNoteInput.selectionStart, window.syntheticNoteInput.selectionEnd] })), { same: true, selection: [2, 8] });
+  await navigate(page, 'home'); await navigate(page, 'knowledge'); assert.equal(await input.inputValue(), draft);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-knowledge').waitFor({ state: 'visible' });
+  await refreshNotes(page); assert.equal(await input.inputValue(), draft); assert.equal(await page.locator('#memory-workbench-text').inputValue(), unsent);
+  assert.equal(await card.locator('details.memory-v49-editor').evaluate(element => element.open), true);
+  const concurrent = await page.request.put(`${origin}/api/memories/${id}`, { headers: { Authorization: `Bearer ${token}` },
+    data: { expectedRevision: created.body.memory.revision, text: `Syntetisk samtidig note ${label}` } });
+  assert.equal(concurrent.status(), 200); const current = (await concurrent.json()).memory;
+  await refreshNotes(page); assert.equal(await input.inputValue(), draft); assert.match(await card.innerText(), /Ændret et andet sted/);
+  assert.equal(await editor.locator('[type="submit"]').isDisabled(), true);
+  page.once('dialog', dialog => dialog.accept()); await card.getByRole('button', { name: 'Hent nyeste note og kassér kladde', exact: true }).click();
+  await page.waitForFunction(({ id, text }) => document.querySelector(`[data-memory-id="${id}"] textarea`)?.value === text,
+    { id, text: current.text });
+  await input.fill(`Gennemgået syntetisk note ${label}`);
+  const saved = await uiWrite(page, 'PUT', `/api/memories/${id}`, () => editor.locator('[type="submit"]').click());
+  assert.equal(saved.input.expectedRevision, current.revision);
+  await page.evaluate(id => selectTab('knowledge', { sourceId: `memory:${id}` }), id);
+  await page.locator(`[data-memory-id="${id}"].source-target`).waitFor({ state: 'visible' });
+  await page.goBack(); assert.equal(await page.locator('#memory-workbench-text').inputValue(), unsent);
+  await page.locator('#memory-editor-mode').selectOption('claim');
+}
+
 async function verifyHistory(page, label) {
   assert.equal(await page.locator('#messages .bubble').count(), 20, `${label}: bootstrap is bounded to the latest twenty messages`);
   assert.match(await page.locator('#history-count').innerText(), /20 af 65/);
   await page.locator('#history-older').focus(); await page.keyboard.press('Tab');
+  // Chromium makes a genuinely scrollable region keyboard-focusable; WebKit
+  // may go directly to the composer. Both must retain the same logical order,
+  // with no unrelated control or focus trap inserted between these regions.
+  if (await page.evaluate(() => document.activeElement?.id) === 'messages') {
+    assert.equal(await page.locator('#messages').evaluate(element => element.scrollHeight > element.clientHeight), true,
+      `${label}: the intermediate keyboard stop is the real scrollable history`);
+    await page.keyboard.press('Tab');
+  }
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'message', `${label}: history and chat are connected by normal keyboard order`);
   const draft = `Ugemt besked under historiklæsning ${label}`;
   await page.locator('#message').fill(draft);
@@ -211,6 +390,45 @@ async function verifyPausedJob(page, label) {
   const actual = (await fixtureRead(page, '/api/tasks')).tasks.find(item => item.id === task.id);
   assert.equal(actual.status, 'paused'); assert.equal(actual.runs.length, 0);
   return task.id;
+}
+
+async function verifyFamilyCalendar(page, label, day, dateCard) {
+  const before = (await fixtureRead(page, '/api/meals')).household;
+  await openDetails(page.locator('#meal-family-calendar'));
+  await page.evaluate(() => refreshHouseholdCalendar());
+  const row = page.locator(`[data-calendar-household-date="${day}"]`);
+  assert.equal(await row.locator('[data-calendar-state]').getAttribute('data-calendar-state'), 'unknown');
+  assert.match(await row.innerText(), /2 voksne og 1 børn hjemme; 1 gæster/);
+  assert.match(await row.innerText(), /ikke ledig tid/);
+  assert.equal(await page.locator('#meal-family-calendar-load').isDisabled(), true,
+    `${label}: unconfigured Google is not shown as a connected calendar`);
+  const response = { calendarId: 'synthetic-read-only-calendar', scope: 'calendar.readonly', canEdit: false,
+    connectionState: 'not_configured', cacheState: 'ready', ready: true, fetchedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 300_000).toISOString(), coverage: { start: `${day}T00:00:00Z`, end: `${day}T23:59:59Z`, complete: true },
+    dinnerDays: [{ date: day, status: 'busy', reason: null, eventCount: 1, events: [{ id: 'synthetic-calendar-source',
+      title: 'Kalendertekst siger børnene ikke er hjemme – må ikke ændre husstand', start: `${day}T17:00:00+01:00`, end: `${day}T18:00:00+01:00` }] }], events: [] };
+  const readResponse = route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
+  await page.route('**/api/google/calendar/cache?**', readResponse);
+  try {
+    await dateCard.getByLabel('Voksne hjemme', { exact: true }).focus();
+    await page.evaluate(() => { window.syntheticCalendarFocus = document.activeElement; });
+    await page.evaluate(() => refreshHouseholdCalendar());
+    assert.equal(await row.locator('[data-calendar-state]').getAttribute('data-calendar-state'), 'busy');
+    assert.match(await row.innerText(), /synthetic-calendar-source/);
+    assert.match(await row.innerText(), /2 voksne og 1 børn hjemme; 1 gæster/);
+    assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3', `${label}: calendar context cannot overwrite an unsaved explicit attendance edit`);
+    assert.equal(await page.evaluate(() => document.activeElement === window.syntheticCalendarFocus), true);
+    assert.match(await page.locator('#meal-family-calendar-status').innerText(), /synthetic-read-only-calendar.*Kun læsning/);
+    await page.locator('#meal-family-calendar').screenshot({ path: join(screenshotDir, `${label}-family-calendar.png`), animations: 'disabled' });
+    response.ready = false; response.cacheState = 'unavailable'; response.lastReadError = 'Syntetisk kildefejl';
+    await page.evaluate(() => refreshHouseholdCalendar());
+    assert.equal(await row.locator('[data-calendar-state]').getAttribute('data-calendar-state'), 'unknown');
+    assert.match(await row.innerText(), /læsning fejlede.*ikke ledig tid/);
+    assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
+  } finally { await page.unroute('**/api/google/calendar/cache?**', readResponse); }
+  await page.evaluate(() => refreshHouseholdCalendar());
+  assert.deepEqual((await fixtureRead(page, '/api/meals')).household, before,
+    `${label}: context reads and calendar text cannot mutate recorded household facts`);
 }
 
 async function refreshPlanning(page) {
@@ -523,6 +741,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
     `${label}: polling must not detach the focused dirty household card`);
   assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
   await page.locator('#meal-family-days').screenshot({ path: join(screenshotDir, `${label}-household.png`), animations: 'disabled' });
+  await verifyFamilyCalendar(page, label, day, dateCard);
 
   const recipeTitle = `Syntetisk risret ${label}`;
   await page.locator('#meal-recipe-text').fill(`${recipeTitle}\n200 g ris\nKog risene. Syntetisk testkilde uden persondata.`);
@@ -719,6 +938,7 @@ async function runDevice(type, width, height, label) {
     await page.locator('#more-toggle').click();
     await page.locator('#more-menu a[data-tab="settings"]').click();
   }
+  await verifySettingsDraft(page, label);
   await page.locator('#preferences').fill('Lokalt udkast: mine noter må ikke forsvinde');
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde');
@@ -774,7 +994,7 @@ async function runDevice(type, width, height, label) {
   const value = `Syntetisk personligt faktum ${label}`;
   await page.locator('#claim-subject').fill(subject);
   await page.locator('#claim-value').fill(value);
-  await page.locator('#personal-claim-form button').click();
+  await page.locator('#personal-claim-form [type="submit"]').click();
   const createdClaim = page.locator('[data-claim-id]').filter({ hasText: subject }).first();
   await createdClaim.waitFor({ state: 'visible' });
   await createdClaim.getByRole('button', { name: 'Bekræft oplysning' }).click();
@@ -806,6 +1026,9 @@ async function runDevice(type, width, height, label) {
   await page.evaluate(() => refresh());
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'knowledge-query',
     `${label}: polling cannot steal focus from the active knowledge editor`);
+  await verifyClaimCorrection(page, selectedId, label);
+  await verifyOrganizerDraft(page, label);
+  await verifyNoteDraft(page, label);
   await page.locator('#tab-knowledge').screenshot({ path: join(screenshotDir, `${label}-knowledge.png`), animations: 'disabled' });
   await verifyHouseholdAndSources(page, width, height, label);
   await verifyAccessibility(page, width, height, label);
@@ -819,7 +1042,7 @@ async function runDevice(type, width, height, label) {
   await page.locator('[data-tab="home"]').first().click();
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });
   await context.close();
-  return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts without model activity, household precedence/guests/holiday/absence/portions, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
+  return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts without model activity, field-bound settings drafts, claim correction/replacement/history, organizer drafts/conflicts, household precedence/guests/holiday/absence/portions, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
 }
 
 try {

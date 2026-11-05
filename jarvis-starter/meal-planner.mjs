@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
+import { observedMealPrices, estimateMealRequirements, marginalMealEstimate } from './meal-price-observations.mjs';
 
 // Illustrative recipes, never retailer prices or claims about allergen safety.
 const RECIPES = Object.freeze([
@@ -329,6 +330,98 @@ function planServings(dishes) {
   return numbers.length === 1 ? numbers[0] : null;
 }
 
+function pricingConstraints(dishes, profile) {
+  const diets = dishes.filter(dish => !dish.skip).map(dish => effectiveDiet(profile,
+    dish.theme === 'vegan' || dish.diet === 'vegan' ? 'vegan' : dish.theme === 'vegetarian' || dish.diet === 'vegetarian' ? 'vegetarian' : 'everyday'));
+  return { diet: diets.includes('vegan') ? 'vegan' : diets.includes('vegetarian') ? 'vegetarian' : profile.diet,
+    avoid: profile.avoid };
+}
+
+function scoreObservedPrices(rows, budgetPerDinner) {
+  const known = rows.map(row => row.price.estimatedProductsDkk).filter(value => value !== null);
+  const low = Math.min(...known), high = Math.max(...known);
+  for (const row of rows) {
+    const cost = row.price.estimatedProductsDkk;
+    // Unknown is not zero: it receives no price assertion or price advantage.
+    // A bounded confidence/comparison bonus cannot overturn hard dietary rules,
+    // and does not purport to find the cheapest product in the whole market.
+    row.priceScore = cost === null ? 0 : 1 + (high > low ? 3 * (high - cost) / (high - low) : 0) +
+      (budgetPerDinner !== null && cost <= budgetPerDinner ? 2 : 0);
+    row.score += row.priceScore + Math.min(row.reusedIngredients.length, 4) * 0.75;
+  }
+}
+
+const LEFTOVER_RECIPE_FIELDS = ['recipeId', 'title', 'minutes', 'diet', 'baseServings', 'ingredientBasis',
+  'ingredients', 'reasons', 'sourceRefs', 'manuallySelected'];
+function restorePlannedLeftovers(dishes) {
+  return dishes.map(original => {
+    const dish = clone(original);
+    if (dish.leftoverOriginal) {
+      const saved = dish.leftoverOriginal;
+      for (const field of LEFTOVER_RECIPE_FIELDS) delete dish[field];
+      Object.assign(dish, clone(saved));
+    }
+    if (dish.leftoverCookingOriginal) dish.ingredients = clone(dish.leftoverCookingOriginal.ingredients);
+    for (const field of ['leftoverOriginal', 'leftoverCookingOriginal', 'leftoverFromDate', 'plannedCookServings', 'leftoverTargets', 'leftoverNote']) delete dish[field];
+    return dish;
+  });
+}
+
+function checkedLeftoverLinks(value, dishes) {
+  if (!Array.isArray(value) || value.length > 6) throw new Error('Planlæg højst seks forbindelser til rester inden for denne uge.');
+  const dates = new Set(dishes.map(dish => dish.date)), targets = new Set();
+  const links = value.map(link => {
+    if (!isObject(link)) throw new Error('Angiv kildedag, måldag, portioner og tid til rester.');
+    parseDay(link.fromDate); parseDay(link.toDate);
+    if (!dates.has(link.fromDate) || !dates.has(link.toDate) || link.fromDate >= link.toDate)
+      throw new Error('Rester skal planlægges fra en tidligere dag til en senere dag i samme madplan.');
+    if (targets.has(link.toDate)) throw new Error('En dag kan kun modtage én planlagt restefordeling.');
+    targets.add(link.toDate);
+    if (typeof link.servings !== 'number' || !Number.isFinite(link.servings) || link.servings <= 0 || link.servings > 72 ||
+        !Number.isInteger(link.minutes) || link.minutes < 1 || link.minutes > 720)
+      throw new Error('Angiv 0–72 positive portioner og 1–720 minutter som dit eget tidsestimat.');
+    return { fromDate: link.fromDate, toDate: link.toDate, servings: round(link.servings), minutes: link.minutes };
+  });
+  if (links.some(link => targets.has(link.fromDate))) throw new Error('Rester kan ikke planlægges i kæder. Vælg den oprindelige tilberedningsdag.');
+  return links.sort((a, b) => a.toDate.localeCompare(b.toDate));
+}
+
+function linkedDates(plan) { return new Set((plan.plannedLeftovers || []).flatMap(link => [link.fromDate, link.toDate])); }
+
+function applyPlannedLeftovers(plan, dishes, links, profile) {
+  const restored = restorePlannedLeftovers(dishes), byDate = new Map(restored.map(dish => [dish.date, dish]));
+  for (const link of links) {
+    const source = byDate.get(link.fromDate), target = byDate.get(link.toDate);
+    if (source.skip || target.skip || !source.ingredientBasis?.length || !source.baseServings)
+      throw new Error('Begge dage skal have et måltid, og kildedagen skal have gennemgåede ingredienser.');
+    if (link.servings !== target.servings) throw new Error('Planlagte rester skal dække måldagens fulde registrerede portionsantal. Ret fordelingen eksplicit ved ændringer.');
+    const sameExisting = (plan.plannedLeftovers || []).some(prior => sameValue(prior, link));
+    if (target.locked && !sameExisting) throw new Error('Lås måldagen op, før dens ret erstattes med planlagte rester.');
+    if (!compatible({ ...source, ingredients: source.ingredientBasis }, profile, target.theme))
+      throw new Error('Kildens ingredienser eller kosttype passer ikke til måldagens kostvalg. Ingen restefordeling er gemt.');
+    source.leftoverCookingOriginal ||= { ingredients: clone(source.ingredients) };
+    source.leftoverTargets ||= [];
+    source.leftoverTargets.push({ date: link.toDate, servings: link.servings });
+    source.plannedCookServings = round(source.servings + source.leftoverTargets.reduce((sum, row) => sum + row.servings, 0));
+    if (source.plannedCookServings > 144) throw new Error('Højst 144 tilberedte portioner kan planlægges fra én kildedag.');
+    source.ingredients = scaleIngredients(source.ingredientBasis, source.baseServings, source.plannedCookServings);
+    source.leftoverNote = 'Planlagt tilberedning: ' + source.plannedCookServings + ' portioner, heraf ' + source.servings +
+      ' denne dag og ' + source.leftoverTargets.reduce((sum, row) => sum + row.servings, 0) + ' til senere valgte dage. Ikke bekræftet tilberedt eller på lager.';
+    target.leftoverOriginal = Object.fromEntries(LEFTOVER_RECIPE_FIELDS.filter(field => Object.hasOwn(target, field)).map(field => [field, clone(target[field])]));
+    Object.assign(target, { recipeId: source.recipeId, title: ('Planlagte rester: ' + source.title).slice(0, 160),
+      diet: source.diet, minutes: link.minutes, ingredientBasis: clone(source.ingredientBasis), baseServings: source.baseServings,
+      ingredients: [], manuallySelected: true, leftoverFromDate: source.date,
+      reasons: ['Du har planlagt ' + link.servings + ' portioner fra tilberedningen ' + source.date + '. Der regnes ikke nye ingredienser på denne dag.',
+        'Dette er en plan, ikke bevis på tilberedning, opbevaring, holdbarhed eller indtag. Kontrollér den faktiske mad, før planen følges.'],
+      leftoverNote: 'Planlagte rester fra ' + source.date + ' · ' + link.servings + ' portioner · dit tidsestimat ' + link.minutes + ' min.',
+      sourceRefs: (source.sourceRefs || []).filter(ref => !['household', 'household-day', 'household-rhythm'].includes(ref.kind))
+        .map(clone).concat([householdSourceRef(target, target.date), { kind: 'meal-plan', id: plan.id, date: source.date,
+          dishFingerprint: createHash('sha256').update(JSON.stringify({ recipeId: source.recipeId, ingredientBasis: source.ingredientBasis,
+            baseServings: source.baseServings, sourceRefs: source.sourceRefs })).digest('hex') }]) });
+  }
+  return restored;
+}
+
 export class MealPlanner {
   constructor({ state, save = async () => {}, now = () => new Date(), recipes = () => [] }) {
     this.state = state;
@@ -360,8 +453,56 @@ export class MealPlanner {
   }
 
   profile() { return clone(this.state.mealProfile); }
-  plans() { return clone(this.state.mealPlans.slice(0, 12)); }
+  plans() {
+    const quotes = observedMealPrices(this.state, this.now());
+    return this.state.mealPlans.slice(0, 12).map(plan => {
+      const priceEstimate = this.estimatePlanPrices(plan, quotes);
+      const pricingStale = Boolean(plan.priceEstimate && plan.priceEstimate.basisFingerprint !== priceEstimate.basisFingerprint);
+      return { ...clone(plan), priceEstimate, priceStatus: priceEstimate.status, pricingStale,
+        needsReview: plan.needsReview || pricingStale };
+    });
+  }
   household() { return clone(this.state.mealHousehold); }
+
+  priceContext(planId = null) {
+    return { profile: this.profile(), pantry: this.pantryAvailableFor(planId), quotes: observedMealPrices(this.state, this.now()) };
+  }
+
+  estimatePlanPrices(plan, quotes = observedMealPrices(this.state, this.now())) {
+    if (plan.householdStale || plan.profileStale || plan.recipeStale) return {
+      status: 'stale-basis', estimatedProductsDkk: null, knownProductsDkk: null, budgetStatus: 'unknown',
+      unknownIngredients: [], lines: [], basisFingerprint: null, observedAt: null,
+      note: 'Madplanens grundlag er ændret. Gennemgå planen før et aktuelt prisoverslag beregnes.' };
+    const profile = this.profile();
+    const reviewedList = plan.status === 'shopping_ready' && plan.shoppingRevision === plan.revision;
+    const requirements = reviewedList ? clone(plan.shoppingList) : ingredientsFor(plan.dishes, { ...profile, pantry: this.pantryAvailableFor(plan.id) });
+    if (!reviewedList) {
+      const present = new Set(requirements.map(ingredientKey));
+      for (const extra of plan.manualShoppingExtras || []) if (!present.has(ingredientKey(extra))) requirements.push(canonicalAmount(extra));
+    }
+    const estimate = estimateMealRequirements(requirements, quotes, pricingConstraints(plan.dishes, profile));
+    const budget = plan.budgetTargetDkk ?? null;
+    return { ...estimate, scope: reviewedList ? 'reviewed-local-shopping-list' : 'planned-ingredients-and-manual-extras',
+      budgetTargetDkk: budget, budgetStatus: budget === null ? 'not-set' : estimate.knownProductsDkk > budget ? 'over'
+        : estimate.estimatedProductsDkk === null ? 'unknown' : 'within' };
+  }
+
+  recordPlanPrices(plan) {
+    plan.priceEstimate = this.estimatePlanPrices(plan);
+    plan.priceStatus = plan.priceEstimate.status;
+  }
+
+  priceCandidate(recipe, servings, theme, selected, context) {
+    const dish = { ingredients: scaleIngredients(recipe.ingredients, recipe.servings, servings), diet: recipe.diet, theme };
+    const beforeRequirements = ingredientsFor(selected, { ...context.profile, pantry: context.pantry });
+    const afterRequirements = ingredientsFor([...selected, dish], { ...context.profile, pantry: context.pantry });
+    const constraints = pricingConstraints([...selected, dish], context.profile);
+    const before = estimateMealRequirements(beforeRequirements, context.quotes, constraints);
+    const after = estimateMealRequirements(afterRequirements, context.quotes, constraints);
+    const used = new Set(selected.filter(item => !item.skip).flatMap(item => item.ingredients.map(ingredientKey)));
+    return { price: marginalMealEstimate(before, after, beforeRequirements, afterRequirements),
+      reusedIngredients: recipe.ingredients.filter(item => used.has(ingredientKey(item))).map(item => item.name) };
+  }
 
   // Stock remains user-confirmed data. Reservations are computed from currently
   // reviewed plans; cart transfers, meal drafts and deliveries do not alter it.
@@ -546,6 +687,7 @@ export class MealPlanner {
     const used = new Set();
     const recent = new Set(this.state.mealPlans.slice(0, 3).flatMap(plan => plan.dishes.map(dish => dish.recipeId)));
     const pantryKeys = new Set(this.pantryAvailableFor().filter(item => item.quantity > 0).map(ingredientKey));
+    const context = this.priceContext(), selectedDishes = [];
     const dishes = Array.from({ length: days }, (_, index) => {
       const day = addDays(date, index);
       const shortEvening = busy.has(day);
@@ -556,14 +698,15 @@ export class MealPlanner {
         reasons: ['Dagen er fravalgt eller ingen er registreret hjemme.'], sourceRefs: [householdSourceRef(attendance, day)] };
       const choices = catalog.filter(recipe => !recipe.doNotSuggest && compatible(recipe, profile, attendance.theme));
       if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${day}. Tilføj en gennemgået opskrift, som opfylder kostvalget og undgå-listen.`);
-      const scored = choices.map((recipe, order) => ({ recipe, score:
+      const scored = choices.map((recipe, order) => ({ recipe, ...this.priceCandidate(recipe, attendance.servings, attendance.theme, selectedDishes, context), score:
         (used.has(recipe.id) ? -1000 : 0) + (recipe.themes.includes(attendance.theme) ? 8 : 0) +
         (recipe.sourceRef.kind === 'recipe' ? 5 : 0) + (recipe.favorite ? 8 : 0) + (recent.has(recipe.id) ? -2 : 0) +
         recipe.ingredients.filter(item => pantryKeys.has(ingredientKey(item))).length * 0.5 -
         (shortEvening || attendance.theme === 'quick' ? recipe.minutes * 2 : 0),
         tie: (order + date.getUTCDate() + index) % choices.length }));
+      scoreObservedPrices(scored, profile.budgetDkk === null ? null : profile.budgetDkk / days);
       scored.sort((a, b) => b.score - a.score || a.tie - b.tie || a.recipe.id.localeCompare(b.recipe.id));
-      const recipe = scored[0].recipe;
+      const choice = scored[0], recipe = choice.recipe;
       const reasons = [attendance.householdConfirmed ? 'Portioner fra din gemte husstand for dagen.' : 'Foreløbigt portionsantal fra madpræferencer; voksne og børn er ikke bekræftet.'];
       if (attendance.children.length) reasons.push('Børneportioner er redigerbare køkkenestimater, ikke ernæringsanbefalinger.');
       if (shortEvening) reasons.push('Kalenderen markerer en travl dag; hurtigere retter prioriteres. Kalenderen bruges ikke til at gætte, hvem der er hjemme.');
@@ -572,8 +715,12 @@ export class MealPlanner {
       if (recipe.sourceRef.kind === 'recipe') reasons.push('Fra en gennemgået opskrift i din opskriftshukommelse.');
       if (recipe.ingredients.some(item => pantryKeys.has(ingredientKey(item)))) reasons.push('Retten bruger ingredienser fra dit oplyste lager.');
       if (used.has(recipe.id)) reasons.push('En ret gentages, fordi udvalget er begrænset af dine valg.');
+      if (choice.reusedIngredients.length) reasons.push('Ved forslaget blev råvaregenbrug med ugens øvrige valgte retter prioriteret: ' + choice.reusedIngredients.join(', ') + '. Det er ikke bevis på rester eller beholdning.');
+      reasons.push(choice.price.estimatedProductsDkk === null
+        ? 'Der mangler aktuelle, entydige varepriser til prisdelen af dette forslag. Ukendt pris regnes ikke som gratis.'
+        : 'Forslagets prisprioritering bruger kun allerede registrerede varepriser og bekræftet lager. Se det aktuelle ugeoverslag; ingen nye vareopslag er foretaget.');
       used.add(recipe.id);
-      return {
+      const dish = {
         date: day, recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
         locked: false,
         ...attendance, busyDay: shortEvening, ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
@@ -581,6 +728,7 @@ export class MealPlanner {
         ingredients: scaleIngredients(recipe.ingredients, recipe.servings, attendance.servings), reasons,
         sourceRefs: [clone(recipe.sourceRef), householdSourceRef(attendance, day), { kind: 'meal-profile' }],
       };
+      selectedDishes.push(dish); return dish;
     });
     const plan = {
       id: randomUUID(), schemaVersion: 2, revision: 1, status: 'draft', createdAt: this.now().toISOString(), updatedAt: this.now().toISOString(), startDate,
@@ -590,6 +738,7 @@ export class MealPlanner {
       shoppingList: [], shoppingGeneratedAt: null, shoppingRevision: null,
       manualShoppingExtras: [],
     };
+    this.recordPlanPrices(plan);
     this.state.mealPlans.unshift(plan);
     this.state.mealPlans = this.state.mealPlans.slice(0, 12);
     await this.save();
@@ -605,6 +754,14 @@ export class MealPlanner {
     if (!Array.isArray(changes) || changes.length !== plan.dishes.length) throw new Error('Alle madplanens dage skal medsendes.');
     const byDate = new Map(changes.map(dish => [dish?.date, dish]));
     if (byDate.size !== changes.length || changes.some(dish => !isObject(dish) || !plan.dishes.some(current => current.date === dish.date))) throw new Error('Madplanens datoer må ikke ændres eller gentages.');
+    const linked = linkedDates(plan);
+    for (const previous of plan.dishes.filter(dish => linked.has(dish.date))) {
+      const patch = byDate.get(previous.date);
+      const recipeChange = ['recipeId', 'servings', 'theme', 'skip', 'title', 'minutes', 'diet', 'ingredients']
+        .some(field => patch[field] !== undefined && !sameValue(patch[field], previous[field]));
+      const householdChange = input.refreshHousehold && !sameValue(previous.householdBasis || attendanceMeaning(previous), attendanceMeaning(this.attendanceFor(previous.date)));
+      if (recipeChange || householdChange) throw new Error('Dagen indgår i planlagte rester. Fjern den berørte restefordeling eksplicit, før ret, portioner, husstand eller ingredienser ændres. Andre dages valg bevares.');
+    }
     const catalog = new Map(this.recipes().map(recipe => [recipe.id, recipe]));
     const profile = this.profile();
     const dishes = plan.dishes.map(previous => {
@@ -677,6 +834,7 @@ export class MealPlanner {
         manualSkip: patch.skip !== undefined ? Boolean(patch.skip) !== basis.skip : Boolean(previous.manualSkip),
         recipeId: changedRecipe ? source.id : manuallyReplacedRecipe ? `custom:${previous.date}` : previous.recipeId || (!skip && patch.ingredients ? `custom:${previous.date}` : null),
         baseServings, ingredientBasis, ingredients,
+        manuallySelected: Boolean(previous.manuallySelected || manuallyReplacedRecipe || changedRecipe && patch.recipeId !== undefined),
         sourceRefs: changedRecipe ? [clone(source.sourceRef), householdSourceRef(attendance, previous.date), { kind: 'meal-profile' }] :
           manuallyReplacedRecipe ? [{ kind: 'owner-meal', date: previous.date }, householdSourceRef(attendance, previous.date), { kind: 'meal-profile' }] :
           basisChanged ? [...clone(previous.sourceRefs || []).filter(ref => !['household', 'household-day', 'household-rhythm'].includes(ref.kind)),
@@ -688,11 +846,13 @@ export class MealPlanner {
       assertCompatible(dish, profile);
       return dish;
     });
-    this.assertRecipeSources(dishes);
-    plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
+    const withLeftovers = plan.plannedLeftovers?.length ? applyPlannedLeftovers(plan, dishes, plan.plannedLeftovers, profile) : dishes;
+    this.assertRecipeSources(withLeftovers);
+    plan.dishes = withLeftovers; plan.servings = planServings(withLeftovers); plan.revision++;
     plan.status = 'draft'; plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
     plan.needsReview = true; plan.householdStale = false; plan.profileStale = false; plan.recipeStale = false; plan.staleReason = null;
     plan.budgetTargetDkk = profile.budgetDkk; plan.updatedAt = this.now().toISOString();
+    this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }
@@ -714,6 +874,7 @@ export class MealPlanner {
     plan.shoppingList = [...requirements, ...clone(extras)].sort((a, b) => a.name.localeCompare(b.name, 'da'));
     plan.revision++; plan.shoppingRevision = plan.revision; plan.status = 'shopping_ready'; plan.needsReview = false;
     plan.shoppingGeneratedAt = this.now().toISOString(); plan.updatedAt = this.now().toISOString(); plan.staleReason = null;
+    this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }
@@ -731,6 +892,7 @@ export class MealPlanner {
     plan.manualShoppingExtras = checked.filter(item => !requiredKeys.has(ingredientKey(item))).map(canonicalAmount);
     plan.shoppingList = checked.map(item => ({ ...canonicalAmount(item), manuallyEdited: true }));
     plan.revision++; plan.shoppingRevision = plan.revision; plan.updatedAt = this.now().toISOString();
+    this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }
@@ -741,6 +903,26 @@ export class MealPlanner {
     return plan;
   }
 
+  async setPlannedLeftovers(id, { expectedRevision, links } = {}) {
+    const plan = this.getPlan(id);
+    checkRevision(plan, expectedRevision);
+    const checked = checkedLeftoverLinks(links, plan.dishes);
+    if (sameValue(checked, plan.plannedLeftovers || [])) return plan;
+    if (checked.length && (plan.householdStale || plan.profileStale || plan.recipeStale))
+      throw new Error('Gennemgå planens ændrede grundlag før en ny restefordeling. Eksisterende fordelinger kan fjernes eksplicit.');
+    const dishes = applyPlannedLeftovers(plan, plan.dishes, checked, this.profile());
+    let restoredRecipeStale = false;
+    try { this.assertRecipeSources(dishes); }
+    catch (error) { if (checked.length) throw error; restoredRecipeStale = true; }
+    plan.dishes = dishes; plan.plannedLeftovers = checked; plan.servings = planServings(dishes);
+    plan.revision++; plan.status = 'draft'; plan.needsReview = true;
+    plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
+    plan.recipeStale ||= restoredRecipeStale;
+    if (restoredRecipeStale) plan.staleReason = 'Et tidligere manuelt valg er gendannet, men opskriften er ændret. Vælg den aktuelle opskrift før indkøb.';
+    plan.updatedAt = this.now().toISOString(); this.recordPlanPrices(plan);
+    await this.save(); return plan;
+  }
+
   // Regenerate only days the owner has left unlocked, preserving existing
   // household counts, manual portions, sources for locked dishes and extras.
   async regenerateUnlocked(id, { expectedRevision } = {}) {
@@ -749,27 +931,36 @@ export class MealPlanner {
     if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Planens grundlag er ændret. Gennemgå den, før der foreslås nye retter.');
     const profile = this.profile();
     const catalog = this.recipes();
-    const selected = new Set(plan.dishes.filter(dish => dish.locked && !dish.skip).map(dish => dish.recipeId));
+    const linked = linkedDates(plan);
+    const retained = dish => dish.locked || dish.skip || dish.manuallySelected || dish.recipeId?.startsWith('custom:') || linked.has(dish.date);
+    const selectedDishes = plan.dishes.filter(retained).map(clone);
+    const selected = new Set(selectedDishes.filter(dish => !dish.skip).map(dish => dish.recipeId));
+    const context = this.priceContext(id);
     const dishes = plan.dishes.map(previous => {
-      if (previous.locked || previous.skip) return clone(previous);
+      if (retained(previous)) return clone(previous);
       const choices = catalog.filter(recipe => !recipe.doNotSuggest && compatible(recipe, profile, previous.theme));
       if (!choices.length) throw new Error(`Ingen egnede opskrifter den ${previous.date}.`);
-      const candidates = choices.map(recipe => ({ recipe, score: (selected.has(recipe.id) ? -100 : 0) +
+      const candidates = choices.map(recipe => ({ recipe, ...this.priceCandidate(recipe, previous.servings, previous.theme, selectedDishes, context), score: (selected.has(recipe.id) ? -100 : 0) +
         (recipe.id === previous.recipeId ? -10 : 0) + (recipe.favorite ? 8 : 0) + (recipe.themes.includes(previous.theme) ? 5 : 0) -
         (previous.busyDay || previous.theme === 'quick' ? recipe.minutes : 0) }));
+      scoreObservedPrices(candidates, profile.budgetDkk === null ? null : profile.budgetDkk / plan.days);
       candidates.sort((a, b) => b.score - a.score || a.recipe.id.localeCompare(b.recipe.id));
       const recipe = candidates[0].recipe;
       selected.add(recipe.id);
-      return { ...clone(previous), recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
+      const dish = { ...clone(previous), recipeId: recipe.id, title: recipe.title, diet: recipe.diet, minutes: recipe.minutes,
         ingredientBasis: clone(recipe.ingredients), baseServings: recipe.servings,
         ingredients: scaleIngredients(recipe.ingredients, recipe.servings, previous.servings),
-        reasons: ['Nyt forslag til en ulåst dag ud fra din registrerede husstand, dagens tema og kostvalg.'],
+        reasons: ['Nyt forslag til en ulåst dag ud fra din registrerede husstand, dagens tema og kostvalg.',
+          ...(candidates[0].reusedIngredients.length ? ['Råvarer deles med andre valgte retter i ugeforslaget: ' + candidates[0].reusedIngredients.join(', ') + '. Dette er ikke registreret lager eller færdiglavede rester.'] : []),
+          candidates[0].price.estimatedProductsDkk === null ? 'Manglende varepriser er ukendte, ikke nul.' : 'Registrerede priser indgår i ugeoverslaget; intet eksternt opslag er startet.'],
         sourceRefs: [clone(recipe.sourceRef), householdSourceRef(previous, previous.date), { kind: 'meal-profile' }] };
+      selectedDishes.push(dish); return dish;
     });
     this.assertRecipeSources(dishes);
     plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
     plan.status = 'draft'; plan.needsReview = true; plan.shoppingList = []; plan.shoppingGeneratedAt = null;
     plan.shoppingRevision = null; plan.updatedAt = this.now().toISOString();
+    this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }
@@ -784,9 +975,11 @@ export class MealPlanner {
     const first = plan.dishes.find(dish => dish.date === firstDate);
     const second = plan.dishes.find(dish => dish.date === secondDate);
     if (!first || !second || firstDate === secondDate) throw new Error('Vælg to forskellige datoer i madplanen.');
+    if (linkedDates(plan).has(firstDate) || linkedDates(plan).has(secondDate)) throw new Error('Fjern den berørte restefordeling eksplicit, før retter flyttes.');
     if (first.locked || second.locked) throw new Error('Lås dagene op, før retterne flyttes.');
     if (first.skip || second.skip) throw new Error('Vælg to måltidsdage før retterne byttes.');
     const move = (source, target) => ({ ...clone(target), recipeId: source.recipeId,
+      manuallySelected: true,
       title: source.title, minutes: source.minutes, diet: source.diet,
       ingredientBasis: clone(source.ingredientBasis), baseServings: source.baseServings,
       ingredients: scaleIngredients(source.ingredientBasis, source.baseServings, target.servings),
@@ -802,6 +995,7 @@ export class MealPlanner {
     plan.servings = planServings(plan.dishes); plan.revision++; plan.status = 'draft'; plan.needsReview = true;
     plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
     plan.updatedAt = this.now().toISOString();
+    this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }

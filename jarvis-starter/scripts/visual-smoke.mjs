@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifacts = join(app, 'artifacts');
@@ -36,11 +37,7 @@ async function availablePort() {
 const port = await availablePort();
 const origin = `http://127.0.0.1:${port}`;
 const backend = spawn(process.execPath, ['server.mjs'], { cwd: app,
-  env: { ...process.env, JARVIS_PORT: String(port), JARVIS_HOST: '127.0.0.1',
-    JARVIS_ACCESS_TOKEN: token, OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY',
-    JARVIS_DATA_DIR: fixture, JARVIS_PROJECT_ROOT: join(fixture, 'projects'), JARVIS_UPDATE_STAGING: join(fixture, 'update-staging'), JARVIS_UPDATE_REPO: '',
-    NEMLIG_ENABLE_LIVE: 'no', NEMLIG_MCP_DIR: '', NEMLIG_MCP_UV: '', NEMLIG_USER: '', NEMLIG_PASS: '',
-    GOOGLE_OAUTH_CLIENT_ID: '', GOOGLE_OAUTH_CLIENT_SECRET: '', GOOGLE_OAUTH_REDIRECT_URI: '' },
+  env: syntheticServerEnv({ dataDir: fixture, accessToken: token, port }),
   stdio: 'pipe' });
 let browser;
 let page;

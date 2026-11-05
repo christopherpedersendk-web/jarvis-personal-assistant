@@ -93,6 +93,23 @@ test('R11 exact recipe source highlights only the requested card after refresh',
   assert.deepEqual([...f.selected], ['[data-record-key="recipe:chosen"]']);
 });
 
+test('R11 note source awaits actual memory reconciliation and cannot select a stale card', async () => {
+  const f = fixture('memory:chosen');
+  let finish;
+  f.document.addEventListener('jarvis:memories-changed', event => event.detail.waitUntil(new Promise(resolve => { finish = resolve; })));
+  const opening = f.open('memory:chosen'); assert.deepEqual([...f.selected], []);
+  f.makeTarget('[data-memory-id="chosen"]'); finish(); await opening;
+  assert.deepEqual([...f.selected], ['[data-memory-id="chosen"]']);
+});
+
+test('R11 claim source exposes its exact ID so hidden planning domains need not be fetched', async () => {
+  const f = fixture('claim:exact'); let received;
+  f.document.addEventListener('jarvis:v5-sources-changed', event => { received = event.detail.sourceId;
+    f.makeTarget('[data-claim-id="exact"]'); event.detail.waitUntil(Promise.resolve()); });
+  await f.open('claim:exact'); assert.equal(received, 'claim:exact');
+  assert.deepEqual([...f.selected], ['[data-claim-id="exact"]']);
+});
+
 test('R11 copied source URL is preserved by application initialization', async () => {
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const begin = app.indexOf('\ninitializeDashboard();');

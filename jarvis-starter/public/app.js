@@ -481,47 +481,10 @@ archivePanel.className = 'panel archive-panel';
 archivePanel.innerHTML = '<h2>Arkiverede projekter</h2><p class="muted small-text">Projektmapper bevares lokalt og kan gendannes.</p><div id="archived-projects"></div>';
 $('tab-projects').append(archivePanel);
 
-async function refreshSettings() {
-  const settings = await api('/api/settings');
-  $('max-runs').value = settings.maxRunsPerDay;
-  $('reminders-enabled').checked = settings.remindersEnabled;
-  $('discord-alerts-enabled').checked = settings.discordAlertsEnabled;
-  $('https-url').value = settings.httpsUrl;
-  $('settings-status').textContent = `Push: ${settings.pushConfigured ? 'konfigureret' : 'mangler nøgler'} · npm-installation: ${settings.npmInstallEnabled ? 'aktiveret' : 'låst på serveren'}`;
-  const discord = await api('/api/discord/settings');
-  $('discord-enabled').checked = discord.enabled;
-  $('discord-user-id').value = discord.userId || '';
-  $('discord-guild-id').value = discord.guildId || '';
-  const names = { disabled: 'Deaktiveret', connecting: 'Forbinder', reconnecting: 'Genopretter forbindelse', connected: 'Forbundet', error: 'Fejl' };
-  $('discord-status').textContent = `Discord: ${names[discord.status] || discord.status} · Token: ${discord.hasToken ? 'gemt' : 'mangler'}${discord.lastError ? ` · ${discord.lastError}` : ''}`;
-}
-$('discord-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    await api('/api/discord/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      enabled: $('discord-enabled').checked,
-      token: $('discord-token').value,
-      userId: $('discord-user-id').value,
-      guildId: $('discord-guild-id').value,
-    }) });
-    $('discord-token').value = '';
-    await refreshSettings();
-    toast('Discord-indstillinger gemt.');
-  } catch (error) { toast(error.message); }
-});
-$('settings-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    await api('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      maxRunsPerDay: Number($('max-runs').value), httpsUrl: $('https-url').value,
-      remindersEnabled: $('reminders-enabled').checked,
-      discordAlertsEnabled: $('discord-alerts-enabled').checked,
-      pushUser: $('push-user').value, pushToken: $('push-token').value,
-    }) });
-    $('push-user').value = ''; $('push-token').value = '';
-    await refreshSettings(); toast('Indstillinger gemt.');
-  } catch (error) { toast(error.message); }
-});
+const settingsDrafts = JarvisSettings.attach({ document, api, getToken: () => token });
+async function refreshSettings() { await settingsDrafts.refresh(); }
+$('discord-form').addEventListener('submit', event => settingsDrafts.saveDiscord(event));
+$('settings-form').addEventListener('submit', event => settingsDrafts.saveSystem(event));
 
 $('task-form').addEventListener('submit', event => jobPolicyEditor.save(event));
 
@@ -534,22 +497,7 @@ $('login-form').addEventListener('submit', async event => {
   } catch (error) { toast(error.message); }
 });
 
-$('message-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const message = $('message').value.trim();
-  if (!message) return;
-  $('send').disabled = true;
-  $('send').textContent = 'Tænker …';
-  try {
-    await api('/api/message', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-    $('message').value = '';
-    await refresh();
-  } catch (error) { toast(error.message); }
-  finally { $('send').disabled = false; $('send').textContent = 'Send ↗'; }
-});
+JarvisChat.attach({ document, api, refresh, getToken: () => token });
 
 $('save-preferences').addEventListener('click', async () => {
   await saveTextDraft('preferences', '/api/preferences', 'text');
@@ -587,9 +535,10 @@ async function handleVoiceTool(channel, call) {
     const args = JSON.parse(call.arguments || '{}');
     if (call.name === 'create_research_task') {
       const data = await api('/api/tasks', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...args, activation: 'paused' }),
       });
-      output = { ok: true, id: data.task.id, title: data.task.title, status: data.task.status, nextRunAt: data.task.nextRunAt };
+      output = { ok: true, id: data.task.id, title: data.task.title, status: data.task.status, nextRunAt: data.task.nextRunAt,
+        note: 'Gemt som pauset forslag. Ejeren skal gennemgå politikken og aktivere i Plan; intet baggrundsarbejde er startet.' };
       await refreshTasks();
     } else if (call.name === 'list_research_tasks') {
       const data = await api('/api/tasks');

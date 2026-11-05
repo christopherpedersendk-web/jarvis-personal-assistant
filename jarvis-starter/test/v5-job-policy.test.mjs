@@ -126,3 +126,20 @@ test('H2 job policy validation rejects stored secrets, malformed activation and 
   await assert.rejects(f.engine.update(task.id, { title: 'Mangler revision' }), /basisrevision/);
   assert.equal(f.task(task.id).revision, 1);
 });
+
+test('H2 first activation after a long paused draft uses the reviewed start mode, not a missed historical creation time', async () => {
+  const f = await fixture();
+  const immediate = await f.engine.create({ ...input, intervalMinutes: 1440,
+    missedRunPolicy: { mode: 'pause', maxLatenessMinutes: 10 } });
+  const daily = await f.engine.create({ ...input, title: 'Daglig kladde', dailyTime: '07:30', timeZone: 'Europe/Copenhagen' });
+  f.setNow('2026-11-08T10:00:00Z');
+  await f.engine.action(immediate.id, 'resume', { expectedRevision: 1 });
+  assert.equal(f.task(immediate.id).nextRunAt, '2026-11-08T10:00:00.000Z');
+  await f.engine.tick();
+  assert.equal(f.calls(), 1);
+  assert.notEqual(f.task(immediate.id).status, 'paused');
+  await f.engine.action(daily.id, 'resume', { expectedRevision: 1 });
+  assert.equal(f.task(daily.id).nextRunAt, '2026-11-09T06:30:00.000Z');
+  await f.engine.tick();
+  assert.equal(f.calls(), 1, 'a newly activated daily plan waits for its next local clock time');
+});

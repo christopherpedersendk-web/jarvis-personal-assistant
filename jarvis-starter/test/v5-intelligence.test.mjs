@@ -90,7 +90,7 @@ test('B1/B2 proposals, confirmations, conflict and explicit replacement preserve
   assert.deepEqual(knowledge.search('favoritfrugt'), [], 'opposing confirmed claims cannot silently win retrieval');
   const replacement = await claims.propose({ subject: 'favoritfrugt', value: 'Pærer er fortsat min favorit.',
     category: 'preference', source: { kind: 'user', channel: 'manual' } });
-  await claims.decision(replacement.id, 1, 'confirm', { supersedesId: conflicting.id });
+  await claims.decision(replacement.id, 1, 'confirm', { supersedesId: conflicting.id, supersedesRevision: 2 });
   assert.equal(claims.conflicts().length, 1, 'the older opposing claim still requires review');
   await claims.decision(original.id, 2, 'archive');
   assert.equal(claims.conflicts().length, 0);

@@ -193,16 +193,33 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
   return documents.filter(document => !containsSecret(JSON.stringify(document)));
 }
 
-function lexicalResults(query, documents) {
+function lexicalResults(query, documents, cache = null) {
+  // Cache tokenisation, never source eligibility or authority. Every retrieval
+  // still reconstructs and validates the current sources before using it.
+  // Unchanged reads avoid repeated Unicode tokenisation; corrected texts get
+  // new entries and archived/expired/secret sources are removed immediately.
+  if (cache) {
+    const currentIds = new Set(documents.map(doc => doc.id));
+    for (const id of cache.keys()) if (!currentIds.has(id)) cache.delete(id);
+  }
   const queryTerms = [...new Set(terms(query, 80))].slice(0, 35);
   if (!queryTerms.length) return [];
-  const documentTerms = documents.map(doc => terms(`${doc.label} ${doc.text}`));
-  const frequencies = new Map(queryTerms.map(term => [term, documentTerms.filter(list => list.includes(term)).length]));
-  const averageLength = Math.max(1, documentTerms.reduce((sum, list) => sum + list.length, 0) / Math.max(1, documents.length));
+  const prepared = documents.map(doc => {
+    const signature = JSON.stringify([doc.label, doc.text]);
+    let entry = cache?.get(doc.id);
+    if (entry?.signature === signature) return entry;
+    const words = terms(`${doc.label} ${doc.text}`), counts = new Map();
+    for (const word of words) counts.set(word, (counts.get(word) || 0) + 1);
+    entry = { signature, words, counts, bodyWords: new Set(terms(doc.text)),
+      lowered: `${doc.label} ${doc.text}`.toLocaleLowerCase('da-DK'), loweredLabel: doc.label.toLocaleLowerCase('da-DK') };
+    if (cache) { cache.set(doc.id, entry); while (cache.size > 2000) cache.delete(cache.keys().next().value); }
+    return entry;
+  });
+  const frequencies = new Map(queryTerms.map(term => [term, prepared.filter(entry => entry.counts.has(term)).length]));
+  const averageLength = Math.max(1, prepared.reduce((sum, entry) => sum + entry.words.length, 0) / Math.max(1, documents.length));
   const loweredQuery = String(query).trim().toLocaleLowerCase('da-DK');
   return documents.map((doc, index) => {
-    const words = documentTerms[index];
-    const bodyWords = new Set(terms(doc.text));
+    const { words, bodyWords, counts, lowered, loweredLabel } = prepared[index];
     const exactTerms = queryTerms.filter(term => bodyWords.has(term));
     // An incidental hit on one word in a long natural-language question must
     // not receive the same fusion vote as a complete, distinctive exact match.
@@ -211,7 +228,7 @@ function lexicalResults(query, documents) {
     const distinctive = exactTerms.some(term => term.length >= 4 && (frequencies.get(term) || 0) <= rareLimit);
     let score = 0;
     for (const term of queryTerms) {
-      const hits = words.filter(word => word === term).length;
+      const hits = counts.get(term) || 0;
       const close = hits ? 0 : term.length >= 4 && words.some(word => word.length >= 4 &&
         (word.startsWith(term) || term.startsWith(word))) ? 0.35 : 0;
       const count = hits || close;
@@ -219,8 +236,8 @@ function lexicalResults(query, documents) {
       const idf = Math.log(1 + (documents.length - (frequencies.get(term) || 0) + 0.5) / ((frequencies.get(term) || 0) + 0.5));
       score += idf * (count * 2.2 / (count + 1.2 * (0.25 + 0.75 * words.length / averageLength)));
     }
-    if (loweredQuery.length >= 3 && `${doc.label} ${doc.text}`.toLocaleLowerCase('da-DK').includes(loweredQuery)) score += 3;
-    if (queryTerms.some(term => doc.label.toLocaleLowerCase('da-DK').includes(term))) score += 0.5;
+    if (loweredQuery.length >= 3 && lowered.includes(loweredQuery)) score += 3;
+    if (queryTerms.some(term => loweredLabel.includes(term))) score += 0.5;
     return { ...doc, score: Number(score.toFixed(3)), lexicalEvidence: { exactTerms: exactTerms.length,
       queryTerms: queryTerms.length, completeExactMatch, distinctive, strong: completeExactMatch && distinctive } };
   }).filter(doc => doc.score > 0).sort((a, b) => b.score - a.score ||
@@ -233,13 +250,14 @@ export class PersonalKnowledge {
     this.state = state;
     this.semanticScorer = semanticScorer;
     this.now = now;
+    this.lexicalCache = new Map();
   }
 
   search(query, { limit = 6, types } = {}) {
     const boundedLimit = checkedSearch(query, limit);
     const allowedTypes = checkedTypes(types);
     const documents = indexPersonalKnowledge(this.state, { now: this.now() }).filter(doc => !allowedTypes || allowedTypes.includes(doc.type));
-    return lexicalResults(query, documents).slice(0, boundedLimit);
+    return lexicalResults(query, documents, this.lexicalCache).slice(0, boundedLimit);
   }
 
   householdDay(date) { return getRecordedHouseholdDay(this.state, date); }
@@ -253,7 +271,7 @@ export class PersonalKnowledge {
     const getDocuments = () => indexPersonalKnowledge(this.state, { now: this.now() });
     const select = docs => docs.filter(doc => !allowedTypes || allowedTypes.includes(doc.type));
     const fallback = (status, documents = getDocuments()) => ({
-      matches: lexicalResults(query, select(documents)).slice(0, boundedLimit),
+      matches: lexicalResults(query, select(documents), this.lexicalCache).slice(0, boundedLimit),
       mode: 'local-lexical', semantic: { status }, answerability: 'sources-only',
     });
     const documents = getDocuments();
@@ -289,7 +307,7 @@ export class PersonalKnowledge {
     // A correction during inference invalidates the mixed snapshot. Return the
     // current lexical view immediately; the next read incrementally re-embeds it.
     if (current.some(doc => before.get(doc.id) !== signature(doc))) return fallback('source-changed');
-    const lexical = lexicalResults(query, current);
+    const lexical = lexicalResults(query, current, this.lexicalCache);
     const lexicalRanks = new Map(lexical.map((doc, index) => [doc.id, index + 1]));
     const lexicalById = new Map(lexical.map(doc => [doc.id, doc]));
     const semanticOrder = current.filter(doc => before.get(doc.id) === signature(doc) && Object.hasOwn(semantic, doc.id) &&

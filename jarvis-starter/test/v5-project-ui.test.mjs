@@ -166,15 +166,36 @@ test('A4/J6 a server partial or unknown outcome blocks all project mutations aft
   assert.equal(second.calls.length, 0);
 });
 
-test('A4 unknown transport outcome remains locked through polling/reload until a fresh correlated terminal status is reviewed', async () => {
+test('A4 unknown transport outcome remains locked through polling/reload until matching evidence and explicit owner review', async () => {
   const h = harness(); h.render([record()]); await h.fill(h.card().querySelector('textarea'), 'Anmodning med ukendt udfald');
   h.request = async () => { throw new Error('Transport afbrudt'); }; await h.button(h.card(), 'Videreudvikl').emit('click');
   h.render([record()]); assert.equal(h.button(h.card(), 'Videreudvikl').disabled, true);
   const second = harness({ saved: h.saved }); second.render([record()]);
   await second.button(second.card(), 'Hent seneste projektstatus').emit('click'); assert.equal(second.button(second.card(), 'Videreudvikl').disabled, true);
-  second.projects = [record({ operation: { id: 'new-known-result', kind: 'develop', status: 'failed' } })];
+  second.projects = [record({ operation: { id: 'new-known-result', kind: 'develop', status: 'failed', revision: 3, beforeHash: 'hash-2' } })];
   await second.button(second.card(), 'Hent seneste projektstatus').emit('click');
-  assert.equal(second.button(second.card(), 'Videreudvikl').disabled, false); assert.equal(second.calls.length, 0);
+  assert.equal(second.button(second.card(), 'Videreudvikl').disabled, true, 'a read alone cannot resolve the transport outcome');
+  const resolve = second.button(second.card(), 'Bekræft gennemgået handlingsudfald'); assert.equal(resolve.disabled, true);
+  await resolve.emit('click'); assert.equal(second.button(second.card(), 'Videreudvikl').disabled, true);
+  second.request = async () => ({ project: { ...second.projects[0], sourceContentHash: 'hash-2', files: [] } });
+  await second.button(second.card(), 'Se projektfiler').emit('click'); await resolve.emit('click');
+  assert.equal(second.button(second.card(), 'Videreudvikl').disabled, false); assert.equal(second.calls.length, 1);
+  assert.match(second.card().querySelector('.project-result').textContent, /Ingen handling er gentaget/);
+});
+
+test('A4 unrelated operation kind, revision, content or package set cannot resolve an interrupted request', () => {
+  const original = { kind: 'develop', basis: { revision: 2, contentHash: 'hash-2' }, operationId: 'operation-2' };
+  const terminal = { id: 'new-terminal', kind: 'develop', status: 'completed', revision: 3, beforeHash: 'hash-2' };
+  const match = operation => ProjectUi.matchingOutcome({ attempt: original, current: record({ operation }) });
+  assert.equal(match(terminal).id, 'new-terminal');
+  for (const changed of [{ kind: 'archive' }, { revision: 4 }, { beforeHash: 'unrelated' }, { status: 'unknown' }, { id: 'operation-2' }])
+    assert.equal(match({ ...terminal, ...changed }), null);
+  assert.equal(ProjectUi.matchingOutcome({ attempt: { ...original, basis: { revision: 2 } }, current: record({ operation: terminal }) }), null);
+  const attempt = { kind: 'install', basis: original.basis, operationId: 'old-install', approvedPackages: ['zod@3.2.1'] };
+  const packageInstallAttempt = { id: 'new-install', revision: 2, contentHash: 'hash-2', packages: ['zod@3.2.1'], status: 'completed' };
+  assert.equal(ProjectUi.matchingOutcome({ attempt, current: record({ packageInstallAttempt }) }).id, 'new-install');
+  for (const changed of [{ revision: 3 }, { packages: ['zod@4.0.0'] }, { contentHash: 'different' }, { status: 'unknown' }])
+    assert.equal(ProjectUi.matchingOutcome({ attempt, current: record({ packageInstallAttempt: { ...packageInstallAttempt, ...changed } }) }), null);
 });
 
 test('R06 package approval displays and sends the exact versioned set, while prior attempts block retries', async () => {

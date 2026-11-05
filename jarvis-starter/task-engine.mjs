@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createJobTransitions } from './job-state-transition.mjs';
 import { rejectSecrets } from './privacy.mjs';
+import { skillContentHash as skillHash } from './skills-registry.mjs';
 
 const MIN_INTERVAL = 60;
 const MAX_INTERVAL = 30 * 24 * 60;
@@ -108,11 +109,6 @@ function failureKind(error) {
   if (error?.unknownOutcome === true) return 'unknown';
   if (error?.permanent === true || error?.retryable === false || ['PERMISSION_DENIED', 'AUTH_EXPIRED', 'INVALID_INPUT'].includes(error?.code)) return 'permanent';
   return 'temporary';
-}
-
-function skillHash(skill) {
-  return createHash('sha256').update(JSON.stringify({ name: skill.name, version: skill.version,
-    permissions: skill.permissions, body: skill.body })).digest('hex');
 }
 
 function quietUntil(now, task) {

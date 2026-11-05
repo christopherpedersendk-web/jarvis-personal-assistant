@@ -92,6 +92,315 @@ const JarvisPlan = (() => {
   return Object.freeze({ timeZone, toInstant, fromInstant, syncCards });
 })();
 
+// The single structured-memory editor has its own revisioned draft. It is
+// independent of tasks, meals, calendar and model requests.
+const JarvisClaims = (() => {
+  const draftKey = 'jarvis:v5:memory-claim-draft';
+  const categories = { fact: 'Faktum', preference: 'Præference', temporary: 'Midlertidigt', planned: 'Planlagt', completed: 'Afsluttet' };
+  const sources = { user: 'Oplyst af dig', assistant: 'Forslag fra JARVIS', legacy: 'Tidligere gemt' };
+  const channels = { manual: 'brugerfladen', text: 'chat', discord: 'Discord', voice: 'stemme', legacy: 'tidligere version' };
+  const secret = /\bsk-[\w-]{16,}|\bgh[pousr]_[A-Za-z0-9]{16,}|-----BEGIN .*PRIVATE KEY-----|\b(?:password|adgangskode|api[_ -]?key|token|secret)\s*[:=]\s*\S{6,}|\bAuthorization\s*:\s*Bearer\s+\S+|\b(?:cpr|personnummer)\s*:?\s*\d{6}[- ]?\d{4}/i;
+  function attach({ document, api, storage, getOwner, confirm, onSource = () => {} }) {
+    const byId = id => document.getElementById(id), form = byId('personal-claim-form');
+    const list = byId('claim-list'), status = byId('claim-status'), submit = form.querySelector('[type="submit"]');
+    const element = (tag, text = '', css = '') => { const node = document.createElement(tag); node.textContent = text; node.className = css; return node; };
+    const inputField = (parent, id, title, type = 'text') => {
+      const input = document.createElement(type === 'select' ? 'select' : 'input'); input.id = id;
+      if (type !== 'select') input.type = type;
+      if (type === 'datetime-local') input.step = '0.001';
+      const label = element('label', title); label.htmlFor = id; parent.append(label, input); return input;
+    };
+    const option = (select, value, text) => { const node = element('option', text); node.value = value; select.append(node); };
+    const button = (text, handler) => { const control = element('button', text, 'secondary'); control.type = 'button';
+      control.addEventListener('click', async () => { if (control.disabled) return; try { await handler(); } catch (error) { report(error.message, true); } }); return control; };
+    const report = (message, error = false) => { status.textContent = message; status.classList.toggle('v5-error', error); };
+    const timeText = value => value && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('da-DK', {
+      dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Copenhagen' }).format(new Date(value)) : 'Ikke angivet';
+    const details = element('details'); details.style.gridColumn = '1 / -1'; details.style.minWidth = '0';
+    details.append(element('summary', 'Kilde, gyldighed og rettelser'));
+    const extra = element('div', '', 'v5-fields'); details.append(extra); form.insertBefore(details, submit);
+    const sourceId = inputField(extra, 'claim-source-id', 'Kildereference (valgfri, fx en note eller et kilde-ID)'); sourceId.maxLength = 120;
+    const validFrom = inputField(extra, 'claim-valid-from', 'Gyldig fra (Europe/Copenhagen)', 'datetime-local');
+    const expiresAt = inputField(extra, 'claim-expires-at', 'Gyldig til (Europe/Copenhagen)', 'datetime-local');
+    const fold = inputField(extra, 'claim-repeated-time', 'Ved to ens klokkeslæt under skift til vintertid', 'select');
+    option(fold, 'reject', 'Spørg mig — ingen automatisk antagelse'); option(fold, 'earlier', 'Første forekomst (sommertid)'); option(fold, 'later', 'Anden forekomst (vintertid)');
+    const privacy = element('p', 'Kilden hentes ikke automatisk. Indhold og gyldighed gemmes som forslag; en rettelse af et bekræftet punkt ændrer først originalen, når du vælger og bekræfter erstatningen.', 'muted micro');
+    privacy.style.gridColumn = '1 / -1'; extra.append(privacy);
+    const draftStatus = element('p', '', 'muted small-text'); draftStatus.id = 'claim-draft-status';
+    draftStatus.style.gridColumn = '1 / -1'; draftStatus.setAttribute('role', 'status'); draftStatus.setAttribute('aria-live', 'polite');
+    let owner = getOwner(), records = [], edit = null, dirty = false, busy = false, pending = null;
+    const sensitive = text => secret.test(text) || Boolean(getOwner()?.length >= 6 && text.includes(getOwner()));
+    let sequence = 0, epoch = 0, readableAfterFailure = false, storageReady = true, pinId = null;
+    const reviews = new Map();
+    const values = () => ({ subject: byId('claim-subject').value, value: byId('claim-value').value,
+      category: byId('claim-category').value || 'fact', sourceId: sourceId.value,
+      validFrom: { value: validFrom.value, originalLocal: validFrom.dataset.originalLocal || '', originalInstant: validFrom.dataset.originalInstant || '' },
+      expiresAt: { value: expiresAt.value, originalLocal: expiresAt.dataset.originalLocal || '', originalInstant: expiresAt.dataset.originalInstant || '' },
+      repeatedTime: fold.value });
+    const snapshot = () => JSON.stringify({ fields: values(), edit });
+    const setTime = (field, value) => { field.value = JarvisPlan.fromInstant(value); field.dataset.originalLocal = field.value; field.dataset.originalInstant = value || ''; };
+    const instant = field => field.value && field.value === field.dataset.originalLocal && field.dataset.originalInstant
+      ? field.dataset.originalInstant : JarvisPlan.toInstant(field.value, fold.value);
+    const storedEdit = value => value && ['edit', 'correct'].includes(value.mode) &&
+      typeof value.id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value.id) && Number.isInteger(value.revision) && value.revision > 0
+      ? { id: value.id, revision: value.revision, mode: value.mode, subject: String(value.subject || '').slice(0, 100) } : null;
+    function persist() {
+      const data = { version: 2, fields: values(), edit, dirty, pending,
+        reviews: [...reviews.entries()].slice(0, 200), showHistory: showHistory.checked };
+      try {
+        if (!getOwner()) { storage.removeItem(draftKey); return; }
+        if (sensitive(JSON.stringify(data))) { storage.removeItem(draftKey); storageReady = false; return; }
+        if (dirty || edit || pending || reviews.size) storage.setItem(draftKey, JSON.stringify(data));
+        else storage.removeItem(draftKey);
+        storageReady = true;
+      } catch { storageReady = false; }
+    }
+    function conflict() {
+      if (!edit) return '';
+      const current = records.find(item => item.id === edit.id);
+      if (!current) return 'Grundlaget er ikke tilgængeligt. Hent den nyeste oversigt; kladden er bevaret.';
+      if (current.revision !== edit.revision || current.status !== (edit.mode === 'edit' ? 'proposed' : 'confirmed'))
+        return `Ændret et andet sted. Kladden bruger revision ${edit.revision}; gennemgå den nyeste revision før gemning.`;
+      return '';
+    }
+    function controls() {
+      const problem = conflict();
+      form.setAttribute('aria-busy', String(busy));
+      submit.disabled = busy || Boolean(pending) || Boolean(problem);
+      submit.textContent = edit?.mode === 'edit' ? 'Gem ændringer i forslag' : edit?.mode === 'correct' ? 'Opret rettelsesforslag' : 'Opret forslag';
+      byId('claim-subject').readOnly = Boolean(edit);
+      cancel.hidden = !(dirty || edit); cancel.disabled = busy || Boolean(pending);
+      reload.hidden = !edit; reload.disabled = busy || Boolean(pending);
+      inspect.hidden = !pending; inspect.disabled = busy;
+      resolve.hidden = !pending; resolve.disabled = busy || !readableAfterFailure;
+      const base = edit ? `${edit.mode === 'correct' ? 'Retter bekræftet oplysning' : 'Redigerer forslag'} · basisrevision ${edit.revision}. ` : '';
+      draftStatus.textContent = pending ? 'Gemningens udfald er ikke afklaret. Ingen automatisk gentagelse. Hent status og gennemgå oplysningerne før du fortsætter.'
+        : `${base}${problem || (dirty ? 'Ugemt kladde er bevaret i denne fane.' : '')}${!storageReady ? ' Browseren kan ikke gendanne denne kladde efter lukning; behold fanen åben.' : ''}`;
+      draftStatus.classList.toggle('v5-conflict', Boolean(problem || pending));
+    }
+    function resetEditor() {
+      epoch++; edit = null; dirty = false; form.reset();
+      for (const field of [validFrom, expiresAt]) { delete field.dataset.originalLocal; delete field.dataset.originalInstant; }
+      fold.value = 'reject'; controls();
+    }
+    function showEditor() {
+      const mode = byId('memory-editor-mode');
+      if (mode) { mode.value = 'claim'; form.classList.remove('hidden'); byId('memory-workbench-form')?.classList.add('hidden');
+        try { storage.setItem('jarvis:v5:memory-mode', 'claim'); } catch { storageReady = false; } }
+      details.open = true;
+    }
+    function editRecord(record, discard = false) {
+      if (busy || pending) throw new Error('Afklar den igangværende gemning først; kladden er bevaret.');
+      if (!['proposed', 'confirmed'].includes(record.status)) throw new Error('Historiske eller ugyldige oplysninger kan ikke ændres. Opret et nyt forslag.');
+      if ((dirty || edit) && !discard && !confirm('Kassér den nuværende ugemte kladde og åbn denne oplysning?')) return;
+      epoch++; edit = { id: record.id, revision: record.revision, subject: record.subject, mode: record.status === 'proposed' ? 'edit' : 'correct' };
+      byId('claim-subject').value = record.subject; byId('claim-value').value = record.value;
+      byId('claim-category').value = record.category; sourceId.value = record.source?.id || '';
+      setTime(validFrom, record.validFrom); setTime(expiresAt, record.expiresAt); fold.value = 'reject'; dirty = false;
+      showEditor(); persist(); controls(); byId('claim-value').focus();
+      report(record.status === 'confirmed' ? 'Originalen er stadig bekræftet. Gem en rettelse som et nyt forslag, og gennemgå derefter det udtrykkelige erstatningsvalg.' : 'Forslaget er åbnet med sin præcise revision. Ændringer bekræfter det ikke.');
+    }
+    const cancel = button('Kassér oplysningskladde', () => {
+      if ((dirty || edit) && !confirm('Kassér den ugemte oplysningskladde?')) return;
+      resetEditor(); persist(); byId('claim-subject').focus();
+    });
+    const reload = button('Hent nyeste oplysning og kassér kladde', async () => {
+      if (!edit || !confirm('Kassér kladden og åbn den nyeste gemte revision?')) return;
+      const id = edit.id; await refresh(); const current = records.find(item => item.id === id);
+      if (!current) throw new Error('Oplysningen findes ikke længere. Kladden er bevaret.');
+      editRecord(current, true);
+    });
+    const inspect = button('Hent status efter usikkert udfald', async () => {
+      await refresh(); readableAfterFailure = true; controls();
+      report('Oversigten er hentet. Sammenlign indhold, kilde, gyldighed og revision med kladden. Læsningen alene afgør ikke, om dit tidligere klik blev gemt.');
+    });
+    const resolve = button('Bekræft gennemgået gemningsudfald', () => {
+      if (!pending || !readableAfterFailure || !confirm('Har du gennemgået den aktuelle oversigt og afklaret det tidligere gemningsudfald? Dette gentager ingen handling og bekræfter ingen personlig oplysning. En gammel basisrevision kræver stadig særskilt genindlæsning.')) return;
+      pending = null; readableAfterFailure = false; persist(); controls();
+      report('Du har markeret udfaldet som gennemgået. Kladden er bevaret; ingen handling er gentaget eller oplysning bekræftet.');
+    });
+    form.append(cancel, reload, inspect, resolve, draftStatus);
+    const historyBox = element('div', '', 'v5-fields');
+    const showHistory = inputField(historyBox, 'claim-show-history', 'Vis arkiverede, erstattede og ugyldige oplysninger', 'checkbox');
+    showHistory.style.width = 'auto'; list.parentNode.insertBefore(historyBox, list);
+    showHistory.addEventListener('change', () => { render(); persist(); });
+    function statusText(record) {
+      if (record.status !== 'confirmed') return ({ proposed: 'Forslag — ikke bekræftet', invalid: 'Ugyldig — bruges ikke',
+        archived: 'Arkiveret — bruges ikke', superseded: 'Erstattet — kun historik' })[record.status] || 'Ukendt status — gennemgå';
+      if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) return 'Udløbet — bruges ikke som aktuelt faktum';
+      if (record.validFrom && Date.parse(record.validFrom) > Date.now()) return 'Bekræftet til fremtiden — endnu ikke gældende';
+      return 'Bekræftet af dig';
+    }
+    const label = (parent, title, value) => { const row = element('p', '', 'v5-record-detail'); row.append(element('strong', `${title}: `), element('span', value)); parent.append(row); };
+    function render(forceId = null) {
+      const moveFocus = forceId && [...list.children].some(card => card.dataset.claimId === forceId && card.contains(document.activeElement));
+      const active = records.filter(record => record.status === 'confirmed' && (!record.validFrom || Date.parse(record.validFrom) <= Date.now()) && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()));
+      const normalized = value => String(value).normalize('NFKC').toLocaleLowerCase('da-DK').trim();
+      const conflicting = new Set(active.filter(item => active.some(other => other.id !== item.id && other.subject === item.subject && normalized(other.value) !== normalized(item.value))).map(item => item.subject));
+      const shown = records.filter(record => showHistory.checked || record.id === pinId || !['invalid', 'archived', 'superseded'].includes(record.status));
+      const bounded = shown.slice(-250).reverse().map(record => ({ ...record, conflict: conflicting.has(record.subject),
+        alternatives: record.status === 'proposed' ? records.filter(other => other.status === 'confirmed' && other.subject === record.subject && other.id !== record.id)
+          .map(other => ({ id: other.id, revision: other.revision, value: other.value })) : [] }));
+      if (pinId && !bounded.some(record => record.id === pinId)) { const pinned = records.find(record => record.id === pinId); if (pinned) bounded.unshift({ ...pinned, alternatives: [] }); }
+      JarvisPlan.syncCards(list, bounded, { forceId, emptyText: 'Ingen oplysninger i denne visning.', render: record => {
+        const card = element('article', '', 'v5-record-card'); card.dataset.claimId = record.id;
+        card.append(element('h3', record.subject)); label(card, 'Indhold', record.value);
+        label(card, 'Type', categories[record.category] || 'Ukendt'); label(card, 'Status', statusText(record));
+        label(card, 'Kilde', `${sources[record.source?.kind] || 'Ukendt kilde'} · ${channels[record.source?.channel] || 'ukendt kanal'}${record.source?.id ? ` · ${record.source.id}` : ''}`);
+        label(card, 'Revision', String(record.revision)); label(card, 'Gyldig fra', timeText(record.validFrom)); label(card, 'Gyldig til', timeText(record.expiresAt));
+        if (record.correctsId) label(card, 'Rettelsesforslag til', `${record.correctsId} · revision ${record.correctsRevision}`);
+        if (record.supersedesId) label(card, 'Erstatter', record.supersedesId);
+        if (record.conflict) card.append(element('p', 'Modstridende bekræftede oplysninger om samme emne. De bruges ikke som et entydigt faktum. Gennemgå de viste kilder; ret, ugyldiggør eller arkivér udtrykkeligt.', 'v5-conflict'));
+        const actions = element('div', '', 'v5-record-actions');
+        if (/^(?:claim|memory|organizer|recipe|household(?:-day|-rhythm)?|personal-task|follow-up):[\w:-]{1,150}$/.test(record.source?.id || ''))
+          actions.append(button('Åbn oprindelig kilde', () => onSource(record.source.id)));
+        if (['proposed', 'confirmed'].includes(record.status)) actions.append(button(record.status === 'proposed' ? 'Redigér forslag' : 'Ret oplysning', () => editRecord(record)));
+        if (record.status === 'proposed') {
+          const review = element('div', '', 'v5-fields');
+          const select = inputField(review, `claim-replaces-${record.id}`, 'Ved bekræftelse: hvilken tidligere oplysning erstattes?', 'select');
+          option(select, '', 'Ingen erstatning — behold øvrige oplysninger');
+          for (const old of record.alternatives.filter(old => !record.correctsId || old.id === record.correctsId))
+            option(select, old.id, `${old.value} · revision ${old.revision}`);
+          const reviewed = reviews.get(record.id);
+          if (reviewed && !record.alternatives.some(old => old.id === reviewed.id)) option(select, reviewed.id, 'Tidligere valgt oplysning er ikke længere tilgængelig');
+          if (reviewed) select.value = reviewed.id;
+          const reviewStatus = element('p', '', 'muted micro'); reviewStatus.style.gridColumn = '1 / -1'; review.append(reviewStatus);
+          let confirmButton;
+          const updateReview = () => {
+            const choice = reviews.get(record.id), current = choice && records.find(item => item.id === choice.id);
+            const stale = Boolean(choice && (current?.revision !== choice.revision || current?.status !== 'confirmed'));
+            const wrongCorrection = Boolean(record.correctsId && (!choice || choice.id !== record.correctsId || choice.revision !== record.correctsRevision));
+            reviewStatus.textContent = choice ? current?.revision === choice.revision && current.status === 'confirmed'
+              ? `Du har valgt at erstatte revision ${choice.revision}. Originalen bevares indtil dit bekræftelsesklik.`
+              : 'Den valgte original er ændret. Vælg og gennemgå den nyeste revision igen før bekræftelse.'
+              : 'Ingen original ændres uden et udtrykkeligt erstatningsvalg. Flere forskellige bekræftede værdier vises som en konflikt.';
+            if (record.correctsId && wrongCorrection) reviewStatus.textContent = 'Dette rettelsesforslag kræver dit udtrykkelige valg af den oprindeligt gennemgåede oplysning og revision. Hvis originalen er ændret, skal du oprette en ny rettelse fra den nyeste original.';
+            if (confirmButton) { confirmButton.dataset.claimBlocked = stale || wrongCorrection ? 'true' : 'false';
+              confirmButton.disabled = busy || Boolean(pending) || stale || wrongCorrection; }
+          };
+          select.addEventListener('change', () => { const old = record.alternatives.find(item => item.id === select.value);
+            if (old) reviews.set(record.id, { id: old.id, revision: old.revision }); else reviews.delete(record.id);
+            updateReview(); persist(); });
+          confirmButton = button('Bekræft oplysning', () => decide(record, 'confirm'));
+          updateReview(); card.append(review); actions.append(confirmButton);
+        }
+        if (record.status === 'confirmed') actions.append(button('Markér ugyldig', () => {
+          if (confirm('Markér denne oplysning som ugyldig? Den bevares i historikken, men bruges ikke som et aktuelt faktum.')) return decide(record, 'invalidate');
+        }));
+        if (record.status !== 'archived') actions.append(button('Arkivér', () => decide(record, 'archive')));
+        card.append(actions); return card;
+      } });
+      for (const control of list.querySelectorAll('button')) control.disabled = busy || Boolean(pending) || control.dataset.claimBlocked === 'true';
+      if (moveFocus) { const target = [...list.children].find(card => card.dataset.claimId === forceId) || status;
+        target.tabIndex = -1; target.focus(); }
+    }
+    async function refresh(forceId = null) {
+      const currentOwner = getOwner(); if (!currentOwner) return;
+      if (owner !== currentOwner) { clear(); owner = currentOwner; }
+      const request = ++sequence, result = await api('/api/personal-claims');
+      if (request !== sequence || currentOwner !== getOwner()) return;
+      if (!Array.isArray(result.claims)) throw new Error('Oplysningerne kunne ikke læses.');
+      records = result.claims; render(forceId); controls();
+    }
+    async function mutate(path, method, payload, operation, after) {
+      if (busy || pending || !getOwner()) return;
+      const currentOwner = getOwner(); busy = true; pending = operation; readableAfterFailure = false;
+      persist(); controls(); render(); let saved = false;
+      try {
+        const result = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (currentOwner !== getOwner()) return;
+        if (!result.claim?.id || !Number.isInteger(result.claim.revision)) throw new Error('Serveren returnerede ikke en identificerbar gemt oplysning.');
+        saved = true; pending = null; await after(result.claim); persist();
+        report(operation.kind === 'confirm' ? 'Oplysningen er bekræftet efter din gennemgang.'
+          : operation.kind === 'invalidate' ? 'Oplysningen er ugyldig og udelukket fra aktuelle fakta.'
+            : operation.kind === 'archive' ? 'Oplysningen er arkiveret; historikken er bevaret.'
+              : 'Forslaget er gemt, men ikke bekræftet. Gennemgå kilden og et eventuelt erstatningsvalg.');
+        await refresh(result.claim.id);
+      } catch (error) {
+        if (currentOwner !== getOwner()) return;
+        if (!saved && error.status >= 400 && error.status < 500 && !/ukendt|kan være gemt|kan være udført|lagerets seneste udfald/i.test(error.message || '')) pending = null;
+        report(saved ? `Ændringen er gemt, men oversigten kunne ikke opdateres: ${error.message}`
+          : `Gemning er ikke bekræftet: ${error.message}. Kladden og den oprindelige revision er bevaret.`, true);
+        if (!saved) { try { await refresh(); } catch { /* no blind retry, preserve the original error */ } }
+      } finally {
+        if (currentOwner === getOwner()) { busy = false; persist(); controls(); render(); }
+      }
+    }
+    async function decide(record, action) {
+      if (busy || pending) return;
+      const current = records.find(item => item.id === record.id);
+      if (!current || current.revision !== record.revision) throw new Error('Oplysningen er ændret. Gennemgå den nyeste revision før beslutningen.');
+      const payload = { expectedRevision: record.revision }, replacement = action === 'confirm' && reviews.get(record.id);
+      if (action === 'confirm' && record.correctsId && (!replacement || replacement.id !== record.correctsId || replacement.revision !== record.correctsRevision))
+        throw new Error('Vælg udtrykkeligt den oprindeligt gennemgåede oplysning og revision før rettelsen bekræftes.');
+      if (replacement) {
+        const original = records.find(item => item.id === replacement.id);
+        if (original?.status !== 'confirmed' || original.revision !== replacement.revision) throw new Error('Den valgte original er ændret. Vælg og gennemgå den nyeste revision igen.');
+        payload.supersedesId = replacement.id; payload.supersedesRevision = replacement.revision;
+      }
+      await mutate(`/api/personal-claims/${encodeURIComponent(record.id)}/${action}`, 'POST', payload,
+        { kind: action, id: record.id, revision: record.revision }, () => { reviews.delete(record.id); });
+    }
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); if (busy || pending || conflict()) return;
+      try {
+        const from = instant(validFrom), until = instant(expiresAt);
+        if (from && until && from >= until) throw new Error('Gyldig til skal være efter gyldig fra.');
+        const fields = values(), captured = snapshot(), capturedEpoch = epoch;
+        const payload = { value: fields.value, category: fields.category, sourceId: fields.sourceId.trim() || null, validFrom: from, expiresAt: until };
+        const editing = edit?.mode === 'edit';
+        if (editing) payload.expectedRevision = edit.revision;
+        else { payload.subject = fields.subject; if (edit) { payload.correctsId = edit.id; payload.correctsRevision = edit.revision; } }
+        await mutate(editing ? `/api/personal-claims/${encodeURIComponent(edit.id)}` : '/api/personal-claims', editing ? 'PATCH' : 'POST', payload,
+          { kind: editing ? 'update' : edit ? 'correct' : 'create', id: edit?.id || null, revision: edit?.revision || null }, record => {
+            if (capturedEpoch === epoch && snapshot() === captured) resetEditor();
+            else if (capturedEpoch === epoch) {
+              // A new subject typed while creation was in flight is a separate
+              // draft; never overwrite it with the submitted subject.
+              edit = byId('claim-subject').value === record.subject && record.status === 'proposed'
+                ? { id: record.id, revision: record.revision, subject: record.subject, mode: 'edit' } : null;
+              dirty = true;
+            }
+          });
+      } catch (error) { report(`${error.message} Kladden er bevaret.`, true); }
+    });
+    for (const type of ['input', 'change']) form.addEventListener(type, () => { dirty = true; persist(); controls(); });
+    function clear() {
+      sequence++; records = []; reviews.clear(); pending = null; busy = false; readableAfterFailure = false; pinId = null;
+      owner = ''; resetEditor(); list.replaceChildren(); report('');
+      try { storage.removeItem(draftKey); } catch { /* private fields are already cleared */ }
+    }
+    try {
+      const raw = owner && storage.getItem(draftKey);
+      if (raw && raw.length <= 100_000 && !sensitive(raw)) {
+        const saved = JSON.parse(raw), fields = saved.version === 2 ? saved.fields : saved;
+        if (fields && typeof fields.subject === 'string' && fields.subject.length <= 100 &&
+            typeof fields.value === 'string' && fields.value.length <= 1200) {
+          byId('claim-subject').value = fields.subject; byId('claim-value').value = fields.value;
+          if (Object.hasOwn(categories, fields.category)) byId('claim-category').value = fields.category;
+          sourceId.value = typeof fields.sourceId === 'string' ? fields.sourceId.slice(0, 120) : '';
+          for (const [name, target] of [['validFrom', validFrom], ['expiresAt', expiresAt]]) {
+            const data = fields[name]; if (data && typeof data.value === 'string' && data.value.length <= 40) {
+              target.value = data.value; target.dataset.originalLocal = String(data.originalLocal || '').slice(0, 40);
+              target.dataset.originalInstant = String(data.originalInstant || '').slice(0, 40);
+            }
+          }
+          fold.value = ['reject', 'earlier', 'later'].includes(fields.repeatedTime) ? fields.repeatedTime : 'reject';
+          edit = storedEdit(saved.edit); dirty = saved.dirty === true || Boolean(fields.subject || fields.value);
+          if (saved.pending && ['create', 'update', 'correct', 'confirm', 'archive', 'invalidate'].includes(saved.pending.kind)) pending = saved.pending;
+          for (const [id, review] of Array.isArray(saved.reviews) ? saved.reviews.slice(0, 200) : [])
+            if (typeof id === 'string' && typeof review?.id === 'string' && Number.isInteger(review.revision)) reviews.set(id, { id: review.id, revision: review.revision });
+          showHistory.checked = saved.showHistory === true; if (edit) details.open = true;
+          report('Oplysningskladde gendannet i denne fane med sin oprindelige revision. Gennemgå før gemning.');
+        }
+      } else if (!owner || raw) storage.removeItem(draftKey);
+    } catch { storageReady = false; }
+    controls();
+    return { refresh, clear, pin: id => { pinId = id; }, hasUnrecoverableDraft: () => !storageReady && (dirty || Boolean(edit) || Boolean(pending)) };
+  }
+  return Object.freeze({ attach });
+})();
+
 // Personlige opgaver, kapacitet, opfølgning og kildebaserede oplysninger.
 // Formularer og deres basisrevisioner bevares under polling, navigation og reload.
 if (typeof document !== 'undefined') (() => {
@@ -140,6 +449,10 @@ if (typeof document !== 'undefined') (() => {
   };
 
   const post = (url, method, payload) => api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const claimsUi = JarvisClaims.attach({ document, api, storage: sessionStorage,
+    getOwner: () => localStorage.getItem('jarvisAccessToken'), confirm: message => window.confirm(message),
+    onSource: sourceId => { if (typeof selectTab === 'function') selectTab(typeof sourceKinds === 'object'
+      ? sourceKinds[sourceId.split(':')[0]] || 'knowledge' : 'knowledge', { sourceId }); } });
   const taskForm = byId('personal-task-form'), followForm = byId('follow-up-form'), capacityForm = byId('capacity-form');
   const taskSubmit = taskForm.querySelector('[type="submit"]'), followSubmit = followForm.querySelector('[type="submit"]');
   const taskFields = {}, followFields = {}, capacityFields = {};
@@ -456,39 +769,8 @@ if (typeof document !== 'undefined') (() => {
   }
 
   async function refreshClaims(forceId = null) {
-    const request = ++sequence.claims, owner = ownerToken;
-    const result = await api('/api/personal-claims');
-    if (request !== sequence.claims || owner !== localStorage.getItem('jarvisAccessToken')) return;
-    const target = byId('claim-list');
-    const records = [...result.conflicts.map((conflict, index) => ({ ...conflict, id: `conflict-${index}`, conflict: true })),
-      ...result.claims.filter(item => item.status !== 'archived').slice(-50).reverse()];
-    JarvisPlan.syncCards(target, records, { forceId, emptyText: 'Ingen oplysninger oprettet.', render: claim => {
-      if (claim.conflict) return node('p', 'v5-conflict', `Konflikt om ${claim.subject}: ${claim.claims.map(x => x.value).join(' / ')}. Gennemgå oplysningerne.`);
-      const card = node('article', 'v5-record-card');
-      card.dataset.claimId = claim.id;
-      card.append(node('h3', '', claim.subject));
-      label(card, 'Indhold', claim.value);
-      label(card, 'Status', ({ proposed: 'Forslag (ikke bekræftet)', confirmed: 'Bekræftet af dig',
-        superseded: 'Erstattet' })[claim.status] || claim.status);
-      label(card, 'Kilde', `${claim.source.kind} · ${claim.source.channel}`);
-      if (claim.expiresAt) label(card, 'Gyldig til', dateText(claim.expiresAt));
-      const actions = node('div', 'v5-record-actions');
-      if (claim.status === 'proposed') actions.append(button('Bekræft oplysning', async () => {
-        await decideClaim(claim, 'confirm');
-      }, false, 'claim-status'));
-      actions.append(button('Arkivér', async () => decideClaim(claim, 'archive'), true, 'claim-status'));
-      card.append(actions);
-      return card;
-    } });
-    if (forceId) focusCard(target, forceId);
-  }
-
-  async function decideClaim(claim, decision) {
-    await api(`/api/personal-claims/${claim.id}/${decision}`, { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expectedRevision: claim.revision }) });
-    errorStatus('claim-status', decision === 'confirm' ? 'Oplysningen er bekræftet.' : 'Oplysningen er arkiveret.');
-    await refreshClaims(claim.id);
+    if (forceId) claimsUi.pin(forceId);
+    await claimsUi.refresh();
   }
 
   byId('personal-task-form').addEventListener('submit', async event => {
@@ -563,22 +845,6 @@ if (typeof document !== 'undefined') (() => {
     finally { submit.disabled = false; }
   });
 
-  byId('personal-claim-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const submit = form.querySelector('[type="submit"]');
-    submit.disabled = true;
-    try {
-      await api('/api/personal-claims', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: byId('claim-subject').value, value: byId('claim-value').value,
-          category: byId('claim-category').value }) });
-      form.reset();
-      errorStatus('claim-status', 'Forslaget er gemt. Bekræft det efter gennemgang.');
-      await refreshClaims();
-    } catch (error) { errorStatus('claim-status', `Ikke gemt: ${error.message}`, true); }
-    finally { submit.disabled = false; }
-  });
-
   byId('capacity-form').addEventListener('submit', async event => {
     event.preventDefault();
     const submit = event.currentTarget.querySelector('[type="submit"]'); submit.disabled = true;
@@ -642,7 +908,10 @@ if (typeof document !== 'undefined') (() => {
     finally { submit.disabled = false; }
   });
 
+  const backgroundReads = new Map();
   function clearLocalPlanning() {
+    backgroundReads.clear();
+    claimsUi.clear();
     for (const key of Object.keys(sequence)) sequence[key]++;
     resetTask(); resetFollow(); capacityForm.reset();
     capacityFields['capacity-buffer'].value = '0'; extraWindows.set([]); busyWindows.set([]);
@@ -653,15 +922,30 @@ if (typeof document !== 'undefined') (() => {
     for (const id of ['personal-task-status', 'follow-up-status', 'capacity-status', 'claim-status']) errorStatus(id, '');
     try { sessionStorage.removeItem(draftKey); } catch { /* The signed-out page does not display saved drafts. */ }
   }
-  const refresh = async () => {
+  const viewVisible = view => {
+    const root = byId(`tab-${view}`);
+    return Boolean(root && !root.hidden && !root.classList.contains('hidden'));
+  };
+  const refresh = async ({ forceKinds = [] } = {}) => {
     const current = localStorage.getItem('jarvisAccessToken');
     if (!current) return;
     if (ownerToken !== current) { clearLocalPlanning(); ownerToken = current; }
-    await Promise.allSettled([
-      refreshPersonalTasks().catch(error => errorStatus('personal-task-status', `Oversigten kunne ikke opdateres: ${error.message}. Kladden er bevaret.`, true)),
-      refreshFollowUps().catch(error => errorStatus('follow-up-status', `Oversigten kunne ikke opdateres: ${error.message}. Kladden er bevaret.`, true)),
-      refreshClaims().catch(error => errorStatus('claim-status', `Oversigten kunne ikke opdateres: ${error.message}`, true)),
-    ]);
+    if (!forceKinds.length && document.visibilityState === 'hidden') return;
+    const plan = viewVisible('plan'), knowledge = viewVisible('knowledge');
+    const reads = [
+      ['personal-task', forceKinds.includes('personal-task') || (!forceKinds.length && plan), refreshPersonalTasks, 'personal-task-status'],
+      ['follow-up', forceKinds.includes('follow-up') || (!forceKinds.length && plan), refreshFollowUps, 'follow-up-status'],
+      ['claim', forceKinds.includes('claim') || (!forceKinds.length && knowledge), refreshClaims, 'claim-status'],
+    ].filter(([, enabled]) => enabled);
+    await Promise.allSettled(reads.map(([kind, , read, status]) => {
+      if (backgroundReads.has(kind)) return backgroundReads.get(kind);
+      const pending = read().catch(error => {
+        if (ownerToken === current && localStorage.getItem('jarvisAccessToken') === current)
+          errorStatus(status, `Oversigten kunne ikke opdateres: ${error.message}. Kladden er bevaret.`, true);
+      })
+        .finally(() => { if (backgroundReads.get(kind) === pending) backgroundReads.delete(kind); });
+      backgroundReads.set(kind, pending); return pending;
+    }));
   };
   for (const type of ['input', 'change']) {
     taskForm.addEventListener(type, markTaskDirty); followForm.addEventListener(type, markFollowDirty);
@@ -670,7 +954,7 @@ if (typeof document !== 'undefined') (() => {
   repeatedTime.addEventListener('change', event => { markCapacityDirty(event); draftStatus(); });
   byId('logout').addEventListener('click', clearLocalPlanning);
   window.addEventListener('beforeunload', event => {
-    if (!storageReady && (taskDirty || followDirty || capacityDirty)) { event.preventDefault(); event.returnValue = ''; }
+    if ((!storageReady && (taskDirty || followDirty || capacityDirty)) || claimsUi.hasUnrecoverableDraft()) { event.preventDefault(); event.returnValue = ''; }
   });
   taskEditControls(); followEditControls();
   try {
@@ -710,8 +994,15 @@ if (typeof document !== 'undefined') (() => {
     } else sessionStorage.removeItem(draftKey);
   } catch { storageReady = false; draftStatus(); }
   document.addEventListener('jarvis:refreshed', refresh);
+  document.addEventListener('jarvis:view-changed', refresh);
   document.addEventListener('jarvis:v5-sources-changed', event => {
-    const pending = refresh();
+    const kind = event.detail?.sourceId?.split(':')[0];
+    if (kind === 'claim') claimsUi.pin(event.detail.sourceId.split(':')[1]);
+    // A source open is an explicit read, including when the originating view
+    // has already changed. Older dispatchers without an ID retain their forced
+    // refresh contract, but normal polling never fetches hidden domains.
+    const pending = refresh({ forceKinds: ['claim', 'personal-task', 'follow-up'].includes(kind)
+      ? [kind] : ['claim', 'personal-task', 'follow-up'] });
     if (typeof event.detail?.waitUntil === 'function') event.detail.waitUntil(pending);
   });
   if (localStorage.getItem('jarvisAccessToken')) refresh();

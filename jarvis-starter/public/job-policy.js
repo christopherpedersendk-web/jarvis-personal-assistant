@@ -99,11 +99,12 @@ const JarvisJobs = (() => {
       interrupted: 'Afbrudt · kræver gennemgang', archived: 'Arkiveret' })[task.status] || 'Ukendt status';
   }
 
-  function attach({ document, api, getToken, refresh, navigateSkill, confirm = message => globalThis.confirm(message), storage = globalThis.sessionStorage }) {
+  function attach({ document, api, getToken, refresh, navigateSkill, confirm = message => globalThis.confirm(message), storage }) {
+    if (storage === undefined) { try { storage = globalThis.sessionStorage; } catch { storage = null; } }
     const byId = id => document.getElementById(id), form = byId('task-form'), fields = Object.fromEntries(Object.keys(defaults).map(id => [id, byId(id)]));
     const key = 'jarvis:v5:job-policy-draft', status = byId('task-draft-status'), submit = byId('task-submit');
     let records = new Map(), skills = [], catalogPromise = null, catalogLoaded = false, catalogEpoch = 0;
-    let editId = null, baseRevision = null, dirty = false, epoch = 0, identity = 0, saving = false, errorMessage = '', conflict = '', storageReady = true;
+    let editId = null, baseRevision = null, dirty = false, epoch = 0, identity = 0, saving = false, saveSequence = 0, errorMessage = '', conflict = '', storageReady = true;
     let owner = getToken();
     const node = (tag, text, className) => { const element = document.createElement(tag);
       if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; };
@@ -183,7 +184,7 @@ const JarvisJobs = (() => {
       return catalogPromise;
     }
     function observe(tasks) {
-      if (owner !== getToken()) { reset(); owner = getToken(); skills = []; catalogLoaded = false; catalogPromise = null; catalogEpoch++; }
+      if (owner !== getToken()) { saving = false; saveSequence++; reset(); owner = getToken(); skills = []; catalogLoaded = false; catalogPromise = null; catalogEpoch++; }
       records = new Map(tasks.map(task => [task.id, task]));
       if (editId) {
         const current = records.get(editId);
@@ -198,7 +199,7 @@ const JarvisJobs = (() => {
     async function save(event) {
       event.preventDefault();
       if (saving) return;
-      const startedEpoch = epoch, startedIdentity = identity, startedOwner = getToken(), startedId = editId;
+      const startedEpoch = epoch, startedIdentity = identity, startedOwner = getToken(), startedId = editId, saveId = ++saveSequence;
       try {
         if (!startedOwner) throw new Error('Log ind, før du gemmer et job.');
         if (conflict) throw new Error(conflict);
@@ -220,7 +221,7 @@ const JarvisJobs = (() => {
         if (startedOwner === getToken() && startedIdentity === identity) {
           errorMessage = `Ikke gemt: ${error.message} Din kladde er bevaret.`; persist(); stateMessage();
         }
-      } finally { saving = false; stateMessage(); }
+      } finally { if (saveId === saveSequence && startedOwner === getToken()) { saving = false; stateMessage(); } }
     }
     function actionButton(card, task, action, text, after) {
       const button = node('button', text); button.type = 'button'; button.dataset.taskAction = action;
@@ -325,7 +326,7 @@ const JarvisJobs = (() => {
       if (!task) { errorMessage = 'Jobbet er ikke længere tilgængeligt. Kladden kan gemmes som et nyt pauset job.'; stateMessage(); return; }
       try { edit(task); } catch (error) { errorMessage = error.message; stateMessage(); } });
     byId('task-copy-draft').addEventListener('click', () => { identity++; editId = null; baseRevision = null; conflict = ''; errorMessage = ''; changed(); });
-    byId('logout').addEventListener('click', () => { reset(); owner = ''; records.clear(); byId('tasks').replaceChildren();
+    byId('logout').addEventListener('click', () => { saving = false; saveSequence++; reset(); owner = ''; records.clear(); byId('tasks').replaceChildren();
       skills = []; catalogLoaded = false; catalogPromise = null; catalogEpoch++; try { storage.removeItem(key); } catch { /* Cleared in-memory state remains private. */ } });
     globalThis.addEventListener?.('beforeunload', event => { if (dirty && (!storageReady || hasSecrets())) { event.preventDefault(); event.returnValue = ''; } });
     try {

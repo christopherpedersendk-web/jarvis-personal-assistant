@@ -1,6 +1,19 @@
-# Verification record
+# Verifikationslog
 
 ## Aktuel gate – 5. november 2026
+
+Seneste publicerede app er **`b04bcb304602a8ed92246db7a580038143362353`**, app-subtree **`3832f400fbdfbc37c9af528c2d0acfac19b39d9a`**, lokal indholdsidentisk commit `66e888b0202c3ef3d1e3b6ebd1854362768fe3d2`. Lokal `npm test`: **501/501**, 0 fejl/skip, Node24.22.1, 12.251,999757 ms. [CI42007968167](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42007968167) anvendte mergecommit `810a353d49454151f03f0db6b35bb9acf929293d` med identisk app-subtree: **501/501 Node22.23.4**, 15.666,190921 ms.
+
+- Faktisk multilingual-E5: **hybrid75/80 =93,75 % PASS**, vector75/80, lexical43/80. DatasætSHA `2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895` er uændret. Ingen ugyldige kildeudslip; korrektion, glemning og 16 sikkerhedsspørgsmål bestået. Fem fejl er bevaret (Q04/Q34/Q65/Q66/Q68). `evidence/semantic-b04bcb30.json` er den faktisk udlæste konsolrapport med opsummering/fejl, ikke det komplette artifact med alle96 spørgsmål.
+- Kold timeout gav nyttig lexical fallback ved1.546,04 ms; senere warm-kald gav hybrid. Kold modelindlæsning2.520,92 ms, første indeks759,13 ms, varm retrievalp95 38,73 ms, event-loop-p95 21,00 ms, peakRSS653.434.880 B. 122 lokale encoderrequests/253 tekster,121 fuldført/1 annulleret. Ingen eksterne persondata.
+- Browserjobbet **fejlede** i Chromium desktop, fordi en scrollbar historikregion modtog fokus før composer. Næste test accepterer kun dette reelle, kontrollerede mellemstop og kræver derefter composer. De øvrige tre forløb kørte ikke. En tidligere grøn matrix er ikke evidens for denne kode.
+- Npm-installationen rapporterede **to høje sårbarheder**, endnu uden advisory-afklaring. Ny præcis audit/inventory/lockfile-gate er implementeret; resultatet er **afventer**, ikke accepteret. Den valgte runtime må ikke releasegodkendes på baggrund af retrievalresultatet alene.
+
+Næste låste app-subtree **`c1f9272923d57bc1083ea646e1c67f98b6a0d121`** omfatter settings/organizer/chat/notekladder, eksplicitte claim-korrektioner og historik, lokal kalendercache, dokumenterede priser, planlagt restemadsbackend, token-cache samt isolerede fixtures. Fokuserede faktiske kørsler:104/104 UI/kilde/kalenderkontrakter;146/146 settings/skills/job-kontrakter;38/38 childserver-isolation/regression;77/77 retrieval/cache;82/82 household/meal/shopping/Nemlig;24/24 HTTP+restemad. Disse overlapper og må **ikke summeres**. Fuld suite, fire rigtige browserforløb, ny model-/auditmåling og parret performance afventer dette konkrete commit.
+
+**M6 er ikke accepteret.** Fysisk iPhone/desktop, faktisk zoom/mikrofon og administratorens isolerede restore-check er åbne i `manual-acceptance.md`. Alle historiske resultater nedenfor gælder kun deres angivne revisioner.
+
+## Historisk gate – 0acdca9d (bevaret fejlresultat)
 
 Seneste publicerede app er `0acdca9df4ea5fa7b28fab88ee9e2bd51db0cbed`, app-subtree `4b1e8f05b5dd289236deaa587b17ae2ac01c8935`. Lokal fuld suite: **383/383**, 0 fejl/skip, Node24.22.1, 11,976 s. [CI 42002595243](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42002595243) testede mergecommit `9e322c71e595c6762f9af925a648f7816d7d38f3` med identisk app-subtree: **383/383 Node22.23.4** på 13,871 s.
 
@@ -94,14 +107,12 @@ node scripts/v5-perf.mjs --app /workspace/scratch/0a910068d923/jarvis-v5-work/ja
 
 The first path was populated from local Git snapshot `ecc2944`, whose tree was verified byte-for-byte against remote `v4.9.1` SHA `6b2b073...`. To reproduce later, unpack the exact `v4.9.1` tree and pass its `jarvis-starter` directory as `--app`.
 
-## Required evidence still pending
+## Resterende evidens
 
-- R01–R13 focused Node tests and complete suite are green **locally and in Node 22 CI `41986430567`** on the exact published app subtree. Findings are code findings, not reports of user incidents.
-- Previous CI browser failures (static asset 404s, draft baseline conflicts and missing WebKit libraries) were resolved in tested commit `f19c85d`; CI `41944996605` passed all four browser combinations. Further keyboard/zoom/source-route coverage remains outstanding.
-- The 80 Danish lexical questions are synthetic and overlap on key terms. **Genuine semantic** retrieval and independent paraphrase quality ≥90% top-five remain pending; do not cite 100% lexical as semantic success.
-- 30 deterministic scheduling scenarios, DST, impossible schedules and locks passed locally; integrated live-calendar freshness and selective replan review remain pending.
-- Chromium and WebKit desktop (1390×950) and mobile (390×844) passed on published code `fa4d0e95`; exact claim source URL, back navigation, recovered creation drafts and active-input focus **pass browser CI 4/4**. Broader keyboard traversal, zoom, contrast and manual physical-device checks remain pending.
-- Physical iPhone and desktop manual checks: **pending owner/device availability**.
-- Synthetic migration, interruption/retry, newer-schema refusal, backup restore and rollback-block test passed; **real disaster-recovery exercise pending**.
-- Before/after payload, p95 API/search/writes and resident memory measured. Queue/external wait, external costs and loaded performance still unmeasured.
-- M7 production health/version verification remains outside this development authorization.
+- Fuld Node22-regression, ægte model, dependency-audit og den udvidede browsermatrix skal gentages på den nye kode, ikke genbruges fra501-test-kandidaten.
+- Mindst90 % faktisk hybrid top5 blev målt påb04bcb30, men fem relevante spørgsmål fejlede. Ingen fixtureændring eller påstand om perfekt hukommelse. Ny worker-runtime/token-cache kræver ny kørsel.
+- Planlægningens38 forskellige scenarier og lokale kalenderkontrakter er syntetiske. Reelle konti og persondata er ikke testet.
+- Fysisk iPhone/desktop, rigtig200 % zoom, mikrofonvalg og isoleret administrativ restore afventer personer/enheder. Emulering er ikke erstatning.
+- Syntetiske migrationer, afbrydelser, genoptagelse, nyere-skema-afvisning og hashbundet restore er testet; det konkrete endelige kandidatcommit skal bindes til disse tests.
+- Parret performance skal gentages på den nye kandidat. Syntetisk modelventetid er ikke liveintegrationers svartid, og tegn-/requesttal er ikke fakturerede tokens eller priser.
+- Alle P0/P1 skal lukkes før release. M7 merge, stabilt tag/release og produktion er fortsat tre særskilte godkendelser.

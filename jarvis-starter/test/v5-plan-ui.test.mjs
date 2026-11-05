@@ -102,7 +102,7 @@ class Element {
   } }
 }
 
-async function ui({ state = {}, saved = new Map(), authenticated = true, storageBlocked = false } = {}) {
+async function ui({ state = {}, saved = new Map(), authenticated = true, storageBlocked = false, view = 'plan' } = {}) {
   const tasks = new PersonalTasks({ state });
   const cases = new FollowUpCases({ state });
   const document = { focusDetachments: 0, activeElement: null, events: new Map() };
@@ -114,11 +114,13 @@ async function ui({ state = {}, saved = new Map(), authenticated = true, storage
     return visit(document.body) || null;
   };
   document.addEventListener = (name, action) => { if (!document.events.has(name)) document.events.set(name, []); document.events.get(name).push(action); };
-  document.emit = async name => { for (const action of document.events.get(name) || []) await action({ detail: {} }); };
+  document.emit = async (name, detail = {}) => { for (const action of document.events.get(name) || []) await action({ detail }); };
   const element = (tag, id, parent = document.body) => { const result = document.createElement(tag); result.id = id; parent.append(result); return result; };
   const plan = element('div', 'tab-plan'); element('header', 'intro', plan);
-  const form = (id, controls, statusId, listId) => {
-    const section = element('section', `${id}-section`, plan), root = element('form', id, section);
+  const knowledge = element('div', 'tab-knowledge'), home = element('div', 'tab-home');
+  for (const [key, root] of [['plan', plan], ['knowledge', knowledge], ['home', home]]) root.classList.toggle('hidden', key !== view);
+  const form = (id, controls, statusId, listId, parent = plan) => {
+    const section = element('section', `${id}-section`, parent), root = element('form', id, section);
     for (const [id, type, value = ''] of controls) { const field = element(type === 'textarea' || type === 'select' ? type : 'input', id, root);
       if (field.tagName === 'INPUT') field.type = type; field.value = value; field.defaultValue = value; }
     const submit = element('button', `${id}-submit`, root); submit.type = 'submit';
@@ -130,14 +132,15 @@ async function ui({ state = {}, saved = new Map(), authenticated = true, storage
     ['capacity-reviewed', 'checkbox']], 'capacity-status', 'capacity-results');
   form('follow-up-form', [['follow-up-awaiting', 'text'], ['follow-up-check', 'datetime-local'],
     ['follow-up-stop', 'text']], 'follow-up-status', 'follow-up-list');
-  form('personal-claim-form', [['claim-subject', 'text'], ['claim-value', 'textarea'], ['claim-category', 'select']], 'claim-status', 'claim-list');
+  form('personal-claim-form', [['claim-subject', 'text'], ['claim-value', 'textarea'], ['claim-category', 'select']], 'claim-status', 'claim-list', knowledge);
   element('button', 'logout');
-  let token = authenticated ? 'synthetic-token-never-stored-in-draft' : null, failure = null, hold = null;
+  let token = authenticated ? 'synthetic-token-never-stored-in-draft' : null, failure = null, hold = null, readHold = null;
   const calls = [], windowEvents = new Map();
   const api = async (path, options = {}) => {
     const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
     calls.push({ path, method, body });
     if (failure) { const error = failure(path, method, body); if (error) throw error; }
+    if (method === 'GET' && readHold) { const pending = readHold; readHold = null; await pending; }
     if (method !== 'GET' && hold) { const pending = hold; hold = null; await pending; }
     if (path === '/api/personal-tasks' && method === 'GET') return { tasks: tasks.list({ includeArchived: true }) };
     if (path === '/api/personal-tasks' && method === 'POST') return { task: await tasks.create(body) };
@@ -161,11 +164,14 @@ async function ui({ state = {}, saved = new Map(), authenticated = true, storage
   const byId = id => document.getElementById(id);
   return { document, byId, saved, tasks, cases, calls, state, windowEvents,
     refresh: () => document.emit('jarvis:refreshed'), setFailure: action => { failure = action; },
+    async changeView(next) { for (const name of ['plan', 'knowledge', 'home']) byId(`tab-${name}`).classList.toggle('hidden', name !== next);
+      await document.emit('jarvis:view-changed', { view: next }); },
     setToken: value => { token = value; }, writes: () => calls.filter(call => call.method !== 'GET'),
     async type(id, value) { const field = byId(id); field.value = value; await field.emit('input'); },
     async check(id, checked = true) { const field = byId(id); field.checked = checked; await field.emit('change'); },
     button(root, text) { return root.querySelectorAll('button').find(control => control.textContent === text); },
     holdWrite() { let resolve; hold = new Promise(done => { resolve = done; }); return resolve; },
+    holdRead() { let resolve; readHold = new Promise(done => { resolve = done; }); return resolve; },
   };
 }
 
@@ -177,6 +183,34 @@ test('K3/C2 dynamic planning fields are labelled and do not create jobs or exter
   }
   assert.deepEqual(h.writes(), []);
   assert.equal(h.byId('personal-task-state').disabled, true);
+});
+
+test('J1 planning polls only visible tasks/follow-ups or claims, never all hidden domains', async () => {
+  const h = await ui({ view: 'home' });
+  assert.equal(h.calls.length, 0); await h.refresh(); assert.equal(h.calls.length, 0);
+  await h.changeView('plan');
+  assert.deepEqual(h.calls.map(call => call.path), ['/api/personal-tasks', '/api/follow-ups']);
+  await h.changeView('knowledge'); assert.equal(h.calls.at(-1).path, '/api/personal-claims');
+  const before = h.calls.length; await h.refresh();
+  assert.deepEqual(h.calls.slice(before).map(call => call.path), ['/api/personal-claims']);
+  h.document.visibilityState = 'hidden'; const hidden = h.calls.length;
+  await h.refresh(); assert.equal(h.calls.length, hidden);
+  assert.equal(h.writes().length, 0);
+});
+
+test('R11/J1 exact source request forces only its read and coalesces an identical in-flight lookup', async () => {
+  const h = await ui({ view: 'home' }), release = h.holdRead(), waits = [];
+  const detail = { sourceId: 'claim:synthetic-target', waitUntil: promise => waits.push(promise) };
+  await h.document.emit('jarvis:v5-sources-changed', detail);
+  await h.document.emit('jarvis:v5-sources-changed', detail);
+  assert.deepEqual(h.calls.map(call => call.path), ['/api/personal-claims']);
+  assert.equal(waits.length, 2); release(); await Promise.all(waits);
+  const taskWaits = [];
+  await h.document.emit('jarvis:v5-sources-changed', { sourceId: 'personal-task:synthetic-task', waitUntil: promise => taskWaits.push(promise) });
+  await Promise.all(taskWaits);
+  assert.equal(h.calls.at(-1).path, '/api/personal-tasks');
+  assert.equal(h.calls.some(call => call.path === '/api/follow-ups'), false);
+  assert.equal(h.writes().length, 0);
 });
 
 test('R03/K5 task drafts survive polls and reload without changing their source revision', async () => {

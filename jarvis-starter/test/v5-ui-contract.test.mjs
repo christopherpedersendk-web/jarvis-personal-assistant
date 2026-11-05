@@ -22,6 +22,8 @@ test('Danish v5 navigation and scripted fields are statically linked without dup
   const scripts = [...html.matchAll(/<script src="\/([^"]+)" defer><\/script>/g)].map(x => x[1]);
   for (const script of scripts) assert.ok((await stat(join(root, 'public', script))).isFile(), `missing script ${script}`);
   const planScript = await readFile(join(root, 'public/v5-plan.js'), 'utf8');
+  const memoryScript = await readFile(join(root, 'public/memory-v49.js'), 'utf8');
+  const memoryIds = [...memoryScript.matchAll(/\.id = '([^']+)'/g)].map(match => match[1]);
   for (const id of new Set([...planScript.matchAll(/byId\('([^']+)'\)/g)].map(x => x[1])))
-    assert.ok(ids.includes(id), `new v5 editor refers to absent HTML ID ${id}`);
+    assert.ok(ids.includes(id) || memoryIds.includes(id), `new v5 editor refers to absent static or constructed memory ID ${id}`);
 });

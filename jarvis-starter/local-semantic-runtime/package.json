@@ -1,0 +1,9 @@
+{
+  "name": "jarvis-optional-local-semantic-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in local inference dependency boundary; never installed by application startup",
+  "engines": { "node": ">=22.6.0" },
+  "dependencies": { "@huggingface/transformers": "3.8.1" }
+}

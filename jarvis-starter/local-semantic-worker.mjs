@@ -8,7 +8,7 @@ globalThis.fetch = async () => { throw new Error('Netværk er deaktiveret for lo
 
 try {
   const verified = await verifyLocalSemanticModel(workerData.directory);
-  const { env, pipeline } = await import('@huggingface/transformers');
+  const { env, pipeline } = await import('./local-semantic-runtime/loader.mjs');
   if (env.version !== MODEL.runtimeVersion) throw Object.assign(new Error('Forkert modelruntime.'), { code: 'SEMANTIC_RUNTIME_VERSION' });
   env.allowLocalModels = true;
   env.allowRemoteModels = false;

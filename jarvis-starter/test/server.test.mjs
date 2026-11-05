@@ -5,6 +5,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
 
 test('local server protects endpoints and persists preferences without a paid API request', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'jarvis-test-'));
@@ -13,15 +14,7 @@ test('local server protects endpoints and persists preferences without a paid AP
   const base = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['server.mjs'], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      JARVIS_DATA_DIR: dataDir,
-      JARVIS_PROJECT_ROOT: join(dataDir, 'projects'),
-      JARVIS_ACCESS_TOKEN: token,
-      JARVIS_PORT: String(port),
-      JARVIS_HOST: '127.0.0.1',
-      OPENAI_API_KEY: 'REPLACE_WITH_YOUR_OWN_KEY',
-    },
+    env: syntheticServerEnv({ dataDir, accessToken: token, port }),
     stdio: 'ignore',
   });
   t.after(() => server.kill());

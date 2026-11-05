@@ -61,6 +61,13 @@
 .meal-field input, .meal-field select, .meal-field textarea { margin: 0; padding: .65rem .7rem; border-radius: 9px; font-size: .88rem; }
 .meal-field textarea { line-height: 1.6; }
 .meal-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .75rem; }
+.meal-calendar-comparison { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: .9rem; font-size: .8rem; }
+.meal-calendar-comparison th, .meal-calendar-comparison td { min-width: 0; padding: .65rem .45rem; text-align: left; vertical-align: top; border-bottom: 1px solid #55778b; overflow-wrap: anywhere; }
+.meal-calendar-comparison th:first-child { width: 18%; }
+.meal-calendar-comparison p { margin: .25rem 0; }
+.meal-calendar-comparison ul { padding-left: 1rem; margin: .4rem 0; }
+.meal-calendar-comparison .meal-calendar-unknown { color: #f1ce98; }
+#meal-family-calendar > summary { cursor: pointer; color: #d1eaf6; font-weight: 600; }
 .meal-family-day { min-width: 0; padding: .85rem; border: 1px solid #31586c; background: #0c2434; border-radius: 13px; }
 .meal-family-day h3 { margin: .1rem 0 .6rem; text-transform: capitalize; }
 .meal-family-day > p { margin: .25rem 0 .5rem; }

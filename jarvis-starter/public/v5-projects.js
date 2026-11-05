@@ -19,6 +19,21 @@ const JarvisProjects = (() => {
     ...(value.contentHash ? { expectedContentHash: value.contentHash } : {}) });
   const blocked = project => unsettled.has(project.operation?.status) || unsettled.has(project.packageInstallAttempt?.status)
     || project.operation?.kind === 'create' && project.operation.status !== 'completed';
+  const matchingOutcome = entry => {
+    const attempt = entry.attempt, project = entry.current, original = attempt?.basis;
+    if (!attempt || !original?.contentHash || !Number.isSafeInteger(original.revision) || blocked(project)) return null;
+    if (attempt.kind === 'install') {
+      const result = project.packageInstallAttempt;
+      if (!result?.id || result.id === attempt.operationId || result.status !== 'completed' || result.revision !== original.revision
+        || result.contentHash !== original.contentHash || !Array.isArray(attempt.approvedPackages)
+        || !same([...(result.packages || [])].sort(), [...attempt.approvedPackages].sort())) return null;
+      return { id: result.id, kind: 'install', status: result.status, revision: result.revision, contentHash: result.contentHash };
+    }
+    const result = project.operation;
+    if (!result?.id || result.id === attempt.operationId || result.kind !== attempt.kind || !['completed', 'failed'].includes(result.status)
+      || result.revision !== original.revision + (attempt.kind === 'develop' ? 1 : 0) || result.beforeHash !== original.contentHash) return null;
+    return { id: result.id, kind: result.kind, status: result.status, revision: result.revision, contentHash: result.beforeHash };
+  };
   const testDescription = project => {
     const report = project.lastTest;
     if (!report) return { status: 'unknown', text: 'Ingen registreret test for det aktuelle projektindhold.' };
@@ -132,6 +147,9 @@ const JarvisProjects = (() => {
       entry.install.hidden = !project.pendingPackages?.length;
       entry.install.disabled = writeBlocked || install?.revision === project.revision;
       entry.review.hidden = !conflict || missing;
+      const candidate = matchingOutcome(entry);
+      entry.resolve.hidden = !entry.attempt || !candidate || entry.busy || missing;
+      entry.resolve.disabled = !entry.viewBasis || !same(entry.viewBasis, latest);
       entry.discard.hidden = !entry.dirty; entry.discard.disabled = entry.busy;
       entry.view.disabled = entry.reading || missing;
       entry.recheck.disabled = entry.reading || entry.busy;
@@ -145,16 +163,11 @@ const JarvisProjects = (() => {
       try {
         await refreshProjects();
         if (!currentGeneration(epoch)) return;
-        const operation = entry.current.operation;
         const attempt = entry.attempt;
-        const resolvedInstall = attempt?.kind === 'install' && entry.current.packageInstallAttempt?.id
-          && entry.current.packageInstallAttempt.id !== attempt.operationId && entry.current.packageInstallAttempt.status === 'completed';
-        const resolvedOperation = attempt?.kind !== 'install' && operation?.id && operation.id !== attempt?.operationId
-          && ['completed', 'failed'].includes(operation.status);
-        if (attempt && !blocked(entry.current) && (resolvedInstall || resolvedOperation)) {
-          entry.attempt = null;
-          entry.message = 'Den seneste registrerede handling har nu et afsluttet udfald. Gennemgå resultatet og din kladde før en ny handling.';
-        } else if (attempt) entry.message = 'Status er hentet. Der er endnu ikke et entydigt afsluttet udfald for anmodningen; ingen automatisk gentagelse.';
+        const candidate = matchingOutcome(entry);
+        if (attempt && candidate) entry.message = `Et registreret udfald matcher handlingstype, revision og indhold: ${candidate.id}. `
+          + 'Dette er ikke alene en kvittering for din afbrudte anmodning. Hent filerne, kontrollér handlingen/manifestet og bekræft din afklaring særskilt.';
+        else if (attempt) entry.message = 'Status er hentet, men intet afsluttet udfald matcher handlingstype, revision og indhold. Ingen automatisk gentagelse; manuel afklaring er nødvendig.';
       } catch (error) { if (currentGeneration(epoch)) entry.message = `Status kunne ikke hentes: ${error.message}`; }
       finally { if (currentGeneration(epoch)) { entry.reading = false; persist(); updateProject(entry, entry.current, entry.missing); } }
     }
@@ -172,6 +185,7 @@ const JarvisProjects = (() => {
       if (approvals[kind] && !confirm(approvals[kind])) return;
       const epoch = generation, sentBasis = kind === 'develop' ? { ...entry.basis } : latest;
       entry.attempt = { kind, basis: sentBasis, operationId: kind === 'install' ? current.packageInstallAttempt?.id : current.operation?.id };
+      if (kind === 'install') entry.attempt.approvedPackages = [...current.pendingPackages];
       entry.busy = true; entry.message = ''; persist(); updateProject(entry, current);
       try {
         const path = `/api/projects/${encodeURIComponent(current.id)}` + (kind === 'archive' ? '' : `/${kind}`);
@@ -260,13 +274,20 @@ const JarvisProjects = (() => {
         entry.basis = latest; entry.message = 'Nyt grundlag valgt efter din gennemgang. Ingen udvikling er startet.';
         persist(); updateProject(entry, entry.current, entry.missing);
       });
+      entry.resolve = button('Bekræft gennemgået handlingsudfald', () => {
+        const candidate = matchingOutcome(entry), latest = projectBasis(entry);
+        if (!candidate || entry.busy || entry.missing || !entry.viewBasis || !same(entry.viewBasis, latest)) return;
+        if (!confirm(`Registreret ${operationNames[candidate.kind] || 'handling'}: ${outcomeNames[candidate.status]}\nID: ${candidate.id}\nRevision: ${candidate.revision}\nGrundlag: ${candidate.contentHash}\n\nDette match beviser ikke alene, at det er din afbrudte anmodning. Har du manuelt kontrolleret manifestet, udfaldet og de aktuelle filer og vil du ophæve den lokale afklaringslås? Ingen handling gentages ved dette valg.`)) return;
+        entry.attempt = null; entry.message = 'Du har bekræftet gennemgangen af det registrerede udfald. Ingen handling er gentaget; en eventuel gammel kladde skal stadig revideres.';
+        persist(); updateProject(entry, entry.current, entry.missing);
+      });
       entry.discard = button('Kassér udviklingskladde', () => {
         if (entry.busy || !confirm('Kassér den lokale udviklingskladde? Dette ændrer ikke projektfiler eller registrerede handlingsudfald.')) return;
         entry.request.value = ''; entry.dirty = false; entry.basis = projectBasis(entry);
         entry.message = 'Den lokale kladde er kasseret. Projektfilerne er uændrede.'; persist(); updateProject(entry, entry.current, entry.missing);
       });
       const controls = node('div', '', 'project-actions'); controls.append(entry.build, entry.view, entry.test, entry.rollback, entry.install, entry.archive);
-      const draftControls = node('div', '', 'project-actions'); draftControls.append(entry.review, entry.discard, entry.recheck);
+      const draftControls = node('div', '', 'project-actions'); draftControls.append(entry.review, entry.discard, entry.recheck, entry.resolve);
       entry.files = node('div', '', 'project-source-files project-files'); entry.files.hidden = true; entry.fileNodes = new Map();
       entry.filesStatus = node('p', '', 'project-files-status project-meta'); entry.filesStatus.hidden = true;
       entry.card.append(entry.title, entry.location, entry.description, entry.operationStatus, entry.testStatus, entry.testLog,
@@ -481,5 +502,5 @@ const JarvisProjects = (() => {
     });
     return { renderProjects, renderCode, renderArchived, reset, generation: () => generation };
   }
-  return { attach, testDescription, blocked, proposalNames };
+  return { attach, testDescription, blocked, proposalNames, matchingOutcome };
 })();

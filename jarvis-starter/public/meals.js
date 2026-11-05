@@ -29,6 +29,10 @@ let mealHouseholdChildrenEditor = null;
 let mealRhythmEditor = null;
 let mealInventoryEditor = null;
 let mealInventory = { configured: false, revision: 1, items: [] };
+let mealCalendarCache = null;
+let mealCalendarReadSequence = 0;
+let mealCalendarReading = false;
+let mealCalendarRenderSignature = '';
 
 // Tab-scoped recovery never contains credentials or approval intents. The
 // original revision travels with a draft, so reload cannot turn a stale edit
@@ -486,6 +490,88 @@ function mealEffectiveDay(household, date) {
     configured: household.configured || Boolean(override || repeating) };
 }
 
+function mealCalendarTimestamp(value) {
+  const instant = new Date(value);
+  return value && Number.isFinite(instant.getTime()) ? new Intl.DateTimeFormat('da-DK', {
+    timeZone: 'Europe/Copenhagen', dateStyle: 'short', timeStyle: 'short',
+  }).format(instant) : 'ukendt';
+}
+
+function mealCalendarObservation(cache, date) {
+  const day = cache?.dinnerDays?.find(item => item.date === date);
+  const expiresAt = Date.parse(cache?.expiresAt);
+  const expired = !Number.isFinite(expiresAt) || expiresAt <= Date.now();
+  const reasons = { unknown: 'Ingen læst kalenderperiode', stale: 'Kalenderdata er forældede', unavailable: 'Seneste kalenderlæsning fejlede',
+    expired_login: 'Google-login er udløbet', outside_coverage: 'Datoens middagstid ligger uden for den læste periode' };
+  if (!cache?.ready || expired || !day || day.status === 'unknown') {
+    const reason = expired && cache?.ready ? 'stale' : day?.reason || cache?.cacheState || 'unknown';
+    return { state: 'unknown', text: `Ukendt: ${reasons[reason] || 'Kalenderdækningen er ikke bekræftet'}. Det betyder ikke ledig tid.`, events: [] };
+  }
+  if (day.status === 'busy') return { state: 'busy', text: `${day.eventCount} registrerede tidskonflikter kl. 16–20. Fremmøde afgøres ikke af kalenderen.`, events: day.events || [] };
+  if (day.status === 'no_conflict') return { state: 'no_conflict', text: 'Ingen registrerede konflikter kl. 16–20 i den læste kalender. Ikke bevis for fremmøde.', events: [] };
+  return { state: 'unknown', text: 'Ukendt kalenderstatus. Ingen ledig tid eller tilstedeværelse antages.', events: [] };
+}
+
+function showHouseholdCalendar(household = mealData.household, cache = mealCalendarCache) {
+  const root = mealEl('meal-family-calendar-comparison'), status = mealEl('meal-family-calendar-status');
+  if (!root || !status) return;
+  const start = mealEl('meal-family-start').value || mealLocalDate();
+  const dates = Array.from({ length: 7 }, (_, index) => mealAddDays(start, index));
+  const signature = JSON.stringify({ days: dates.map(date => mealEffectiveDay(household || {}, date)),
+    source: cache && { calendarId: cache.calendarId, ready: cache.ready, cacheState: cache.cacheState, fetchedAt: cache.fetchedAt,
+      expiresAt: cache.expiresAt, coverage: cache.coverage, lastReadError: cache.lastReadError, dinnerDays: cache.dinnerDays },
+    expired: !Number.isFinite(Date.parse(cache?.expiresAt)) || Date.parse(cache.expiresAt) <= Date.now() });
+  if (mealCalendarRenderSignature === signature) return;
+  mealCalendarRenderSignature = signature;
+  status.textContent = `Valgt kalender: ${cache?.calendarId || 'ikke kendt'}. Kun læsning. Senest hentet: ${mealCalendarTimestamp(cache?.fetchedAt)}.`
+    + (cache?.coverage ? ` Dækning: ${mealCalendarTimestamp(cache.coverage.start)} – ${mealCalendarTimestamp(cache.coverage.end)}. Frisk indtil: ${mealCalendarTimestamp(cache.expiresAt)}.`
+      : ' Ingen dokumenteret kalenderdækning i denne serverkørsel.')
+    + (cache?.lastReadError ? ` Læsefejl: ${cache.lastReadError}. Tidligere observationer bekræfter ikke den aktuelle kapacitet.` : '');
+  const table = mealNode('table', '', 'meal-calendar-comparison');
+  table.append(mealNode('caption', 'Gemte husstandsoplysninger og læste kalenderkonflikter – to forskellige kilder'));
+  const head = mealNode('thead'), headings = mealNode('tr');
+  for (const value of ['Dato', 'Husstand – eksplicit oplyst', 'Kalender – kun læst']) { const cell = mealNode('th', value); cell.setAttribute('scope', 'col'); headings.append(cell); }
+  head.append(headings); table.append(head);
+  const body = mealNode('tbody');
+  for (const date of dates) {
+    const day = mealEffectiveDay(household || {}, date), observation = mealCalendarObservation(cache, date);
+    const row = mealNode('tr'); row.dataset.calendarHouseholdDate = date;
+    const heading = mealNode('th', mealDayLabel(date)); heading.setAttribute('scope', 'row');
+    const people = mealNode('td');
+    people.append(mealNode('p', day.configured ? day.skip ? 'Udtrykkeligt angivet: ingen aftensmad hjemme.'
+      : `${day.adults} voksne og ${day.children.length} børn hjemme; ${(day.guests?.adults || 0) + (day.guests?.children?.length || 0)} gæster.`
+      : 'Tilstedeværelse er ikke oplyst.'));
+    people.append(mealNode('p', `Grundlag: ${day.override ? 'dagsundtagelse' : day.repeating ? 'familierytme' : day.configured ? 'eksplicit standard' : 'ukendt'} · husstandsrevision ${day.revision}.`, 'muted micro'));
+    const calendar = mealNode('td', '', observation.state === 'unknown' ? 'meal-calendar-unknown' : '');
+    calendar.dataset.calendarState = observation.state; calendar.append(mealNode('p', observation.text));
+    if (observation.events.length) {
+      const list = mealNode('ul');
+      for (const event of observation.events.slice(0, 6)) list.append(mealNode('li', `${event.allDay ? 'Heldagsperiode' : `${mealCalendarTimestamp(event.start)} – ${mealCalendarTimestamp(event.end)}`} · ${event.title || 'Optaget'} · kilde-ID ${event.id || 'ukendt'}`));
+      calendar.append(list);
+      if (cache.dinnerDays.find(item => item.date === date).eventCount > observation.events.length)
+        calendar.append(mealNode('p', 'Flere registrerede konflikter end de viste seks. Brug kalenderen til den fulde gennemgang.', 'micro'));
+    }
+    row.append(heading, people, calendar); body.append(row);
+  }
+  table.append(body); root.replaceChildren(table);
+}
+
+async function refreshHouseholdCalendar() {
+  const generation = mealSessionGeneration, request = ++mealCalendarReadSequence;
+  const startDate = mealEl('meal-family-start').value || mealLocalDate();
+  try {
+    const cache = await mealApi(`/api/google/calendar/cache?startDate=${encodeURIComponent(startDate)}&days=7`);
+    if (!mealSessionCurrent(generation) || request !== mealCalendarReadSequence || startDate !== (mealEl('meal-family-start').value || mealLocalDate())) return;
+    mealCalendarCache = cache;
+    mealEl('meal-family-calendar-load').disabled = mealCalendarReading || !['connected', 'not_verified', 'unavailable'].includes(cache.connectionState);
+    showHouseholdCalendar();
+  } catch (error) {
+    if (!mealSessionCurrent(generation) || request !== mealCalendarReadSequence) return;
+    mealCalendarCache = { ...mealCalendarCache, ready: false, cacheState: 'unavailable', dinnerDays: [], lastReadError: error.message };
+    showHouseholdCalendar();
+  }
+}
+
 function mealEnhanceStaticUI() {
   const familyForm = mealEl('meal-family-form');
   const adultPortion = mealInput(1, 'number', { min: 0.25, max: 3, step: 0.05 }); adultPortion.id = 'meal-adult-portion';
@@ -779,6 +865,7 @@ function showHousehold(household = {}, { initial = false } = {}) {
     }, status);
     showPortions(); return card;
   }, 'Vælg en dato for at se familiens uge.');
+  showHouseholdCalendar(household);
 }
 
 function mealRecipeChoices(dish) {
@@ -1370,7 +1457,7 @@ async function refreshMeals() {
       try { const stockResponse = mealData.inventory || await mealApi('/api/meals/inventory');
         showMealInventory(stockResponse?.inventory || stockResponse || {}); }
       catch (error) { mealEl('meal-inventory-status').textContent = 'Lagerstatus kunne ikke hentes: ' + error.message; }
-      await Promise.all([refreshNemlig(), refreshGoogle(), refreshRecipes(), refreshShoppingDrafts()]);
+      await Promise.all([refreshNemlig(), refreshGoogle(), refreshRecipes(), refreshShoppingDrafts(), refreshHouseholdCalendar()]);
       if (!mealSessionCurrent(generation)) return;
       mealLoaded = true;
     } while (mealRefreshAgain);
@@ -1394,9 +1481,24 @@ mealEl('meal-family-form').addEventListener('submit', async event => {
   } catch (error) { mealEl('meal-family-status').textContent = error.message; }
   finally { unlockRhythm(); unlock(); }
 });
-mealEl('meal-family-show').addEventListener('click', () => {
+mealEl('meal-family-show').addEventListener('click', async () => {
   mealPersistDrafts();
-  try { showHousehold(mealData.household); } catch (error) { toast(error.message); }
+  try { showHousehold(mealData.household); await refreshHouseholdCalendar(); } catch (error) { toast(error.message); }
+});
+mealEl('meal-family-calendar-load').addEventListener('click', async () => {
+  if (mealCalendarReading || mealEl('meal-family-calendar-load').disabled) return;
+  const generation = mealSessionGeneration;
+  mealCalendarReading = true; mealEl('meal-family-calendar-load').disabled = true;
+  mealEl('meal-family-calendar-read-status').textContent = 'Læser næste 14 dage fra den valgte kalender. Husstand og madplaner ændres ikke.';
+  try {
+    await mealApi('/api/google/calendar/events?days=14');
+    if (!mealSessionCurrent(generation)) return;
+    mealEl('meal-family-calendar-read-status').textContent = 'Kalenderperioden er læst. Ingen aftaler, invitationer eller husstandsoplysninger er ændret.';
+  } catch (error) {
+    if (mealSessionCurrent(generation)) mealEl('meal-family-calendar-read-status').textContent = `Kalenderen kunne ikke læses: ${error.message}. Dækningen er ukendt; dine valg er bevaret.`;
+  } finally {
+    if (mealSessionCurrent(generation)) { mealCalendarReading = false; await Promise.all([refreshGoogle(), refreshHouseholdCalendar()]); }
+  }
 });
 
 mealEl('meal-profile-form').addEventListener('input', () => { mealDirty.add('profile'); mealEl('meal-profile-status').textContent = 'Madpræferencerne har ugemte ændringer.'; });
@@ -1455,7 +1557,8 @@ mealEl('meal-google-calendar-form').addEventListener('submit', async event => {
     await mealApi('/api/google/calendar/select', 'POST', { calendarId: mealEl('meal-google-calendar-id').value.trim() });
     calendarSelectionDirty = false;
     mealClearDraft('calendar-selection'); mealRegisterCalendarDraft();
-    await refreshGoogle();
+    mealCalendarCache = null; showHouseholdCalendar();
+    await Promise.all([refreshGoogle(), refreshHouseholdCalendar()]);
     mealEl('meal-google-events').replaceChildren();
   } catch (error) { mealEl('meal-google-status').textContent = `Kalendervalget blev ikke gemt: ${error.message}`; }
 });
@@ -1463,12 +1566,14 @@ mealEl('meal-google-load').addEventListener('click', async () => {
   const root = mealEl('meal-google-events'); root.replaceChildren();
   try {
     const { events } = await mealApi('/api/google/calendar/events?days=7');
+    await refreshHouseholdCalendar();
     if (!events.length) root.append(mealNode('p', 'Ingen aftaler i denne periode.', 'muted'));
     for (const event of events) root.append(mealNode('p', event.start.slice(0, 16) + ' · ' + event.title, 'meal-event'));
   } catch (error) { root.append(mealNode('p', error.message, 'muted')); }
 });
 mealEl('meal-google-disconnect').addEventListener('click', async () => {
-  try { await mealApi('/api/google/calendar/disconnect', 'POST'); await refreshGoogle(); mealEl('meal-google-events').replaceChildren(); }
+  try { await mealApi('/api/google/calendar/disconnect', 'POST'); mealCalendarCache = null; showHouseholdCalendar();
+    await Promise.all([refreshGoogle(), refreshHouseholdCalendar()]); mealEl('meal-google-events').replaceChildren(); }
   catch (error) { toast(error.message); }
 });
 mealEl('meal-nemlig-search-form').addEventListener('submit', async event => {
@@ -1524,6 +1629,10 @@ for (const eventName of ['input', 'change', 'click']) document.addEventListener(
 });
 mealEl('logout')?.addEventListener('click', () => {
   mealSessionGeneration++; mealLoaded = false; mealDirty.clear(); mealRecoveredDrafts = {}; mealDraftControllers.clear(); mealSelection.clear();
+  mealCalendarCache = null; mealCalendarReadSequence++; mealCalendarReading = false; mealCalendarRenderSignature = '';
+  mealEl('meal-family-calendar-comparison').replaceChildren();
+  mealEl('meal-family-calendar-status').textContent = 'Ingen kalenderdækning er læst i denne session.';
+  mealEl('meal-family-calendar-read-status').textContent = ''; mealEl('meal-family-calendar-load').disabled = true;
   try { sessionStorage.removeItem(mealDraftKey); } catch { /* Already hidden by the app's logout handler. */ }
   mealData = { profile: {}, plans: [], household: { configured: false, days: {} }, recipes: [] };
   for (const id of ['meal-plans', 'meal-family-days', 'meal-recipes', 'meal-shopping-drafts', 'meal-nemlig-proposals', 'meal-nemlig-results', 'meal-nemlig-basket', 'meal-google-events']) mealEl(id).replaceChildren();

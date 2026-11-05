@@ -15,5 +15,7 @@
 .catalog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .catalog-card{display:flex;flex-direction:column;gap:7px;padding:15px;border-radius:12px;background:#102b3e;border:1px solid #345d71;overflow-wrap:anywhere}
 .catalog-card p{margin:0}.catalog-status{color:#a1c4d6}.catalog-status.good{color:#8ce3bc}
+.catalog-card details{min-width:0}.catalog-card summary{cursor:pointer;line-height:1.6}
+.skill-procedure{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;margin:10px 0;max-width:100%}
 .time-pair{display:flex;gap:18px}.time-pair>div{display:flex;flex:1;flex-direction:column;gap:8px}.time-pair label{font-size:13px;color:#a9c5d3}
 @media(max-width:900px){.intelligence-grid{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}}

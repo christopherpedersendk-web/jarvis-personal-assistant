@@ -20,6 +20,8 @@
   <link rel="stylesheet" href="/memory-v49.css" />
   <link rel="stylesheet" href="/v5.css" />
   <script src="/job-policy.js" defer></script>
+  <script src="/settings-drafts.js" defer></script>
+  <script src="/chat-draft.js" defer></script>
   <script src="/v5-projects.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/organizer.js" defer></script>
@@ -150,6 +152,8 @@
         <section class="panel intelligence-panel">
           <div class="section-heading"><h2>JARVIS' arbejdsprocedurer</h2><span class="tiny-label">SKILL.md</span></div>
           <p class="muted small-text">Versionsstyrede skills er metoder til gentagelige opgaver – ikke ny personlig hukommelse og ikke eksekverbar kode.</p>
+          <p id="skills-catalog-status" class="muted micro" role="status" aria-live="polite"></p>
+          <button id="skills-catalog-refresh" type="button" class="secondary compact-button">Opdater procedurekatalog</button>
           <div id="skills-catalog" class="catalog-grid"></div>
         </section>
         <section id="tab-organizer" class="organizer-workbench" aria-label="Noter og lister">
@@ -194,6 +198,14 @@
             <label for="meal-family-start">Dage fra</label><input id="meal-family-start" type="date" />
             <button id="meal-family-show" type="button" class="secondary">Vis 7 dage</button>
           </div>
+          <details id="meal-family-calendar" class="meal-v5-panel">
+            <summary>Familierytme og kalender ved siden af hinanden</summary>
+            <p class="muted small-text">Husstanden bygger kun på dine gemte oplysninger. Kalenderen viser mulige tidskonflikter kl. 16–20 i Danmark – aldrig hvem der er hjemme. Ugemte husstandsrettelser indgår først efter gemning.</p>
+            <p id="meal-family-calendar-status" class="muted micro" role="status" aria-live="polite">Kalenderens dækning er ukendt, indtil en periode er læst.</p>
+            <button id="meal-family-calendar-load" type="button" class="secondary">Hent næste 14 kalenderdage (kun læsning)</button>
+            <p id="meal-family-calendar-read-status" class="muted micro" role="status" aria-live="polite"></p>
+            <div id="meal-family-calendar-comparison"></div>
+          </details>
           <div id="meal-family-days" class="meal-family-grid"></div>
         </section>
         <section class="panel meals-panel">
@@ -282,6 +294,8 @@
         <section class="panel intelligence-panel">
           <div class="section-heading"><h2>Integrationer og rettigheder</h2><span class="tiny-label">VERIFICERET STATUS</span></div>
           <p class="muted small-text">Forbindelser vises med deres faktiske tilstand. Planlagte funktioner er endnu ikke aktiveret.</p>
+          <p id="integrations-catalog-status" class="muted micro" role="status" aria-live="polite"></p>
+          <button id="integrations-catalog-refresh" type="button" class="secondary compact-button">Opdater forbindelsesstatus</button>
           <div id="integrations-catalog" class="catalog-grid"></div>
         </section>
       <div id="tab-system" class="system-settings-group" role="region" aria-label="System Health og opdateringer">
@@ -316,14 +330,16 @@
             <div class="time-pair"><div><label for="proactive-quiet-start">Stilletid fra</label><input id="proactive-quiet-start" type="time" required /></div>
               <div><label for="proactive-quiet-end">Stilletid til</label><input id="proactive-quiet-end" type="time" required /></div></div>
             <p id="proactive-status" class="muted micro" aria-live="polite"></p>
-            <button class="primary full" type="submit">Gem proaktive indstillinger</button>
+            <p id="proactive-draft-status" class="draft-status micro" role="status" aria-live="polite"></p>
+            <button id="proactive-submit" class="primary full" type="submit">Gem ændrede proaktive indstillinger</button>
+            <button id="proactive-reload" class="secondary" type="button">Kassér kladde og hent gemte indstillinger</button>
           </form>
         </section>
         <section class="panel settings-panel">
           <div class="section-heading"><h2>Systemindstillinger</h2><span class="tiny-label">JARVIS v5.0.0</span></div>
           <p class="muted small-text">Redigér driftsindstillinger og iPhone-notifikationer her. Eksisterende hemmelige nøgler vises aldrig.</p>
           <form id="settings-form" class="task-form">
-            <label for="max-runs">Maksimalt antal baggrundsopgaver pr. dag</label>
+            <label for="max-runs">Maksimalt antal nye baggrundskørsler pr. UTC-døgn</label>
             <input id="max-runs" type="number" min="1" max="100" required />
             <label class="inline-check" for="reminders-enabled"><input id="reminders-enabled" type="checkbox" checked /> Vis proaktive påmindelser om kommende datoer i JARVIS-indbakken</label>
             <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send opgave- og datopåmindelser til mig via Discord DM</label>
@@ -334,7 +350,9 @@
             <label for="push-token">Pushover App Token</label>
             <input id="push-token" type="password" autocomplete="off" placeholder="Lad være tom for at beholde den nuværende" />
             <p id="settings-status" class="muted small-text"></p>
-            <button type="submit" class="primary full">Gem indstillinger</button>
+            <p id="settings-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
+            <button id="settings-submit" type="submit" class="primary full">Gem ændrede indstillinger</button>
+            <button id="settings-reload" type="button">Kassér kladden og hent gemte værdier</button>
           </form>
           <hr />
           <h3>Discord – direkte chat med JARVIS</h3>
@@ -348,7 +366,10 @@
             <label for="discord-guild-id">Privat Discord Server ID (valgfrit)</label>
             <input id="discord-guild-id" inputmode="numeric" placeholder="Lad stå tomt for kun at tillade DM" />
             <p id="discord-status" class="muted small-text" aria-live="polite">Discord er ikke konfigureret.</p>
-            <button type="submit" class="primary full">Gem og forbind Discord</button>
+            <p id="discord-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
+            <p class="muted small-text">Kun Gem anvender dine ændringer. Hvis Discord-bot aktiv vælges, kan den gemte forbindelse startes. Nye nøgler holdes kun i denne åbne fane og gemmes aldrig som browserkladde.</p>
+            <button id="discord-submit" type="submit" class="primary full">Gem mine Discord-ændringer</button>
+            <button id="discord-reload" type="button">Kassér kladden og hent gemte værdier</button>
           </form>
           <hr /><h3>Smart Home – Sonos</h3>
           <p class="muted small-text">Eksperimentel Sonos Cloud API-forbindelse. Kræver et godkendt OAuth access token fra Sonos Developer Portal og household-ID. Automatisk tokenfornyelse er endnu ikke implementeret. Del aldrig dine tokens i chat.</p>
@@ -506,7 +527,7 @@
               <section id="task-policy-preview" class="v5-record-card" aria-label="Politik til gennemgang"></section>
               <p id="task-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
               <button id="task-submit" class="primary full" type="submit">Gem pauset job</button>
-              <div class="task-actions"><button id="task-new-draft" type="button">Ny kladde</button><button id="task-reload" type="button" hidden>Hent aktuel revision</button><button id="task-copy-draft" type="button" hidden>Gem kladden som nyt pauset job</button></div>
+              <div class="task-actions"><button id="task-new-draft" type="button">Ny kladde</button><button id="task-reload" type="button" hidden>Hent aktuel revision</button><button id="task-copy-draft" type="button" hidden>Kopiér til ny pauset jobkladde</button></div>
             </form>
             <div id="tasks" class="task-list" aria-live="polite"></div>
           </section>

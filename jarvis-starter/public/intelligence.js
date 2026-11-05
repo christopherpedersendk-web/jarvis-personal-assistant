@@ -1,5 +1,4 @@
-// V4.7: Transparens for retrieval, skills og integrationsrettigheder.
-let intelligenceCatalogLoaded = false;
+// Kildebaseret retrieval, præcise skill-versioner og integrationsrettigheder.
 const sourceKinds = Object.freeze({
   organizer: 'knowledge', memory: 'knowledge', claim: 'knowledge', skill: 'knowledge', task: 'plan',
   'personal-task': 'plan', 'follow-up': 'plan', project: 'projects',
@@ -53,15 +52,24 @@ async function focusRecordedSource(sourceId) {
       document.getElementById('meal-family-start').value = householdDate;
       showHousehold(mealData.household);
     }
-  } else if (kind === 'skill') await refreshIntelligenceCatalog();
+  } else if (kind === 'skill') {
+    if (parts.length !== 3) throw new Error('Kildelinket mangler et præcist skill-ID og versionsnummer.');
+    await refreshIntelligenceCatalog({ skillId: parts[1], skillVersion: parts[2] });
+  }
   else if (kind === 'organizer') await refreshOrganizer();
-  else if (kind === 'memory') document.dispatchEvent(new CustomEvent('jarvis:memories-changed'));
+  else if (kind === 'memory') {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent('jarvis:memories-changed', {
+      detail: { waitUntil: promise => pending.push(Promise.resolve(promise)) },
+    }));
+    await Promise.allSettled(pending);
+  }
   else if (kind === 'claim' || kind === 'personal-task' || kind === 'follow-up') {
     // A source card can be replaced by its async domain refresh. Highlight only
     // after the new revisioned record has rendered, not on a stale DOM node.
     const pending = [];
     document.dispatchEvent(new CustomEvent('jarvis:v5-sources-changed', {
-      detail: { waitUntil: promise => pending.push(Promise.resolve(promise)) },
+      detail: { sourceId, waitUntil: promise => pending.push(Promise.resolve(promise)) },
     }));
     await Promise.allSettled(pending);
   }
@@ -142,36 +150,180 @@ function knowledgeElement(tag, text, css) {
   return element;
 }
 
-async function refreshIntelligenceCatalog() {
-  const [skillsData, integrationsData] = await Promise.all([api('/api/skills'), api('/api/integrations')]);
-  const skillsRoot = document.getElementById('skills-catalog');
-  const integrationRoot = document.getElementById('integrations-catalog');
-  skillsRoot.replaceChildren();
-  integrationRoot.replaceChildren();
-  for (const skill of skillsData.skills) {
-    const card = knowledgeElement('article', '', 'catalog-card');
+function createIntelligenceCatalog({ document, api, getToken, now = () => Date.now(), openSource = () => {} }) {
+  const node = (tag, text = '', css = '') => { const value = document.createElement(tag); value.textContent = text;
+    if (css) value.className = css; return value; };
+  const write = (element, text) => { if (element.textContent !== text) element.textContent = text; };
+  const byId = id => document.getElementById(id), keyOf = skill => `${skill.name}:${skill.version}`;
+  const slots = Object.fromEntries(['skills', 'integrations'].map(kind => [kind,
+    { rows: [], cards: new Map(), loaded: false, loadedAt: 0, pending: null, error: '' }]));
+  const details = new Map(), detailPending = new Map();
+  let owner = '', generation = 0;
+  const visible = kind => !document.hidden && !byId('workspace')?.classList.contains('hidden') &&
+    !byId(kind === 'skills' ? 'tab-knowledge' : 'tab-settings').classList.contains('hidden');
+  const status = (kind, text) => { const target = byId(`${kind}-catalog-status`); if (target) write(target, text); };
+  function reset() {
+    generation++; owner = ''; details.clear(); detailPending.clear();
+    for (const [kind, slot] of Object.entries(slots)) {
+      slot.rows = []; slot.cards.clear(); slot.loaded = false; slot.loadedAt = 0; slot.pending = null; slot.error = '';
+      byId(`${kind}-catalog`).replaceChildren(); status(kind, '');
+    }
+  }
+  function session() {
+    const current = getToken() || '';
+    if (owner !== current) { reset(); owner = current; }
+    return current;
+  }
+  const current = (captured, epoch) => captured && captured === getToken() && captured === owner && epoch === generation;
+
+  function skillCard(skill) {
+    const card = node('article', '', 'catalog-card');
     card.dataset.skillId = skill.name; card.dataset.skillVersion = skill.version;
-    card.append(knowledgeElement('strong', `${skill.name} · version ${skill.version}`), knowledgeElement('p', skill.description, 'muted small-text'),
-      knowledgeElement('span', `Udløsere: ${skill.triggers.join(' · ')}`, 'micro muted'));
-    skillsRoot.append(card);
+    const heading = node('strong'), description = node('p', '', 'muted small-text'), triggers = node('span', '', 'micro muted');
+    const binding = node('p', '', 'micro'), unavailable = node('p', '', 'micro v5-conflict');
+    const disclosure = node('details'), summary = node('summary', 'Læs den præcise procedure');
+    const message = node('p', 'Procedureteksten hentes lokalt, når du åbner den.', 'micro'); message.setAttribute('role', 'status');
+    const body = node('pre', '', 'skill-procedure');
+    const link = node('a', 'Åbn denne version som kilde');
+    const sourceId = `skill:${skill.name}:${skill.version}`;
+    link.href = `?view=knowledge&source=${encodeURIComponent(sourceId)}`;
+    link.addEventListener('click', event => {
+      if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); openSource(sourceId);
+    });
+    disclosure.append(summary, message, body);
+    disclosure.addEventListener('toggle', () => { if (disclosure.open) loadDetail(skill.name, skill.version).catch(() => {}); });
+    card.append(heading, description, triggers, binding,
+      node('span', 'Proceduren giver ingen nye tilladelser, datakilder eller modtagere. Jobbets gennemgåede politik gælder.', 'micro muted'),
+      disclosure, link, unavailable);
+    card.catalogParts = { heading, description, triggers, binding, unavailable, disclosure, message, body };
+    return card;
   }
-  const labels = { connected: 'Forbundet', configured: 'Konfigureret – endnu ikke verificeret', stale: 'Forældet forbindelsesstatus',
-    not_configured: 'Ikke forbundet', expired: 'Login udløbet', unavailable: 'Midlertidigt utilgængelig' };
-  const policies = { 'owner-opt-in': 'Notifikationer: kun ejer og opt-in', 'approval-before-write': 'Ændringer: godkendelse påkrævet',
-    'explicit-request': 'Styring: kræver konkret anmodning', 'read-only': 'Kun hændelser / læsning' };
-  for (const connector of integrationsData.integrations) {
-    const card = knowledgeElement('article', '', 'catalog-card');
-    card.append(knowledgeElement('strong', connector.title));
-    const state = connector.implementation === 'planned' ? 'Forberedt – ikke implementeret' : labels[connector.status];
-    card.append(knowledgeElement('p', state, connector.status === 'connected' ? 'catalog-status good' : 'catalog-status'));
-    if (connector.lastCheckedAt) card.append(knowledgeElement('span', `Senest kontrolleret: ${new Date(connector.lastCheckedAt).toLocaleString('da-DK')}`, 'micro muted'));
-    if (connector.lastError) card.append(knowledgeElement('span', `Seneste fejl: ${connector.lastError}`, 'micro muted'));
-    card.append(knowledgeElement('span', policies[connector.outboundPolicy] || 'Rettigheder afventer', 'micro muted'));
-    card.append(knowledgeElement('span', 'Tekniske muligheder – ikke automatisk aktive rettigheder: ' + connector.capabilities.join(' · '), 'micro muted'));
-    integrationRoot.append(card);
+  function connectorCard(connector) {
+    const card = node('article', '', 'catalog-card'); card.dataset.integrationId = connector.id;
+    const parts = { heading: node('strong'), state: node('p', '', 'catalog-status'), checked: node('span', '', 'micro muted'),
+      error: node('span', '', 'micro muted'), policy: node('span', '', 'micro muted'), capabilities: node('span', '', 'micro muted'),
+      unavailable: node('p', '', 'micro v5-conflict') };
+    card.append(...Object.values(parts)); card.catalogParts = parts; return card;
   }
-  intelligenceCatalogLoaded = true;
+  function render(kind) {
+    if (!visible(kind)) return;
+    const slot = slots[kind], root = byId(`${kind}-catalog`), keep = new Set();
+    const labels = { connected: 'Forbundet', configured: 'Konfigureret – endnu ikke verificeret', stale: 'Forældet forbindelsesstatus',
+      not_configured: 'Ikke konfigureret', expired: 'Login udløbet', unavailable: 'Midlertidigt utilgængelig', disabled: 'Deaktiveret' };
+    const policies = { 'owner-opt-in': 'Notifikationer: kun ejer og opt-in', 'approval-before-write': 'Ændringer: godkendelse påkrævet',
+      'explicit-request': 'Styring: kræver konkret anmodning', 'read-only': 'Kun hændelser / læsning' };
+    for (const record of slot.rows) {
+      const key = kind === 'skills' ? keyOf(record) : record.id; keep.add(key);
+      let card = slot.cards.get(key);
+      if (!card) { card = kind === 'skills' ? skillCard(record) : connectorCard(record); slot.cards.set(key, card); root.append(card); }
+      const parts = card.catalogParts; write(parts.unavailable, ''); delete card.dataset.catalogUnavailable;
+      if (kind === 'skills') {
+        write(parts.heading, `${record.name} · version ${record.version}`); write(parts.description, record.description || '');
+        write(parts.triggers, `Udløsere: ${(record.triggers || []).join(' · ')}`);
+        write(parts.binding, `Indholdshash: ${record.contentHash || 'Ikke dokumenteret'}. Sammenlign med jobbets faktiske kørselsgrundlag.`);
+        if (details.has(key) && record.contentHash && details.get(key).contentHash !== record.contentHash) {
+          details.delete(key); write(parts.message, 'Denne version har et ændret indholdshash. Gennemgå proceduren igen; et job opgraderes ikke automatisk.');
+          write(parts.body, '');
+          if (parts.disclosure.open) loadDetail(record.name, record.version).catch(() => {});
+        }
+      } else {
+        write(parts.heading, record.title || record.id);
+        write(parts.state, record.implementation === 'planned' ? 'Forberedt – ikke implementeret' : labels[record.status] || 'Status ukendt');
+        parts.state.classList.toggle('good', record.status === 'connected');
+        write(parts.checked, record.lastCheckedAt ? `Senest kontrolleret: ${new Date(record.lastCheckedAt).toLocaleString('da-DK')}` : 'Tidspunkt for forbindelseskontrol: ukendt');
+        write(parts.error, record.lastError ? `Seneste fejl: ${record.lastError}` : '');
+        write(parts.policy, policies[record.outboundPolicy] || 'Rettigheder afventer');
+        write(parts.capabilities, 'Tekniske muligheder – ikke automatisk aktive rettigheder: ' + (record.capabilities || []).join(' · '));
+      }
+    }
+    for (const [key, card] of slot.cards) if (!keep.has(key)) {
+      if (card.contains(document.activeElement)) {
+        card.dataset.catalogUnavailable = 'true';
+        write(card.catalogParts.unavailable, 'Denne kilde er ikke længere i det aktuelle katalog. Den fokuserede visning bevares, men må ikke bruges som et nyt godkendelsesgrundlag.');
+      } else { card.remove(); slot.cards.delete(key); }
+    }
+  }
+  async function load(kind, force = false) {
+    const captured = session(), epoch = generation; if (!captured) return;
+    const slot = slots[kind];
+    if (slot.pending) return slot.pending;
+    if (!force && slot.loaded && now() - slot.loadedAt < 60_000) { render(kind); return; }
+    status(kind, 'Henter lokalt katalog …');
+    const pending = (async () => {
+      try {
+        const response = await api(`/api/${kind}`);
+        if (!current(captured, epoch)) return;
+        if (!Array.isArray(response?.[kind])) throw new Error('Katalogsvaret mangler sine poster.');
+        slot.rows = response[kind]; slot.loaded = true; slot.loadedAt = now(); slot.error = '';
+        render(kind); status(kind, `${slot.rows.length} ${kind === 'skills' ? 'gennemgåede procedureversioner' : 'forbindelser'} · lokal læsning · ingen aktivering`);
+      } catch (error) {
+        if (!current(captured, epoch)) return;
+        slot.error = String(error.message || 'Ukendt fejl');
+        status(kind, `Kataloget kunne ikke opdateres: ${slot.error}. Tidligere visning bevares; kontrollér status før brug.`);
+        throw error;
+      } finally { if (slot.pending === pending) slot.pending = null; }
+    })();
+    slot.pending = pending; return pending;
+  }
+  async function loadDetail(id, version, { open = false } = {}) {
+    if (!/^[a-z][a-z0-9-]{0,79}$/.test(id || '') || typeof version !== 'string' || version.length > 32 || !/^\d+\.\d+\.\d+$/.test(version))
+      throw new Error('Kildelinket skal indeholde præcist skill-ID og versionsnummer.');
+    const captured = session(), epoch = generation; if (!captured) return;
+    const key = `${id}:${version}`, card = slots.skills.cards.get(key);
+    if (!slots.skills.rows.some(item => keyOf(item) === key)) {
+      const error = new Error('Denne præcise skill-version findes ikke i det aktuelle katalog. Ingen anden version er åbnet.');
+      error.code = 'SKILL_NOT_FOUND'; error.status = 404;
+      if (card) write(card.catalogParts.message, error.message);
+      throw error;
+    }
+    const show = value => {
+      if (!current(captured, epoch)) return;
+      const target = slots.skills.cards.get(key);
+      if (!target) throw new Error('Denne præcise version er ikke i den aktuelle lokale oversigt.');
+      write(target.catalogParts.message, `Præcis version ${value.version} · hash ${value.contentHash} · kun læsning`);
+      write(target.catalogParts.body, value.body);
+      if (open) target.catalogParts.disclosure.open = true;
+      return value;
+    };
+    if (details.has(key)) return show(details.get(key));
+    if (detailPending.has(key)) return show(await detailPending.get(key));
+    if (card) write(card.catalogParts.message, 'Henter den præcise lokale procedureversion …');
+    const pending = (async () => {
+      try {
+        const { skill } = await api(`/api/skills/${encodeURIComponent(id)}/${encodeURIComponent(version)}`);
+        if (!current(captured, epoch)) return;
+        if (skill?.name !== id || skill?.version !== version || typeof skill.body !== 'string' || skill.body.length > 8500 ||
+            !/^[0-9a-f]{64}$/.test(skill.contentHash || '')) throw new Error('Svaret matcher ikke den præcise procedureversion og dens hash.');
+        const listed = slots.skills.rows.find(item => keyOf(item) === key);
+        if (listed?.contentHash && listed.contentHash !== skill.contentHash) throw new Error('Indholdshash er ændret. Opdater kataloget og gennemgå versionen igen.');
+        details.set(key, skill); return skill;
+      } catch (error) {
+        if (!current(captured, epoch)) return;
+        if (card) write(card.catalogParts.message,
+          `Proceduren kunne ikke åbnes: ${error.message}. Ingen anden version er brugt.`);
+        throw error;
+      } finally { if (detailPending.get(key) === pending) detailPending.delete(key); }
+    })();
+    detailPending.set(key, pending);
+    const detail = await pending; if (detail) return show(detail);
+  }
+  async function refresh({ skillId, skillVersion, force = false, kind } = {}) {
+    if (!session()) return;
+    if (skillId || skillVersion) {
+      await load('skills', force);
+      return loadDetail(skillId, skillVersion, { open: true });
+    }
+    await Promise.all(Object.keys(slots).filter(name => (!kind || kind === name) && visible(name)).map(name => load(name, force)));
+  }
+  for (const kind of Object.keys(slots)) byId(`${kind}-catalog-refresh`)?.addEventListener('click', () => refresh({ kind, force: true }).catch(() => {}));
+  return Object.freeze({ refresh, reset });
 }
+
+const intelligenceCatalog = createIntelligenceCatalog({ document, api, getToken: () => token,
+  openSource: sourceId => { selectTab('knowledge', { sourceId });
+    focusRecordedSource(sourceId).catch(error => sourceStatus('knowledge', `Kilden kunne ikke åbnes: ${error.message}`)); } });
+async function refreshIntelligenceCatalog(options) { return intelligenceCatalog.refresh(options); }
 
 document.getElementById('knowledge-search-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -203,40 +355,14 @@ document.getElementById('knowledge-search-form').addEventListener('submit', asyn
 });
 
 async function refreshProactiveSettings() {
-  const { settings } = await api('/api/proactive');
-  document.getElementById('proactive-daily').checked = settings.dailyEnabled;
-  document.getElementById('proactive-weekly').checked = settings.weeklyEnabled;
-  document.getElementById('proactive-discord').checked = settings.discordEnabled;
-  document.getElementById('proactive-daily-time').value = settings.dailyTime;
-  document.getElementById('proactive-weekly-time').value = settings.weeklyTime;
-  document.getElementById('proactive-quiet-start').value = settings.quietStart;
-  document.getElementById('proactive-quiet-end').value = settings.quietEnd;
-  document.getElementById('proactive-status').textContent = 'Tiderne følger Europe/Copenhagen, også ved sommer-/vintertid.';
+  return settingsDrafts.refreshProactive();
 }
 
-document.getElementById('proactive-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    await api('/api/proactive/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      dailyEnabled: document.getElementById('proactive-daily').checked,
-      weeklyEnabled: document.getElementById('proactive-weekly').checked,
-      discordEnabled: document.getElementById('proactive-discord').checked,
-      dailyTime: document.getElementById('proactive-daily-time').value,
-      weeklyTime: document.getElementById('proactive-weekly-time').value,
-      quietStart: document.getElementById('proactive-quiet-start').value,
-      quietEnd: document.getElementById('proactive-quiet-end').value,
-    }) });
-    document.getElementById('proactive-status').textContent = 'Indstillingerne er gemt.';
-    toast('Proaktive briefinger er opdateret.');
-    await refreshCommandCenter();
-  } catch (error) { document.getElementById('proactive-status').textContent = error.message; }
-});
+document.getElementById('proactive-form').addEventListener('submit', event => settingsDrafts.saveProactive(event));
 
 document.addEventListener('jarvis:refreshed', () => {
-  if (!intelligenceCatalogLoaded) refreshIntelligenceCatalog().catch(error => console.warn('Integrationskatalog:', error.message));
-  if (!document.getElementById('proactive-daily-time').value) refreshProactiveSettings().catch(error => console.warn('Proaktiv status:', error.message));
+  refreshIntelligenceCatalog().catch(() => {});
 });
-setInterval(() => {
-  if (intelligenceCatalogLoaded && !document.getElementById('tab-settings').classList.contains('hidden'))
-    refreshIntelligenceCatalog().catch(error => console.warn('Integrationsstatus:', error.message));
-}, 60_000);
+document.addEventListener('jarvis:view-changed', () => refreshIntelligenceCatalog().catch(() => {}));
+document.getElementById('logout').addEventListener('click', () => { sourceNavigationSequence++; intelligenceCatalog.reset(); });
+setInterval(() => refreshIntelligenceCatalog().catch(() => {}), 60_000);
