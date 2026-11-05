@@ -112,6 +112,7 @@ const JarvisJobs = (() => {
     const node = (tag, text, className) => { const element = document.createElement(tag);
       if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; };
     const raw = () => Object.fromEntries(Object.entries(fields).map(([id, field]) => [id, field.value]));
+    let lastFieldSnapshot = JSON.stringify(raw());
     const hasSecrets = () => sensitive(JSON.stringify(raw()), owner || '');
     function persist() {
       try {
@@ -122,12 +123,14 @@ const JarvisJobs = (() => {
     }
     function stateMessage(message = '') {
       const sensitiveMessage = hasSecrets() ? 'Følsomme oplysninger gemmes ikke i browserkladden. Fjern dem før gemning.' : '';
-      status.textContent = [message || errorMessage || conflict || (dirty ? 'Ugemt kladde. Polling og navigation ændrer ikke dine felter.'
+      const statusText = [message || errorMessage || conflict || (dirty ? 'Ugemt kladde. Polling og navigation ændrer ikke dine felter.'
         : editId ? `Jobrevision ${baseRevision} er gemt pauset. Start kræver et særskilt klik på jobkortet.` : 'Nye jobs gemmes altid pausede.'),
         sensitiveMessage, !storageReady ? 'Browseren afviser kladdelagring. Kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
+      if (status.textContent !== statusText) status.textContent = statusText;
       status.classList.toggle('v5-error', Boolean(errorMessage || conflict || sensitiveMessage));
       submit.disabled = saving || Boolean(conflict || sensitiveMessage);
-      submit.textContent = saving ? 'Gemmer pauset job …' : editId ? 'Gem revideret job – fortsat pauset' : 'Gem pauset job';
+      const submitLabel = saving ? 'Gemmer pauset job …' : editId ? 'Gem revideret job – fortsat pauset' : 'Gem pauset job';
+      if (submit.textContent !== submitLabel) submit.textContent = submitLabel;
       byId('task-reload').hidden = !editId;
       byId('task-copy-draft').hidden = !editId;
     }
@@ -146,7 +149,14 @@ const JarvisJobs = (() => {
         if (draft.skillId) target.append(node('p', `Procedure: ${draft.skillId} · version ${draft.skillVersion}`, 'small-text'));
       } catch (error) { target.append(node('p', error.message, 'v5-conflict')); }
     }
-    function changed() { dirty = true; epoch++; persist(); stateMessage(); preview(); }
+    function changed(event) {
+      const next = JSON.stringify(raw());
+      // WebKit dispatches change on blur during a click. A duplicate value
+      // must not replace submit text or preview nodes before click arrives.
+      if (event && next === lastFieldSnapshot) return;
+      lastFieldSnapshot = next;
+      dirty = true; epoch++; persist(); stateMessage(); preview();
+    }
     function ensureOption(field, value, text = value) {
       if (![...field.options].some(option => option.value === value)) { const option = node('option', text); option.value = value; field.append(option); }
     }
@@ -156,6 +166,7 @@ const JarvisJobs = (() => {
         if (field.tagName === 'SELECT') ensureOption(field, value);
         field.value = value;
       }
+      lastFieldSnapshot = JSON.stringify(raw());
       preview();
     }
     function reset() {
