@@ -37,3 +37,65 @@ test('Discord sender kun svar på en autoriseret besked og uden mentions', async
   assert.match(sent[0].url, new RegExp(`/channels/${channelId}/messages$`));
   assert.deepEqual(JSON.parse(sent[0].body).allowed_mentions, { parse: [] });
 });
+
+
+test('Discord rejected-message diagnostics explain owner/server/content mismatches without leaking message text', async () => {
+  const gateway = new DiscordGateway({ onMessage: async () => { throw new Error('must not run'); } });
+  gateway.config = { userId, guildId };
+  for (const [incoming, reason] of [
+    [{ ...event, author: { id: '999999999999999999' } }, 'user'],
+    [{ ...event, guild_id: '999999999999999999' }, 'guild'],
+    [{ ...event, content: '', guild_id: guildId }, 'empty'],
+  ]) {
+    assert.equal(await gateway.handleIncoming(incoming), false);
+    assert.equal(gateway.snapshot().lastIncoming.reason, reason);
+    assert.equal(gateway.snapshot().lastIncoming.accepted, false);
+  }
+  assert.equal(JSON.stringify(gateway.snapshot()).includes(event.content), false);
+});
+
+test('Discord assistant failure sends one useful warning, retains unknown outcome and never repeats the action', async () => {
+  let calls = 0; const sent = [];
+  const gateway = new DiscordGateway({
+    onMessage: async () => { calls++; throw new Error('private upstream error'); },
+    fetcher: async (url, options) => { sent.push(JSON.parse(options.body)); return { ok: true }; }, logger: { error() {} },
+  });
+  gateway.config = { userId, token: 'synthetic-token' };
+  assert.equal(await gateway.handleIncoming(event), true);
+  assert.equal(sent.length, 1); assert.match(sent[0].content, /noget kan allerede være udført/);
+  assert.equal(gateway.snapshot().lastFailure.stage, 'processing');
+  assert.equal(JSON.stringify(gateway.snapshot()).includes('private upstream error'), false);
+  assert.equal(gateway.seen.get(event.id).status, 'unknown');
+  assert.equal(await gateway.handleIncoming(event), false); assert.equal(calls, 1);
+});
+
+test('Discord ambiguous delivery never sends a second warning or repeats the action', async () => {
+  let calls = 0, sends = 0;
+  const gateway = new DiscordGateway({ onMessage: async () => { calls++; return 'Svar'; },
+    fetcher: async () => { sends++; throw new Error('ambiguous network failure'); }, logger: { error() {} } });
+  gateway.config = { userId, token: 'synthetic-token' };
+  assert.equal(await gateway.handleIncoming(event), true);
+  assert.equal(sends, 1); assert.equal(gateway.snapshot().lastFailure.stage, 'delivery');
+  assert.equal(await gateway.handleIncoming(event), false); assert.equal(calls, 1);
+});
+
+test('Discord empty assistant result is a visible failure instead of a false successful reply', async () => {
+  const sent = [];
+  const gateway = new DiscordGateway({ onMessage: async () => '  ',
+    fetcher: async (url, options) => { sent.push(JSON.parse(options.body)); return { ok: true }; }, logger: { error() {} } });
+  gateway.config = { userId, token: 'synthetic-token' };
+  await gateway.handleIncoming(event);
+  assert.equal(sent.length, 1); assert.match(sent[0].content, /kunne ikke færdiggøre/);
+  assert.equal(gateway.snapshot().lastFailure.code, 'DISCORD_EMPTY_REPLY');
+  assert.equal(gateway.snapshot().lastMessageAt, null);
+});
+
+
+test('invalid saved Discord IDs remain a visible integration error without throwing during server startup', () => {
+  let connections = 0;
+  const gateway = new DiscordGateway({ socketFactory: () => { connections++; throw new Error('must not connect'); } });
+  assert.doesNotThrow(() => gateway.start({ enabled: true, token: 'synthetic-token', userId: 'not-an-id' }));
+  assert.equal(gateway.snapshot().status, 'error'); assert.match(gateway.snapshot().lastError, /User ID/);
+  assert.equal(connections, 0); assert.equal(gateway.snapshot().dedupeStatus, 'inactive');
+  gateway.stop();
+});

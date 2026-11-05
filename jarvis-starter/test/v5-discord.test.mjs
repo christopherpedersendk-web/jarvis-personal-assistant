@@ -180,3 +180,16 @@ test('R12 restart marks interrupted work unknown without repeating its effects',
   const durable = JSON.parse(await readFile(join(root, 'discord-received.json'), 'utf8'));
   assert.equal(durable.messages[0].status, 'unknown');
 });
+
+
+test('Discord DM-only setup omits privileged guild intents; explicit server chat retains Message Content', async t => {
+  const { gateway, sockets } = await protocolFixture(t);
+  sockets[0].packet({ op: 10, d: { heartbeat_interval: 1000 } });
+  assert.equal(sockets[0].sent[0].d.intents, 1 << 12);
+  gateway.start({ ...config, userId: ' ' + userId + ' ', guildId: ' 523456789012345678 ', token: ' ' + config.token + ' ' });
+  await gateway.dedupeReady;
+  sockets[1].packet({ op: 10, d: { heartbeat_interval: 1000 } });
+  assert.equal(sockets[1].sent[0].d.intents, (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15));
+  assert.equal(gateway.config.userId, userId); assert.equal(gateway.config.guildId, '523456789012345678');
+  assert.equal(sockets[1].sent[0].d.token, config.token);
+});

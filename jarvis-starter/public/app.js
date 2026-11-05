@@ -241,11 +241,12 @@ async function api(path, options = {}) {
     cache: 'no-store',
   });
   if (!response.ok) {
-    let detail;
-    try { detail = (await response.json()).error; } catch { detail = `HTTP ${response.status}`; }
+    let detail, payload;
+    try { payload = await response.json(); detail = payload.error; } catch { detail = `HTTP ${response.status}`; }
     if (response.status === 401) showLogin();
     const error = new Error(detail || `HTTP ${response.status}`);
     error.status = response.status;
+    error.code = payload?.code; error.outcome = payload?.outcome;
     throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();

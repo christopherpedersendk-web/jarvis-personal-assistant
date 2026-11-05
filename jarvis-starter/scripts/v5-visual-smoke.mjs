@@ -196,6 +196,7 @@ async function navigate(page, view) {
   if (route[2]) await page.locator(`[data-task-filter="${route[2]}"]`).click();
   await page.locator(`#tab-${route[0]}`).waitFor({ state: 'visible' });
   if (view === 'meals' || view === 'projects') await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
+  if (view === 'meals') for (const section of await page.locator('.meal-secondary-section').all()) await openDetails(section);
   const editors = ({ plan: ['personal-task-create', 'follow-up-create'], calendar: ['capacity-create'],
     agent: ['task-editor-shell'], projects: ['project-create-details'], system: ['code-create-details'],
     meals: ['meal-family-preferences', 'meal-profile-preferences', 'meal-recipe-create'] })[view] || [];
@@ -578,6 +579,10 @@ async function verifyNoteDraft(page, label) {
   await page.locator('#memory-editor-mode').selectOption('claim');
 }
 
+async function openMealDay(plan, date) {
+  await openDetails(plan.locator(`[data-meal-date="${date}"]`).locator('..'));
+}
+
 async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDraft) {
   const start = new Date(`${householdDay}T12:00:00Z`); start.setUTCDate(start.getUTCDate() + 2);
   const startDate = start.toISOString().slice(0, 10), inventoryBefore = await fixtureRead(page, '/api/meals/inventory');
@@ -590,6 +595,10 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
     // the saved reviewed recipe revision, never these unsaved editor fields.
     await page.locator('#meal-start').fill(startDate); await page.locator('#meal-days').selectOption('3');
     await page.locator('#meal-use-calendar').uncheck();
+    // Create a real historical choice through the same form before testing
+    // switching between two plans with a locally edited day.
+    await uiWrite(page, 'POST', '/api/meals/plans',
+      () => page.locator('#meal-plan-form button[type="submit"]').click(), [201]);
     const created = await uiWrite(page, 'POST', '/api/meals/plans',
       () => page.locator('#meal-plan-form button[type="submit"]').click(), [201]);
     assert.equal(created.input.useCalendar, false); assert.equal(created.body.plan.days, 3);
@@ -597,7 +606,21 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
     await plan.waitFor({ state: 'visible' });
     const [fromDate, toDate, unaffectedDate] = created.body.plan.dishes.map(dish => dish.date);
     assert.ok(created.body.plan.dishes.every(dish => dish.servings === 3.25 && !dish.skip && !dish.locked));
+    assert.equal(await page.locator('.meal-plan-card:visible').count(), 1, `${label}: exactly one meal plan is shown`);
+    assert.equal(await plan.locator('.meal-day-disclosure[open]').count(), 0, `${label}: week starts as a compact overview`);
+    assert.equal(await plan.locator('.meal-day-disclosure > summary:visible').count(), 3);
+    await plan.screenshot({ path: join(screenshotDir, `${label}-compact-meal-plan.png`), animations: 'disabled' });
+    await openMealDay(plan, fromDate);
     await plan.locator(`[data-meal-date="${fromDate}"]`).getByLabel('Ret', { exact: true }).selectOption(recipeId);
+    const previousPlan = await page.locator('#meal-plan-choice option').evaluateAll((options, selected) => options.find(option => option.value !== selected)?.value, id);
+    assert.ok(previousPlan, `${label}: fixture retains a historical plan in the selector`);
+    await page.locator('#meal-plan-choice').selectOption(previousPlan);
+    await page.locator(`[data-record-key="plan:${previousPlan}"]`).waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.meal-plan-card:visible').count(), 1);
+    await page.locator('#meal-plan-choice').selectOption(id);
+    await plan.waitFor({ state: 'visible' });
+    assert.equal(await plan.locator(`[data-meal-date="${fromDate}"]`).getByLabel('Ret', { exact: true }).inputValue(), recipeId,
+      `${label}: changing selected plan preserves the unsaved meal choice`);
     const selected = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
       () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
     assert.equal(selected.input.expectedRevision, created.body.plan.revision);
@@ -640,6 +663,7 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
     assert.equal(source.plannedCookServings, 6.5); assert.equal(source.ingredients.find(item => item.name === 'ris').quantity, 650);
     assert.equal(target.leftoverFromDate, fromDate); assert.deepEqual(target.ingredients, []);
     assert.equal(saved.body.plan.dishes.find(dish => dish.date === unaffectedDate).locked, true);
+    await openMealDay(plan, toDate);
     const targetCard = plan.locator(`[data-meal-date="${toDate}"]`);
     assert.match(await targetCard.innerText(), /Planlagte rester fra/);
     assert.deepEqual(await targetCard.locator('input,select,textarea').evaluateAll(fields => fields.filter(field => !field.disabled).map(field => field.type)), ['checkbox']);
@@ -702,8 +726,10 @@ async function verifyShoppingChoices(page, label, previous) {
     // unrelated lock. Explicitly skip its other two meals now, so this separate
     // G1 case has exactly the selected recipe's known 200 g / two portions.
     // This avoids assuming the other generated recipes contain no rice.
-    for (const dish of previous.dishes.slice(1))
+    for (const dish of previous.dishes.slice(1)) {
+      await openMealDay(plan, dish.date);
       await plan.locator(`[data-meal-date="${dish.date}"]`).getByLabel('Spring denne dag over', { exact: true }).check();
+    }
     const isolated = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
       () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
     assert.equal(isolated.input.expectedRevision, previous.revision);
@@ -728,6 +754,7 @@ async function verifyShoppingChoices(page, label, previous) {
     assert.equal(chosen.body.plan.status, 'shopping_ready');
     await verifySharedShoppingEntry(page, label, chosen.body.plan);
 
+    await openMealDay(plan, sourceDate);
     await source.getByLabel('Lås denne ret ved nye forslag', { exact: true }).check();
     const locked = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
       () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
@@ -737,6 +764,7 @@ async function verifyShoppingChoices(page, label, previous) {
     assert.equal(sameBasis.body.plan.shoppingList[0].quantity, 1000);
     assert.equal(sameBasis.body.plan.shoppingNeedsReview, false, `${label}: a pure lock change must not invalidate the ingredient basis`);
 
+    await openMealDay(plan, sourceDate);
     await source.getByLabel('Portioner', { exact: true }).fill('4');
     const increased = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
       () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
@@ -1185,6 +1213,7 @@ async function verifyAccessibility(page, width, height, label) {
   await page.locator('[data-plan-tab="meals"]').focus(); await page.keyboard.press('Enter');
   assert.equal(new URL(page.url()).searchParams.get('view'), 'plan');
   assert.equal(new URL(page.url()).searchParams.get('section'), 'meals', `${label}: Enter activates the real meals subroute`);
+  for (const section of await page.locator('.meal-secondary-section').all()) await openDetails(section);
   for (const id of ['meal-family-preferences', 'meal-profile-preferences', 'meal-recipe-create']) await openDetails(page.locator(`#${id}`));
   await page.evaluate(() => refreshMeals());
   await page.getByLabel('Voksne som standard', { exact: true }).focus(); await page.keyboard.press('Tab');
@@ -1403,6 +1432,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-meals').waitFor({ state: 'visible' });
   await page.evaluate(() => refreshMeals());
+  for (const section of await page.locator('.meal-secondary-section').all()) await openDetails(section);
   await page.locator('#meal-family-start').fill(day); await page.locator('#meal-family-show').click();
   assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
   assert.equal(Number(await dateCard.getAttribute('data-revision')), draftRevision,
