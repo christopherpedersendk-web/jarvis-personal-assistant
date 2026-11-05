@@ -287,3 +287,31 @@ test('G1 model review metadata is bounded and does not echo arbitrary source fie
   assert.equal(result.plan.shoppingReview.rows[0].currentBasis.sources.length, 7);
   assert.doesNotMatch(JSON.stringify(result), /NEVER_ECHO|baseFingerprint|manualShoppingOverrides/);
 });
+
+
+test('OpenAI wire schemas omit unsupported Unicode regex at every recipe-ID location', () => {
+  assert.doesNotMatch(JSON.stringify(planningTools), /\\p\{/);
+  for (const name of ['get_recipe', 'get_recipe_instructions']) {
+    const schema = planningTools.find(tool => tool.name === name).parameters.properties.id;
+    assert.equal(schema.pattern, undefined);
+    assert.equal(schema.type, 'string'); assert.equal(schema.minLength, 1); assert.equal(schema.maxLength, 120);
+  }
+  const patch = planningTools.find(tool => tool.name === 'edit_meal_plan').parameters.properties.dishes.items.properties.recipeId;
+  assert.equal(patch.pattern, undefined); assert.deepEqual(patch.type, ['string', 'null']);
+  assert.equal(patch.maxLength, 120);
+});
+
+test('local recipe-ID validation still accepts Unicode and rejects invalid input before dispatch', async () => {
+  const f = fixture(), seen = [];
+  f.recipes.get = id => { seen.push(id); return { id, status: 'inbox' }; };
+  for (const id of ['bønne-gryde', 'Æblegrød:２', '豆腐', 'owner.recipe_1']) {
+    await f.handle('get_recipe', { id });
+  }
+  assert.deepEqual(seen, ['bønne-gryde', 'Æblegrød:２', '豆腐', 'owner.recipe_1']);
+  for (const id of ['../recipe', 'recipe/secret', 'recipe id', 'recipe\n', '🍎', '', 'a'.repeat(121)]) {
+    await assert.rejects(f.handle('get_recipe', { id }));
+    await assert.rejects(f.handle('get_recipe_instructions', { id }));
+    await assert.rejects(f.handle('edit_meal_plan', { id: PLAN, expectedRevision: 1, dishes: [{ date: '2026-11-05', recipeId: id }] }));
+  }
+  assert.equal(seen.length, 4);
+});
