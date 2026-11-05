@@ -27,7 +27,7 @@
 ## Det, der **ikke** er færdigt
 
 - En rigtig lokal dansk semantisk embeddingmodel mangler. De 80 syntetiske danske søgeprøver gav **80/80 korrekt kilde i top fem**, men målingen dækker kun det lokale leksikale indeks og er ikke dokumentation for semantiske omskrivninger.
-- Chromium og WebKit er gennemført på begge krævede skærmstørrelser i syntetisk CI, **grønt på commit `f19c85d` (run `41944996605`) med den endelige danske mikrotypografi**. **Fysiske enheder og udvidet tilgængelighedskontrol mangler fortsat.**
+- Chromium og WebKit er gennemført på begge krævede skærmstørrelser i syntetisk CI, **grønt på commit `fa4d0e95` (run `41986430567`) med 243/243 Node-tests, samlet hukommelsesoprettelse og præcis kildenavigation**. **Fysiske enheder og udvidet tilgængelighedskontrol mangler fortsat.**
 - Fysisk iPhone og computer, tastatur, fokus, zoom, kontrast, kilderuter og komplet mad/Nemlig-gennemgang kræver manuel kontrol.
 - Den synlige hukommelsesoprettelse er samlet ét sted, men de historiske og nye hukommelsesmodeller har fortsat særskilte backendkontrakter. Komplet migration, formredigering ved navigation/import og dele af indstillinger/hjem-status kræver fortsat gennemgang. Den nye UI kræver en ny browser-CI-kørsel.
 - Baggrundsjob, projekt-/filsystemændringer og indstillinger fordelt på flere filer bruger endnu ikke alle den samme fulde persistensgrænse. For store P0/P1-acceptkrav i `requirements-matrix.md` står derfor fortsat som *delvist* eller *afventer*. Den nye M1-forbedring afventer ny, præcis CI-evidens før endelig kandidatstatus.
