@@ -548,11 +548,14 @@ if (typeof document !== 'undefined') (() => {
   // An explicit clear action resets the whole value without accepting partial dates.
   const clearDeadline = button('Fjern deadline', () => {
     const deadline = byId('personal-task-deadline');
+    // Reset WebKit's segmented editor as well as its serialized value.
+    // Keep the same element, ID, labels and event listeners.
+    deadline.type = 'text';
     deadline.value = '';
+    deadline.type = 'datetime-local';
     delete deadline.dataset.originalInstant;
     delete deadline.dataset.originalLocal;
     markTaskDirty();
-    deadline.focus();
   });
   clearDeadline.id = 'personal-task-clear-deadline';
   const deadline = byId('personal-task-deadline');

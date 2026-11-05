@@ -456,6 +456,7 @@ test('explicit deadline removal survives reload and saves null against the origi
   assert.ok(first.byId('personal-task-deadline').value);
   await first.byId('personal-task-clear-deadline').emit('click');
   assert.equal(first.byId('personal-task-deadline').value, '');
+  assert.equal(first.byId('personal-task-deadline').type, 'datetime-local');
   assert.equal(first.byId('personal-task-deadline').dataset.originalInstant, undefined);
   assert.equal(first.writes().length, 0);
   const restored = await ui({ state, saved: first.saved });
