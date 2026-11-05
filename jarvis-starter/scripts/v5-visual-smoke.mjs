@@ -13,6 +13,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { renderedAccessibilityReport } from './ui-accessibility.mjs';
 import { STATE_SCHEMA_VERSION } from '../state-schema.mjs';
 import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
+import { buildTodayOverview } from '../planning-advisor.mjs';
 
 const { chromium, webkit } = createRequire(import.meta.url)('playwright');
 const token = 'v5-local-visual-smoke-synthetic-access';
@@ -20,7 +21,22 @@ const app = new URL('../', import.meta.url).pathname;
 const dataDir = await mkdtemp(join(tmpdir(), 'jarvis-v5-ui-'));
 const screenshotDir = process.env.JARVIS_V5_ARTIFACT_DIR || dataDir;
 await mkdir(screenshotDir, { recursive: true });
+const monitorIds = { changed: 'd7205d69-8d41-46aa-9188-8feccbcce770', unknown: '732556ee-6fc8-482b-9bc2-b8b6a138f952' };
+const fixtureObservedAt = new Date(Date.now() - 60_000).toISOString();
+// Retained historical observations only. Neither seeded job has a runnable
+// schedule; UI tests must never activate or re-run them.
+const monitorFixtures = Object.entries(monitorIds).map(([status, id]) => ({ id, revision: 1,
+  title: `Syntetisk ${status === 'changed' ? 'ændret' : 'ukendt'} monitor`, category: 'monitor', status: 'paused',
+  prompt: 'Kun en syntetisk gemt observation. Må ikke aktiveres af browsertesten.',
+  timeZone: 'Europe/Copenhagen', permissions: ['web.search'], parameters: {}, intervalMinutes: 0, nextRunAt: null,
+  runs: [{ id: `synthetic-${status}`, at: fixtureObservedAt, status: status === 'unknown' ? 'unknown' : 'completed',
+    result: status === 'unknown' ? 'NO_CHANGE tekst er ikke bevis for uændret udfald.' : 'Struktureret prisændring uden CHANGE-prefix.',
+    observation: { status, subject: 'Syntetisk produkt', variant: 'Testvariant', unit: 'DKK',
+      value: status === 'unknown' ? null : 25, source: 'https://synthetic.invalid/recorded-product', observedAt: fixtureObservedAt } }],
+}));
 await writeFile(join(dataDir, 'state.json'), JSON.stringify({ schemaVersion: STATE_SCHEMA_VERSION,
+  tasks: monitorFixtures,
+  mealHousehold: { configured: true, revision: 1, adults: 2, adultPortion: 1, children: [], days: {} },
   history: Array.from({ length: 65 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', channel: 'text',
     at: new Date(Date.UTC(2026, 10, 1, 10, index)).toISOString(), text: `Syntetisk historikbesked ${String(index + 1).padStart(2, '0')} – ingen persondata.` })) }), { mode: 0o600 });
 async function publicAssetHashes() {
@@ -30,6 +46,7 @@ async function publicAssetHashes() {
 }
 const initialAssetHashes = await publicAssetHashes();
 const accessibilityReports = [];
+const todayReports = [];
 const serverSocket = createServer();
 await new Promise((resolve, reject) => serverSocket.listen(0, '127.0.0.1', error => error ? reject(error) : resolve()));
 const port = serverSocket.address().port;
@@ -73,6 +90,137 @@ async function navigate(page, view) {
   if (await link.isVisible()) await link.click();
   else { await page.locator('#more-toggle').click(); await page.locator(`#more-menu a[data-tab="${view}"]`).click(); }
   await page.locator(`#tab-${view}`).waitFor({ state: 'visible' });
+}
+
+async function waitForTodayCards(page, label) {
+  await page.waitForFunction(() => [...document.querySelectorAll('#home-intelligence > [data-today-section]')]
+    .map(element => element.dataset.todaySection).join(',') === 'priorities,household,calendar');
+  const cards = page.locator('#home-intelligence > [data-today-section]');
+  assert.equal(await cards.count(), 3, `${label}: the loaded Today view contains exactly its three compact cards`);
+  for (const name of ['priorities', 'household', 'calendar'])
+    assert.equal(await page.locator(`#home-intelligence > [data-today-section="${name}"]`).isVisible(), true);
+}
+
+async function refreshToday(page) {
+  // Navigation can already have started the read. Wait for its actual guard,
+  // rather than treating a coalesced/no-op refresh call as a completed request.
+  await page.waitForFunction(() => !commandLoadInProgress);
+  await page.evaluate(() => refreshCommandCenter());
+  await page.waitForFunction(() => !commandLoadInProgress);
+}
+
+async function verifyTodaySources(page, label, task, followUp) {
+  const evidence = { label, status: 'running', sourceMode: 'real local task/case/household and seeded paused monitor history; HTTP-only synthetic calendar-cache fixture',
+    activatedJobs: 0, upstreamReads: 0 };
+  todayReports.push(evidence);
+  const writes = [], upstream = [];
+  const track = request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== 'GET') writes.push(path);
+    if (/^\/api\/google\/calendar\/(?:events|upcoming)$/.test(path) || path.startsWith('/api/nemlig/')) upstream.push(path);
+  };
+  page.on('request', track);
+  let dashboardHandler, cacheHandler;
+  try {
+    await navigate(page, 'home'); await refreshToday(page); await waitForTodayCards(page, label);
+    const dashboard = await fixtureRead(page, '/api/dashboard'), overview = dashboard.todayOverview;
+    for (const id of [`personal-task:${task.id}`, `follow-up:${followUp.id}`, `task:${monitorIds.unknown}`, `task:${monitorIds.changed}`])
+      assert.ok(overview.priorities.some(item => item.sourceId === id), `${label}: real dashboard includes ${id}`);
+    const priorities = page.locator('#home-intelligence > [data-today-section="priorities"]');
+    assert.match(await priorities.textContent(), /Ukendt overvågningsudfald/);
+    assert.match(await priorities.textContent(), /Registreret ændring/);
+    assert.equal(overview.household.known, true); assert.ok(overview.household.attendance.householdConfirmed);
+    const household = page.locator('#home-intelligence > [data-today-section="household"]');
+    assert.ok((await household.textContent()).includes(overview.household.detail));
+    const householdUrl = new URL(await household.locator('[data-agenda-source-id]').first().getAttribute('href'), origin);
+    assert.equal(householdUrl.searchParams.get('source'), overview.household.sourceId);
+    const calendar = page.locator('#home-intelligence > [data-today-section="calendar"]');
+    assert.equal(overview.calendar.status, 'unknown'); assert.match(await calendar.innerText(), /ukendt|ikke læst/i);
+    assert.equal(await calendar.locator('[data-agenda-source-id]').count(), 0, `${label}: missing calendar does not invent an event source`);
+
+    const draft = `Uafsendt syntetisk besked under Today-kildetur ${label}`;
+    await page.locator('#message').fill(draft);
+    const taskSelector = `#home-intelligence [data-agenda-source-id="personal-task:${task.id}"]`;
+    const link = page.locator(taskSelector);
+    await link.waitFor({ state: 'attached' });
+    if (!await link.isVisible()) await openDetails(priorities.locator(':scope > details'));
+    await link.focus();
+    await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+    await link.evaluate(element => { window.syntheticTodaySourceLink = element; });
+    await refreshToday(page);
+    assert.equal(await link.evaluate(element => element === window.syntheticTodaySourceLink && element === document.activeElement && element.isConnected), true,
+      `${label}: Today polling preserves the exact keyboard-focused source link`);
+    assert.equal(await page.locator('#message').inputValue(), draft);
+    const taskUrl = new URL(await link.getAttribute('href'), origin);
+    assert.equal(taskUrl.searchParams.get('source'), `personal-task:${task.id}`); assert.equal(taskUrl.searchParams.get('view'), 'plan');
+    assert.match(await link.innerText(), new RegExp(`Kilderevision ${task.revision}`));
+    evidence.contrast = await page.evaluate(renderedAccessibilityReport, [
+      { name: 'I dag kildeoverskrift', selector: taskSelector + ' strong', kind: 'text' },
+      { name: 'I dag kildegrundlag', selector: taskSelector + ' .muted', kind: 'text' },
+      { name: 'I dag tastaturkilde', selector: taskSelector, kind: 'focus' },
+    ]);
+    for (const check of evidence.contrast.checks) {
+      assert.equal(check.missing, undefined); assert.equal(check.visible, true); assert.equal(check.requiresManualReview, undefined);
+      assert.ok(check.textRatio >= 4.5, `${label}: Today ${check.name} contrast ${check.textRatio}:1`);
+      if (check.kind === 'focus') assert.ok(check.focused && check.outlineWidth >= 2 && check.outlineStyle !== 'none' && check.outlineRatio >= 3,
+        `${label}: Today keyboard source has a visible >=2px, >=3:1 focus ring`);
+    }
+    await link.press('Enter');
+    await page.locator(`[data-personal-task-id="${task.id}"].source-target`).waitFor({ state: 'visible' });
+    assert.equal(new URL(page.url()).searchParams.get('source'), `personal-task:${task.id}`);
+    await page.goBack(); await page.locator('#tab-home').waitFor({ state: 'visible' });
+    assert.equal(new URL(page.url()).searchParams.get('source'), null);
+    assert.equal(await page.locator('#message').inputValue(), draft, `${label}: source return keeps the unsent chat draft`);
+    assert.equal(await link.evaluate(element => element === window.syntheticTodaySourceLink), true);
+
+    // There is intentionally no API for populating a real Google cache without
+    // a separately chosen provider read. Exercise its browser contract through
+    // GET responses only, using the actual production projection for the card.
+    const now = new Date(), day = buildTodayOverview({ state: {}, now }).date, next = new Date(`${day}T12:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+    let cache = { ready: true, cacheState: 'ready', calendarId: `synthetic:${label}@calendar.test`,
+      fetchedAt: new Date(now.getTime() - 2000).toISOString(), expiresAt: new Date(now.getTime() + 120_000).toISOString(),
+      coverage: { start: new Date(now.getTime() - 86_400_000).toISOString(), end: new Date(now.getTime() + 129_600_000).toISOString(), complete: true },
+      events: [{ id: `today:${label}`, title: `Syntetisk kalenderobservation ${label}`, start: day,
+        end: next.toISOString().slice(0, 10), allDay: true }] };
+    dashboardHandler = async route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const response = await route.fetch(), data = await response.json();
+      data.todayOverview.calendar = buildTodayOverview({ state: {}, now: new Date(), calendarSnapshot: cache }).calendar;
+      return route.fulfill({ response, json: data });
+    };
+    cacheHandler = route => route.request().method() === 'GET' ? route.fulfill({ json: cache }) : route.continue();
+    await page.route('**/api/dashboard', dashboardHandler); await page.route('**/api/google/calendar/cache?**', cacheHandler);
+    await refreshToday(page);
+    const expectedId = `google-calendar:${encodeURIComponent(cache.calendarId)}:${day}:${encodeURIComponent(cache.events[0].id)}:${encodeURIComponent(cache.fetchedAt)}`;
+    const calendarLink = calendar.locator('[data-agenda-source-id]'); await calendarLink.waitFor({ state: 'visible' });
+    assert.equal(await calendarLink.getAttribute('data-agenda-source-id'), expectedId);
+    const copiedUrl = new URL(await calendarLink.getAttribute('href'), origin).href;
+    assert.equal(new URL(copiedUrl).searchParams.get('source'), expectedId);
+    await calendarLink.press('Enter');
+    const detail = page.locator('#home-calendar-source');
+    await page.locator('#home-calendar-source.source-target').waitFor({ state: 'visible' });
+    assert.equal(await detail.getAttribute('data-calendar-source-id'), expectedId);
+    assert.ok((await detail.innerText()).includes(cache.fetchedAt));
+    assert.ok((await detail.innerText()).includes(cache.events[0].title));
+    assert.equal(await page.locator('#message').inputValue(), draft);
+    await detail.screenshot({ path: join(screenshotDir, `${label}-today-calendar-source.png`), animations: 'disabled' });
+    cache = { ...cache, fetchedAt: new Date(Date.parse(cache.fetchedAt) + 1000).toISOString() };
+    await page.goto(copiedUrl, { waitUntil: 'domcontentloaded' });
+    await detail.getByText(/Kilden er utilgængelig/).waitFor({ state: 'visible' });
+    assert.equal(await detail.getAttribute('data-calendar-source-id'), null, `${label}: a copied old cache URL cannot select a newer observation`);
+    assert.doesNotMatch(await detail.innerText(), new RegExp(`Syntetisk kalenderobservation ${label}`));
+    assert.equal(await page.locator('#message').inputValue(), draft, `${label}: ordinary chat draft survives an actual copied-source document reload`);
+    await page.locator('#message').fill('');
+    assert.deepEqual(writes, [], `${label}: Today polling and source navigation are read-only`);
+    assert.deepEqual(upstream, [], `${label}: Today does not request Google reads or retailer actions`);
+    evidence.taskSource = taskUrl.href; evidence.calendarSource = copiedUrl;
+    evidence.calendarVersionMismatch = 'rejected'; evidence.status = 'passed';
+  } finally {
+    if (dashboardHandler) await page.unroute('**/api/dashboard', dashboardHandler);
+    if (cacheHandler) await page.unroute('**/api/google/calendar/cache?**', cacheHandler);
+    page.off('request', track);
+  }
+  await navigate(page, 'plan'); await refreshPlanning(page);
 }
 
 async function refreshClaims(page, id) {
@@ -756,6 +904,7 @@ async function verifyPlanning(page, label, task, followUp) {
   assert.match(await page.locator('#personal-task-form').innerText(), new RegExp(`Redigerer revision ${task.revision}`),
     `${label}: recovered task edit stays bound to the original revision`);
   await page.locator('#personal-task-outcome').fill('Et gennemgået lokalt resultat uden ekstern kontakt');
+  await page.locator('#personal-task-deadline').fill('');
   await page.locator('#personal-task-uncertainty').fill('15');
   await page.locator('#personal-task-planned').fill('2030-11-06T09:30');
   await page.locator('#personal-task-locked').check();
@@ -763,6 +912,7 @@ async function verifyPlanning(page, label, task, followUp) {
     () => page.locator('#personal-task-form button[type="submit"]').click());
   assert.equal(edited.input.expectedRevision, task.revision);
   assert.equal(edited.body.task.title, editedTitle);
+  assert.equal(edited.body.task.deadline, null, `${label}: the explicit edit removes the earlier synthetic Today deadline before future capacity planning`);
   assert.equal(edited.body.task.lockedStart, '2030-11-06T08:30:00.000Z', `${label}: local time uses Copenhagen, not the browser host timezone`);
   assert.equal(edited.body.task.plannedStart, edited.body.task.lockedStart);
   assert.match(await taskCard.innerText(), /Låst lokal placering/);
@@ -1188,6 +1338,7 @@ async function runDevice(type, width, height, label) {
     assert.equal(await page.locator(`#tab-${view}`).count(), 1, `${label}: missing view ${view}`);
   }
   await page.locator('#tab-home .chat-panel').waitFor({ state: 'visible' });
+  await waitForTodayCards(page, label);
   assert.match(await page.locator('#tab-home .hero-panel h1').innerText(), /dig, Christopher/,
     `${label}: the Danish greeting lost its word spacing`);
   const moreDetails = page.locator('#home-more-details');
@@ -1215,15 +1366,18 @@ async function runDevice(type, width, height, label) {
   await topNav.click();
   await page.locator('#personal-task-title').fill(`Syntetisk personlig opgave ${label}`);
   await page.locator('#personal-task-purpose').fill('Verificér den separate planlægningsarbejdsgang');
+  const pastLocalTime = await page.evaluate(() => JarvisPlan.fromInstant(new Date(Date.now() - 120_000).toISOString()).slice(0, 16));
+  await page.locator('#personal-task-deadline').fill(pastLocalTime);
   const createdTask = await uiWrite(page, 'POST', '/api/personal-tasks',
     () => page.locator('#personal-task-form button[type="submit"]').click(), [201]);
   await page.locator(`[data-personal-task-id="${createdTask.body.task.id}"]`).waitFor({ state: 'visible' });
   await page.locator('#follow-up-awaiting').fill(`Afvent syntetisk svar ${label}`);
-  await page.locator('#follow-up-check').fill('2026-11-07T12:00');
+  await page.locator('#follow-up-check').fill(pastLocalTime);
   await page.locator('#follow-up-stop').fill('Når svaret er modtaget');
   const createdFollowUp = await uiWrite(page, 'POST', '/api/follow-ups',
     () => page.locator('#follow-up-form button[type="submit"]').click(), [201]);
   await page.locator(`[data-follow-up-id="${createdFollowUp.body.case.id}"]`).waitFor({ state: 'visible' });
+  await verifyTodaySources(page, label, createdTask.body.task, createdFollowUp.body.case);
   await verifyPlanning(page, label, createdTask.body.task, createdFollowUp.body.case);
   assert.deepEqual(jobWrites, [], `${label}: independent personal planning/follow-up must not create or activate jobs`);
   const pausedJobId = await verifyPausedJob(page, label);
@@ -1379,7 +1533,8 @@ try {
     await writeFile(join(screenshotDir, 'accessibility-report.json'), JSON.stringify({
       generatedAt: new Date().toISOString(), candidateRevision: process.env.GITHUB_SHA || null,
       publicAssetHashes: initialAssetHashes, assetsUnchangedDuringRun: JSON.stringify(initialAssetHashes) === JSON.stringify(finalAssetHashes),
-      reports: accessibilityReports, limitations: ['Selected computed-style checks are not a full accessibility certification.',
+      reports: accessibilityReports, today: todayReports, limitations: ['Selected computed-style checks are not a full accessibility certification.',
+        'Calendar browser evidence uses synthetic HTTP cache responses and the real card projection; it is not a live Google or production check.',
         'Reduced CSS viewports do not replace manual browser zoom or physical iPhone/desktop acceptance.'],
     }, null, 2));
   } finally {

@@ -19,12 +19,33 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function until(check) {
-  for (let attempt = 0; attempt < 2000; attempt++) {
-    if (check()) return;
-    await new Promise(resolve => setImmediate(resolve));
-  }
-  assert.fail('Syntetisk kontrolpunkt blev ikke nået.');
+function checkpointBarrier(t) {
+  const listeners = new Set();
+  const notify = () => { for (const listener of [...listeners]) listener(); };
+  const waitFor = check => {
+    if (check()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const finish = error => { clearTimeout(guard); listeners.delete(changed); error ? reject(error) : resolve(); };
+      const changed = () => { try { if (check()) finish(); } catch (error) { finish(error); } };
+      // This only bounds a genuinely missing checkpoint. Progress comes from
+      // the real journal/handler/queue promises below, not an arbitrary number
+      // of empty event-loop turns racing fsync under parallel test load.
+      const guard = setTimeout(() => finish(new Error(`Syntetisk kontrolpunkt udeblev: ${check}`)), 10_000);
+      listeners.add(changed);
+      changed();
+    });
+  };
+  const observe = (object, name, completion = value => value) => {
+    const original = object[name];
+    t.mock.method(object, name, function (...args) {
+      const result = Reflect.apply(original, this, args);
+      notify();
+      const settled = completion(result);
+      if (settled?.then) settled.then(notify, notify);
+      return result; // Never replace or await the production method's result.
+    });
+  };
+  return { waitFor, observe };
 }
 
 class FakeSocket {
@@ -44,6 +65,7 @@ class FakeSocket {
 async function fixture(t, options = {}) {
   const root = options.dataDirectory || await mkdtemp(join(tmpdir(), 'jarvis-discord-durable-'));
   const sockets = [], retries = [], heartbeats = [], sent = [];
+  const checkpoint = checkpointBarrier(t);
   const gateway = new DiscordGateway({
     dataDirectory: root,
     onMessage: async () => 'Syntetisk svar',
@@ -54,6 +76,10 @@ async function fixture(t, options = {}) {
     random: () => 0.5,
     ...options,
   });
+  for (const method of ['writeJournal', 'publishJournal', 'onMessage', 'fetcher', 'handleIncoming', 'pauseIngress', 'reconnect'])
+    checkpoint.observe(gateway, method);
+  checkpoint.observe(gateway.workQueue, 'enqueue');
+  checkpoint.observe(gateway, 'checkpointGap', () => gateway.gapCheckpoint);
   t.after(async () => {
     gateway.stop();
     await gateway.journalQueue;
@@ -61,7 +87,7 @@ async function fixture(t, options = {}) {
   });
   gateway.start(config);
   await gateway.dedupeReady;
-  return { root, gateway, sockets, retries, heartbeats, sent,
+  return { root, gateway, sockets, retries, heartbeats, sent, waitFor: checkpoint.waitFor,
     journal: async () => JSON.parse(await readFile(join(root, 'discord-received.json'), 'utf8')) };
 }
 
@@ -84,13 +110,22 @@ test('Discord receipt and processing checkpoints publish durably before any hand
   });
   ({ gateway } = fixtureData);
   const action = gateway.handleIncoming(message());
-  await until(() => blocked);
+  await fixtureData.waitFor(() => blocked);
+  let handlerStarted = false;
+  const handlerCheckpoint = fixtureData.waitFor(() => calls === 1).then(() => { handlerStarted = true; });
+  // Reproduce the previous waiter's entire 2,000-turn budget while the real
+  // processing publication is deliberately held. Time passing is not proof
+  // of failure: the handler must still wait for that publication.
+  for (let turn = 0; turn < 2001; turn++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(handlerStarted, false);
   assert.equal(calls, 0);
   assert.equal(fixtureData.sent.length, 0);
   assert.equal(gateway.seen.get(id(0)).phase, 'waiting', 'unpublished drafts must not be visible');
   assert.equal((await fixtureData.journal()).messages[0].phase, 'waiting');
   processing.resolve();
   assert.equal(await action, true);
+  await handlerCheckpoint;
+  assert.equal(handlerStarted, true);
   assert.equal(calls, 1);
   assert.equal((await fixtureData.journal()).messages[0].status, 'completed');
   assert.equal((await stat(join(fixtureData.root, 'discord-received.json'))).mode & 0o777, 0o600);
@@ -163,9 +198,9 @@ test('Discord ingress is bounded before async work, deduplicates pending IDs and
     onMessage: async () => { calls++; if (calls === 1) await finish.promise; return 'Svar'; },
   });
   const first = data.gateway.handleIncoming(message(1));
-  await until(() => calls === 1);
+  await data.waitFor(() => calls === 1);
   const second = data.gateway.handleIncoming(message(2));
-  await until(() => data.gateway.workQueue.waiting.length === 1);
+  await data.waitFor(() => data.gateway.workQueue.waiting.length === 1);
   assert.equal(await data.gateway.handleIncoming(message(1)), false);
   assert.equal(await data.gateway.handleIncoming(message(2)), false);
   const flood = Array.from({ length: 50 }, (_, index) => data.gateway.handleIncoming(message(index + 3)));
@@ -190,23 +225,23 @@ test('Discord gateway overflow applies resumable backpressure before the unaccep
   const socket = data.sockets[0];
   socket.packet({ op: 0, t: 'READY', s: 40, d: { session_id: 'synthetic-session', resume_gateway_url: 'wss://gateway.discord.gg' } });
   socket.packet({ op: 0, t: 'MESSAGE_CREATE', s: 41, d: message(1) });
-  await until(() => calls === 1);
+  await data.waitFor(() => calls === 1);
   socket.packet({ op: 0, t: 'MESSAGE_CREATE', s: 42, d: message(2) });
-  await until(() => data.gateway.ingressPaused);
+  await data.waitFor(() => data.gateway.ingressPaused);
   assert.equal(socket.closeCode, 4000, 'normal close would invalidate the session');
   assert.equal(data.gateway.snapshot().status, 'paused');
   assert.equal(data.retries.length, 0, 'no reconnect loop while the owner handler still occupies the only slot');
   assert.equal((await data.journal()).messages.length, 1);
   finish.resolve();
-  await until(() => data.retries.length === 1);
+  await data.waitFor(() => data.retries.length === 1);
   data.retries.shift().callback();
   data.sockets[1].packet({ op: 10, d: { heartbeat_interval: 1000 } });
   assert.equal(data.sockets[1].sent[0].op, 6);
   assert.equal(data.sockets[1].sent[0].d.seq, 41);
   data.sockets[1].packet({ op: 0, t: 'MESSAGE_CREATE', s: 42, d: message(2) });
   data.sockets[1].packet({ op: 0, t: 'RESUMED', s: 43, d: {} });
-  await until(() => calls === 2 && data.gateway.pendingMessages.size === 0);
-  await until(() => data.gateway.snapshot().ingressGap?.status === 'recovered' && !data.gateway.gapCheckpoint);
+  await data.waitFor(() => calls === 2 && data.gateway.pendingMessages.size === 0);
+  await data.waitFor(() => data.gateway.snapshot().ingressGap?.status === 'recovered' && !data.gateway.gapCheckpoint);
   assert.equal((await data.journal()).messages.length, 2);
   assert.equal((await data.journal()).ingressGap.status, 'recovered');
 });
@@ -220,16 +255,16 @@ test('Discord resume rejection and restart preserve a visible durable gap instea
   const socket = data.sockets[0];
   socket.packet({ op: 0, t: 'READY', s: 40, d: { session_id: 'synthetic-session', resume_gateway_url: 'wss://gateway.discord.gg' } });
   socket.packet({ op: 0, t: 'MESSAGE_CREATE', s: 41, d: message(1) });
-  await until(() => calls === 1);
+  await data.waitFor(() => calls === 1);
   socket.packet({ op: 0, t: 'MESSAGE_CREATE', s: 42, d: message(2) });
-  await until(() => data.gateway.snapshot().ingressGap?.status === 'awaiting_resume' && !data.gateway.gapCheckpoint);
+  await data.waitFor(() => data.gateway.snapshot().ingressGap?.status === 'awaiting_resume' && !data.gateway.gapCheckpoint);
   assert.equal((await data.journal()).ingressGap.firstMessageId, id(2));
   finish.resolve();
-  await until(() => data.retries.length === 1);
+  await data.waitFor(() => data.retries.length === 1);
   data.retries.shift().callback();
   data.sockets[1].packet({ op: 10, d: { heartbeat_interval: 1000 } });
   data.sockets[1].packet({ op: 9, d: false });
-  await until(() => data.gateway.snapshot().ingressGap?.status === 'requires_review' && !data.gateway.gapCheckpoint);
+  await data.waitFor(() => data.gateway.snapshot().ingressGap?.status === 'requires_review' && !data.gateway.gapCheckpoint);
   assert.equal((await data.journal()).ingressGap.reason, 'resume_unavailable');
   data.gateway.start(config);
   await data.gateway.dedupeReady;
@@ -290,14 +325,14 @@ test('Discord start during an old handler cancels waiting work and never overwri
     return `Svar: ${text}`;
   } });
   const first = data.gateway.handleIncoming(message(1, 'Gammel kører'));
-  await until(() => calls.length === 1);
+  await data.waitFor(() => calls.length === 1);
   const second = data.gateway.handleIncoming(message(2, 'Gammel venter'));
-  await until(() => data.gateway.workQueue.waiting.length === 1);
+  await data.waitFor(() => data.gateway.workQueue.waiting.length === 1);
   data.gateway.start({ ...config, token: 'synthetic-replacement-token' });
   await data.gateway.dedupeReady;
   await second;
   const third = data.gateway.handleIncoming(message(3, 'Ny session'));
-  await until(() => data.gateway.workQueue.waiting.length === 1);
+  await data.waitFor(() => data.gateway.workQueue.waiting.length === 1);
   finish.resolve();
   assert.deepEqual(await Promise.all([first, third]), [true, true]);
   assert.deepEqual(calls, ['Gammel kører', 'Ny session']);
@@ -338,7 +373,7 @@ test('Discord notification interrupted while opening a DM returns not delivered,
   } });
   data.gateway.status = 'connected';
   const notification = data.gateway.notifyOwner('Syntetisk status');
-  await until(() => calls === 1);
+  await data.waitFor(() => calls === 1);
   data.gateway.stop();
   opened.resolve();
   assert.equal(await notification, false);

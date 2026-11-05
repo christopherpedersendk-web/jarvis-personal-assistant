@@ -146,10 +146,35 @@ export class SecretaryCore {
     return this.state.playbook;
   }
 
-  memoryContext() {
-    return this.state.memories.filter(x => activePersonalMemory(x, this.now()))
-      .map(x => `- [memory:${x.id} · ${x.category || 'fact'} · ${x.source?.kind || 'legacy'}/${x.source?.channel || 'legacy'} · revision ${x.revision || 1}] ${x.text}`)
-      .join('\n').slice(0, 8000);
+  memoryContext({ maxChars = 8000 } = {}) {
+    if (!Number.isSafeInteger(maxChars) || maxChars < 128 || maxChars > 8000)
+      throw new Error('Hukommelseskontekstens budget skal være 128–8.000 tegn.');
+    const labels = { fact: 'Bekræftet oplysning', preference: 'Præference', household: 'Husstandsnote',
+      food: 'Madnote', project: 'Projektnote' };
+    const omitted = 'Flere hukommelseskilder er udeladt af pladsgrænsen; hent den præcise kilde ved behov.';
+    const lines = []; let length = 0;
+    const sourceText = value => {
+      try {
+        const source = checkedSource(value, { kind: 'legacy', channel: 'legacy' });
+        return `${source.kind}/${source.channel}${source.messageId ? ` (${source.messageId})` : ''}`;
+      } catch { return 'ukendt kilde'; }
+    };
+    for (const memory of this.state.memories.filter(record => activePersonalMemory(record, this.now()))) {
+      const fields = [`memory:${memory.id}`, `Kategori: ${labels[memory.category] || 'Ukendt kategori – ikke et bekræftet faktum'}`,
+        `Kilde: ${sourceText(memory.source)}`, `revision ${memory.revision || 1}`];
+      if (memory.originSource && JSON.stringify(memory.originSource) !== JSON.stringify(memory.source))
+        fields.push(`Oprindelig kilde: ${sourceText(memory.originSource)}`);
+      if (memory.validFrom) fields.push(`Gyldig fra: ${memory.validFrom}`);
+      fields.push(`Udløber: ${memory.expiresAt || 'ikke angivet'}`);
+      if (memory.updatedAt || memory.createdAt) fields.push(`opdateret ${memory.updatedAt || memory.createdAt}`);
+      const line = `- [${fields.join(' · ')}] ${memory.text}`;
+      // This formatter is shared by voice and both coding paths. Source,
+      // validity and the complete statement are indivisible: a raw substring
+      // can otherwise remove a negation or its final limiting condition.
+      if (length + line.length + 1 + omitted.length > maxChars) { lines.push(omitted); break; }
+      lines.push(line); length += line.length + 1;
+    }
+    return lines.join('\n');
   }
 
   listMemories({ includeProposed = true, includeArchived = false } = {}) {
