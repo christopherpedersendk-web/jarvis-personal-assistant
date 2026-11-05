@@ -136,14 +136,21 @@ async function runDevice(type, width, height, label) {
   await page.locator('#memory-editor-mode').selectOption('claim');
   assert.equal(await page.locator('#memory-workbench-form').isVisible(), false);
   assert.equal(await page.locator('#personal-claim-form').isVisible(), true);
-  await page.locator('#claim-subject').fill('syntetisk_emne');
-  await page.locator('#claim-value').fill('Syntetisk personligt faktum');
+  // The four browser cases intentionally share one synthetic server. Each must
+  // create a distinct claim: otherwise a later case finds the already-confirmed
+  // first claim, whose first button is "Arkivér" rather than "Bekræft".
+  const subject = `syntetisk_emne_${label}`;
+  const value = `Syntetisk personligt faktum ${label}`;
+  await page.locator('#claim-subject').fill(subject);
+  await page.locator('#claim-value').fill(value);
   await page.locator('#personal-claim-form button').click();
-  await page.locator('[data-claim-id]').first().waitFor({ state: 'visible' });
-  await page.locator('[data-claim-id] button').first().click();
-  await page.locator('#knowledge-query').fill('Syntetisk personligt faktum');
+  const createdClaim = page.locator('[data-claim-id]').filter({ hasText: subject }).first();
+  await createdClaim.waitFor({ state: 'visible' });
+  await createdClaim.getByRole('button', { name: 'Bekræft oplysning' }).click();
+  await createdClaim.getByText('Bekræftet af dig').waitFor({ state: 'visible' });
+  await page.locator('#knowledge-query').fill(value);
   await page.locator('#knowledge-search-form button').click();
-  const exactClaimResult = page.locator('.knowledge-result').filter({ hasText: 'syntetisk_emne' }).first();
+  const exactClaimResult = page.locator('.knowledge-result').filter({ hasText: subject }).first();
   await exactClaimResult.locator('button').waitFor({ state: 'visible' });
   await exactClaimResult.locator('button').click();
   const selectedSource = new URL(page.url()).searchParams.get('source');

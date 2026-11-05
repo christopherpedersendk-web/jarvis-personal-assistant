@@ -8,6 +8,8 @@ Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema
 
 **M5 browser evidence remains open:** published commit `66acb7f0a00b1d8427ce69c3a7450d1b34ccd933`, app subtree `45758ad42f14fcc5edfa6df514b8abb60c258ae9`, [CI `41984714363`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41984714363) **243 Node 22 tests passed; Chromium desktop browser FAILED** looking for a claim source highlight after selecting the first lexical result. The event now awaits asynchronous refresh in published `4582edae` but [CI `41985321179`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41985321179) **failed the same browser assertion**. Root cause remains under investigation; the next fixture binds selection to the exact claim subject, validates the URL source ID, and logs DOM status. **No browser acceptance until corrected CI is green.**
 
+**R11 investigation outcome:** [CI `41985893298`](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41985893298) proved that the exact source highlight works on Chromium desktop (matching route UUID, rendered card and no page errors). The later mobile case failed because it reused the same synthetic claim: the duplicate was already confirmed, and the test clicked its “Arkivér” button. The next candidate uses distinct subject/value per device and awaits an explicit confirmation before retrieval. No product source-route defect has been demonstrated by this sequence; the async refresh fix remains a safe improvement.
+
 ## Provenance
 
 - Production and M7 were not accessed or performed.
@@ -55,6 +57,6 @@ The concrete staged M7 decision path, candidate binding and blockers are in `rel
 
 ## Continuation
 
-1. Publish the **R11 exact-source diagnostic fixture** as a fast-forward child of `4582edae`, verify the exact Git tree, and run Node 22 plus all four Chromium/WebKit browser workflows. Use the observed URL/DOM evidence to fix any remaining defect; do not weaken the source-ID assertion.
+1. Publish the **per-device unique claim fixture** as a fast-forward child of `e6b958e`, verify the exact Git tree, and run Node 22 plus all four Chromium/WebKit browser workflows. Preserve the exact source-ID, browser-history, focus and draft-recovery assertions.
 2. Complete the remaining background/project/multi-file write sweep, a genuine local Danish semantic provider and independent ≥90% source@5 evaluation. A shared backend memory schema still needs a safe migration; do not rewrite historic records speculatively.
 3. Arrange actual physical iPhone/desktop acceptance and an administrator-controlled recovery rehearsal. M7 merge, stable tag, release and installation remain **separate authorisations**.
