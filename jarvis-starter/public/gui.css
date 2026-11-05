@@ -375,8 +375,15 @@ form, form > *, .task-form > *, .v5-fields > *, .time-pair > div, .gui-settings-
 #global-chat-content .messages { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 #global-chat-content .composer { flex: 0 0 auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
 #global-chat-content .composer textarea { max-height: 25dvh; }
-.toast { z-index: 130; bottom: 24px; max-width: min(90vw, 620px); padding: 12px 16px; border: 1px solid var(--gui-control-border); border-radius: 10px; color: var(--gui-text); background: var(--gui-surface-raised); box-shadow: 0 8px 32px #0005; overflow-wrap: anywhere; font-size: 14px; }
+.toast { z-index: 130; bottom: 24px; max-width: min(90vw, 620px); padding: 12px 16px; border: 1px solid var(--gui-control-border); border-radius: 10px; color: var(--gui-text); background: var(--gui-surface-raised); box-shadow: 0 8px 32px #0005; overflow-wrap: anywhere; font-size: 14px; pointer-events: none; }
 footer { color: var(--gui-muted); font-size: 12px; line-height: 18px; padding: 24px 0 0; }
+
+/* At reduced viewport heights a bottom toast can cover the form above the
+   mobile navigation. Keep transient feedback readable by the top edge while
+   the original field-bound error remains beside its form. */
+@media (max-height: 640px) {
+  #toast { top: max(12px, env(safe-area-inset-top, 0px)); bottom: auto; }
+}
 
 .login-panel { max-width: 480px; margin: 6vh auto; padding: 32px; }
 .login-mark { margin: 0 auto 16px; width: 44px; height: 44px; font-size: 28px; }

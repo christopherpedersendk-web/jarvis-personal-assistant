@@ -72,7 +72,31 @@ async function signIn(page) {
 }
 
 async function uiWrite(page, method, path, action, statuses = [200]) {
-  const waiting = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === method);
+  const followRequests = [];
+  if (path === '/api/follow-ups') {
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith('/api/follow-ups'))
+        followRequests.push({ path: new URL(request.url()).pathname, method: request.method() });
+    });
+    const native = await page.evaluate(() => {
+      const form = document.querySelector('#follow-up-form'), button = form.querySelector('[type="submit"]');
+      const controls = [...form.elements].map(control => ({ id: control.id, type: control.type,
+        value: control.type === 'password' ? '[redacted]' : control.value,
+        disabled: control.disabled, valid: control.validity?.valid ?? true, issue: control.validity?.valid ? '' : control.validationMessage }));
+      window.__jarvisFollowTrace = [];
+      form.addEventListener('click', event => window.__jarvisFollowTrace.push({ event: 'click', target: event.target.id || event.target.textContent?.trim() }), true);
+      form.addEventListener('submit', event => {
+        window.__jarvisFollowTrace.push({ event: 'submit', defaultPreventedAtCapture: event.defaultPrevented });
+        queueMicrotask(() => window.__jarvisFollowTrace.push({ event: 'submit-after', defaultPrevented: event.defaultPrevented }));
+      }, true);
+      return { valid: form.matches(':valid'), buttonForm: button.form?.id, buttonDisabled: button.disabled,
+        controls };
+    });
+    assert.equal(native.valid, true, `Native follow-up form invalid before click: ${JSON.stringify(native)}`);
+    assert.equal(native.buttonForm, 'follow-up-form', `Follow-up submit is detached from its form: ${JSON.stringify(native)}`);
+  }
+  const waiting = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === method,
+    { timeout: path === '/api/follow-ups' ? 10000 : 30000 });
   await action();
   const response = await waiting.catch(async error => {
     // A browser may block an invalid native form before fetch() runs. Preserve
@@ -87,8 +111,14 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
       taskStatus: document.querySelector('#personal-task-status')?.textContent || '',
       followStatus: document.querySelector('#follow-up-status')?.textContent || '',
       focused: document.activeElement?.id || null,
+      follow: (() => { const form = document.querySelector('#follow-up-form');
+        return form ? { valid: form.checkValidity(), events: window.__jarvisFollowTrace || [],
+          buttonDisabled: form.querySelector('[type="submit"]')?.disabled,
+          formAction: form.action,
+          controls: [...form.elements].filter(control => !control.checkValidity()).map(control => ({ id: control.id,
+            type: control.type, value: control.value, issue: control.validationMessage })) } : null; })(),
     })).catch(() => ({ unavailable: true }));
-    throw new Error(`${method} ${path}: no HTTP response (${error.message}); browser state: ${JSON.stringify(diagnostic)}`);
+    throw new Error(`${method} ${path}: no HTTP response (${error.message}); observed follow-up requests: ${JSON.stringify(followRequests)}; browser state: ${JSON.stringify(diagnostic)}`);
   });
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
@@ -1169,6 +1199,10 @@ async function verifyAccessibility(page, width, height, label) {
         return { width: document.documentElement.clientWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth,
           input: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, navTop: bar.top,
           unobscured: hit === input || input.contains(hit),
+          hit: hit && { id: hit.id, tag: hit.tagName, className: String(hit.className) },
+          toast: (() => { const el = document.querySelector('#toast'); if (!el || el.classList.contains('hidden')) return null;
+            const area = el.getBoundingClientRect(); return { top: area.top, bottom: area.bottom,
+              pointerEvents: getComputedStyle(el).pointerEvents }; })(),
           overflow: [...document.querySelectorAll('body *')].filter(node => node.getClientRects().length)
             .map(node => ({ tag: node.tagName, id: node.id, className: String(node.className), right: node.getBoundingClientRect().right }))
             .filter(node => node.right > document.documentElement.clientWidth + 2).slice(0, 15) };

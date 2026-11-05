@@ -17,6 +17,16 @@ Eksisterende objekter, rettigheder, revisionsværn, kladder og API'er bevares. A
 
 Den konkrete kortlægning af formularer, objekter, API’er, rettigheder og kladders livscyklus står i [data-and-capabilities.md](data-and-capabilities.md).
 
+## Faktisk stack og kommandoer
+
+`jarvis-starter/package.json` beskriver en Node-app med ES-moduler og `node >=22.6.0`. Frontenden er eksisterende HTML, CSS og almindelige JavaScript-controllere; der indføres intet nyt framework eller bundler.
+
+- Start: `cd jarvis-starter` efterfulgt af `npm start` (`node --env-file-if-exists=.env server.mjs`).
+- Lokal opsætning: `npm run setup`, når den eksisterende opsætning skal udføres; GUI-arbejdet aktiverer ingen nye forbindelser.
+- Kode-, DOM-, HTTP- og domænetests: `npm test` (`node --test`).
+- Faktisk browser: `node scripts/gui-visual-smoke.mjs` og `node scripts/v5-visual-smoke.mjs` i den fastlåste Playwright-CI. Den lokale socketbegrænsning er dokumenteret nedenfor.
+- Browserafhængigheden installeres uden for kandidattræet. Der er ingen ny produktionsafhængighed i `package.json`.
+
 ## GUI1 – kortlægning
 
 Kortlæg eksisterende DOM-ID'er, datatyper, formularer, kilde-ID'er og URL'er før flytning. Der findes allerede revisioner og konflikthåndtering for noter, hukommelse, personlige opgaver, baggrundsjobs, projekter og flere indstillingsfelter. Disse flows skal genbruges. Kalenderen bevarer den dokumenterede læseadgang; integrationskatalogets status er ikke bevis for en fungerende ekstern forbindelse.
@@ -27,21 +37,23 @@ Den eksisterende samtale har én global historik og et `message`-payload. GUI-ko
 
 Fire primære destinationer: I dag, Planlægning, Hjem og Overvågninger. Indstillinger er en fast sekundær indgang. Søgning og samtale er tilgængelige globalt. Samme eksisterende formular og composer flyttes mellem værter; ingen dubletter af IDs eller uafhængige kopier af kladder.
 
-| Gammel indgang / kilde | Ny destination |
-|---|---|
-| `home` | `?view=home` |
-| `plan`, `personal-task:*`, `follow-up:*` | `?view=plan&section=tasks&kind=personal` |
-| `tasks`, `task:*` | `?view=plan&section=tasks&kind=agent`; monitor-kilder omdirigeres til `watches` efter læsning af det originale job |
-| `meals`, `meal-*`, `household*`, `recipe`, `shopping-draft`, `nemlig-proposal` | `?view=plan&section=meals` |
-| `organizer`, kilde `organizer:*` | `?view=plan&section=notes` |
-| `projects`, kilde `project:*` | `?view=plan&section=tasks&kind=projects` |
-| `memory:*`, `claim:*` | `?view=settings&section=profile` |
-| `skill:*` | `?view=settings&section=automations` |
-| `knowledge` uden konkret kilde | `?view=home&panel=search` |
-| `smart-home` | `?view=smart-home` |
-| `system` | `?view=settings&section=system` |
-| `calendar`, `google-calendar:*` | `?view=plan&section=calendar`; kalenderkilden bevarer præcis kalender/event/dato/fetchedAt |
-| `secretary` | `?view=home&attention=1`; den eksisterende opmærksomhedssektion åbnes |
+| Gammel indgang / kilde | Ny destination | Oprindelig objektdetalje | Bevarede parametre |
+|---|---|---|---|
+| `home` | `?view=home` | Samme samtalehistorik og daterede kildeposter | Urelaterede queryparametre og fragment; eksplicit panel |
+| `plan`, `personal-task:*`, `follow-up:*` | `plan / tasks / personal` | Personlig opgave eller opfølgning i `v5-plan.js` | Præcist `source`; relevant dato i URL beholdes |
+| `tasks`, `task:*` | `plan / tasks / agent` | Oprindeligt job, historik, policy og editor | Præcist `source`; monitor læses først og åbner derefter `watches` |
+| `meals`, `meal-*`, `household*`, `recipe`, `shopping-draft`, `nemlig-proposal` | `plan / meals` | Oprindelig plan, husstand, opskrift eller indkøbsforslag | Præcist `source`; samme plan-/liste-ID, dato og fragment |
+| `organizer`, `organizer:*` | `plan / notes` | Oprindelig liste og poster i `organizer.js` | Præcist `source`; ingen konvertering til hukommelse |
+| `projects`, `project:*` | `plan / tasks / projects` | Projektets egne filer, kladder og revisionsgrundlag | Præcist `source` og øvrige queryparametre |
+| `memory:*`, `claim:*` | `settings / profile` | Original note/fakta eller ubekræftet forslag | Præcist `source`; type og bekræftelsesstatus ændres ikke |
+| `skill:*` | `settings / automations` | Oprindelig skill med eksisterende handlinger | Præcist `source` |
+| `knowledge` uden kilde | `home`, `panel=search` | Global søgning; samme resultater åbner originalobjektet | Eksplicit panel; søgetekst i den aktuelle `history.state` |
+| `smart-home` | `?view=smart-home` | Samme Hue-/Sonos-ressourcer og lokal handlingsstatus | Øvrige queryparametre og fragment |
+| `system` | `settings / system` | Oprindelig updater og JARVIS-kodeforslag | Øvrige queryparametre og fragment; ingen ny godkendelse |
+| `calendar`, `google-calendar:*` | `plan / calendar` | Eksakt cachekilde med kalender, event, dato og `fetchedAt` | Hele `source` op til den eksisterende kildegrænse; `date` og fragment |
+| `secretary` | `home`, `attention=1` | Samme indbakke og konkrete godkendelser | `attention=1` bevares ved reload; øvrige parametre beholdes |
+
+Destinationerne i tabellen skrives konkret som `view`, `section` og eventuelt `kind`. Kun de kendte navigationsparametre normaliseres af `gui-navigation.js`; URL'ens øvrige parametre og fragment beholdes. Ved et bevidst valg af en ny hoveddestination fjernes det gamle `source` fra den nye rute, mens tilbage/frem genskaber den tidligere objektplacering.
 
 Kilde-ID'et bevares som `source`. `panel=search` eller `panel=chat` kan ligge oven på den aktuelle destination, også med en præcis kilde. Tilbage/frem og genindlæsning skal genskabe relevant destination og søgekontekst. Gamle links er kompatibilitetsindgange, ikke ekstra hovedfaner.
 
