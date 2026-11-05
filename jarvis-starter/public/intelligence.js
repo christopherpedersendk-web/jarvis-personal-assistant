@@ -33,8 +33,15 @@ async function focusRecordedSource(sourceId) {
     if (kind === 'household' && parts[1] !== 'default') document.getElementById('meal-family-show').click();
   } else if (kind === 'organizer') await refreshOrganizer();
   else if (kind === 'memory') document.dispatchEvent(new CustomEvent('jarvis:memories-changed'));
-  else if (kind === 'claim' || kind === 'personal-task' || kind === 'follow-up')
-    document.dispatchEvent(new CustomEvent('jarvis:v5-sources-changed'));
+  else if (kind === 'claim' || kind === 'personal-task' || kind === 'follow-up') {
+    // A source card can be replaced by its async domain refresh. Highlight only
+    // after the new revisioned record has rendered, not on a stale DOM node.
+    const pending = [];
+    document.dispatchEvent(new CustomEvent('jarvis:v5-sources-changed', {
+      detail: { waitUntil: promise => pending.push(Promise.resolve(promise)) },
+    }));
+    await Promise.allSettled(pending);
+  }
   else if (kind === 'task') await refreshTasks();
   else if (kind === 'project') await refreshProjects();
 

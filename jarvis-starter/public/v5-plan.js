@@ -205,6 +205,9 @@
     await Promise.allSettled([refreshPersonalTasks(), refreshFollowUps(), refreshClaims()]);
   };
   document.addEventListener('jarvis:refreshed', refresh);
-  document.addEventListener('jarvis:v5-sources-changed', refresh);
+  document.addEventListener('jarvis:v5-sources-changed', event => {
+    const pending = refresh();
+    if (typeof event.detail?.waitUntil === 'function') event.detail.waitUntil(pending);
+  });
   if (localStorage.getItem('jarvisAccessToken')) refresh();
 })();
