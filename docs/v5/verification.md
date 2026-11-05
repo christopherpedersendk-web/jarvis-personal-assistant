@@ -2,6 +2,29 @@
 
 ## Aktuel gate – 5. november 2026
 
+**Nyeste publicerede checkpoint: `6892cf3dcbbd9dd3bf98a2286c7970017572bab9`**, lokal `badd3f96f188a0c13f34e7ffaee3075fc7121e7a`, app-træ `c1f9272923d57bc1083ea646e1c67f98b6a0d121`. [CI42015140734](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42015140734), mergecommit `878e65725553bfb9561efc00c8a49c69ac9a7a19`: **668/668 Node22.23.4**, 0 fejl/skip,23.808,732475 ms. Samme app lokalt:668/668 Node24.22.1,12.953,709123 ms.
+
+**Samlet CI fejlede; M6 er ikke accepteret:**
+
+- Browseren bestod historik/tastatur og nåede oprettelse af et claim, men tom valgfri kildereference blev sendt som `null` og korrekt afvist af servervalideringen. Det er en UI-kontraktfejl. Nye lokale regressioner reproducerede den før rettelsen; UI sender nu den eksplicitte tom-streng-kontrakt. Ny CI kræves. Kun Chromiumdesktop blev kørt frem til fejlen;5 PNG+1 accessibility-rapport i artifact13408947232, ZIP SHA256 `f0ec95690222f0f05d2d85851db52b3ce5043787f52bb54007293e219f758b44`, download verificeret. I dag/composer er visuelt inspiceret, ikke hele browsermatrixen eller fysiske enheder.
+- Ægte modelkørsel terminerede native med exit134/Napi-fejl; ingen komplet ny retrievalrapport. Den gamle93,75 %-måling nedenfor gælder fortsat kun sin gamle revision. Separat modelproces/fallback er under ny verifikation; nativ udløser er ikke bevist.
+- Dependencygate afviste to højt klassificerede pakker via sharps native billedafhængigheder. Fuld kandidatbundet rapport: `evidence/dependency-audit-6892cf3d.json`. Målrettet sharp0.35.5 override og præcis ny lock kræver ny faktisk audit; se `dependency-review.md`.
+- Parret performancejob **bestod** på samme Node22-runner, samme benchmarkSHA `6f12ebae3b0d85648dc58c302711fc58c38aaeb540e4660e9ca2482af67f5b1a` og fixtureSHA `ed5f76624359bb2f2f6a0fcb2f31752ea1454b9cae7af26d404bad0f7c13962f`. Begge rå rapporter ligger i `evidence/performance-*-6892cf3d.json`. Artifact13408224242 ZIP SHA256 `eaedc976c0e519c2a4935514f7f0c7e4f104caa001be12cea4bc8ef573041f5b` verificeret.
+
+| Samme syntetiske fixture | Verificeret v4.9.1 | Appc1f92729 |
+|---|---:|---:|
+| Fuld state |165.621 B / p95 16,110 ms|165.818 B / p95 16,995 ms|
+| Normal afgrænset bootstrap |ikke tilgængelig|7.123 B / p95 1,751 ms|
+| Lille overview |ikke tilgængelig|117 B / p95 0,867 ms|
+| Lokal lexical retrieval,40 requests |p95 10,570 ms|p95 15,057 ms|
+| Varige tekstwrites,30 requests |p95 4,044 ms|p95 10,667 ms|
+| Lokale reads under tre simulerede modelsvar |fuld state p95 5,799 ms|bootstrap p95 4,619 ms|
+| Samplet peak-RSS |93.954.048 B|109.125.632 B|
+
+Kandidatens køventetider var1/220/456 ms og kørsler236/235/235 ms med200 ms simuleret ekstern ventetid (målt p95 201,150 ms). Ingen rigtige modelcalls, toolcalls, kurveskrivninger eller aktiverede recurringjobs. Bootstrap er ca.95,7 % mindre end baselinefuldstate; søgning og varige writes er langsommere i denne prøve. Dette dokumenterer en målbar durabilitets-/responsafvejning, ikke generel hastighedsgevinst eller produktions-SLA. Nyere ændringer kræver ny måling.
+
+## Tidligere gate – b04bcb30
+
 Seneste publicerede app er **`b04bcb304602a8ed92246db7a580038143362353`**, app-subtree **`3832f400fbdfbc37c9af528c2d0acfac19b39d9a`**, lokal indholdsidentisk commit `66e888b0202c3ef3d1e3b6ebd1854362768fe3d2`. Lokal `npm test`: **501/501**, 0 fejl/skip, Node24.22.1, 12.251,999757 ms. [CI42007968167](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42007968167) anvendte mergecommit `810a353d49454151f03f0db6b35bb9acf929293d` med identisk app-subtree: **501/501 Node22.23.4**, 15.666,190921 ms.
 
 - Faktisk multilingual-E5: **hybrid75/80 =93,75 % PASS**, vector75/80, lexical43/80. DatasætSHA `2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895` er uændret. Ingen ugyldige kildeudslip; korrektion, glemning og 16 sikkerhedsspørgsmål bestået. Fem fejl er bevaret (Q04/Q34/Q65/Q66/Q68). `evidence/semantic-b04bcb30.json` er den faktisk udlæste konsolrapport med opsummering/fejl, ikke det komplette artifact med alle96 spørgsmål.

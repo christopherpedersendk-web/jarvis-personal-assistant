@@ -29,4 +29,7 @@
 | D-023 | Cache kun tokenisering, aldrig gyldigheden af en personlig kilde | Alle aktuelle kilder genfiltreres for status, gyldighed og hemmeligheder ved hvert opslag. Max2.000 cacheposter; rettelse/glemning propagere straks. Faste96 spørgsmål sammenlignes for uændrede ranks/scores. Dette er ikke semantisk retrieval i sig selv. |
 | D-024 | Samme kandidatbundne syntetiske benchmark måler baseline og kandidat | Fixture-, runner-, commit- og apphash følger resultaterne. Lokale reads, durable writes, køventetid og200 ms simuleret modelventetid adskilles. Ingen produktionsdata, faktiske eksterne handlinger eller opfundne tokenomkostninger. |
 
+| D-025 | Flyt native encoder fra workertråd til en separat childproces efter faktisk CI-abort | Exit134 viste, at en native fejl kan afslutte værten. Processen arver ikke credentials/NODE_OPTIONS; timeout stopper kun den ejede læseproces. Lokal fallback og senere recovery testes. Dette er en crashgrænse, ikke en OS-sandbox, og native RAM er ikke begrænset af JS-heapgrænsen. |
+| D-026 | Målrettet sharp0.35.5 override i den valgfrie Transformers.js3.8.1-runtime | Den præcise audit viste høje transitive billedbiblioteksfund; officiel advisory angiver rettet version. Model/datasæt og HF-major fastholdes. Ny ægte kompatibilitets-/auditkørsel, reviewet lock og npm ci er stadig obligatoriske; ingen fund ignoreres. |
+
 Alle beslutninger er reviewbare mod `verification.md`. Udviklingsbranch og draft-PR er ikke godkendelse til merge, release eller installation.

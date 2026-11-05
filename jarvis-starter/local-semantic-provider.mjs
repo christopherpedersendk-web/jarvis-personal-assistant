@@ -1,4 +1,4 @@
-import { Worker } from 'node:worker_threads';
+import { LocalSemanticProcess } from './local-semantic-process.mjs';
 import { performance } from 'node:perf_hooks';
 import { isAbsolute } from 'node:path';
 import { LOCAL_SEMANTIC_MODEL, LOCAL_SEMANTIC_MANIFEST_SHA256 } from './semantic-model-manifest.mjs';
@@ -14,16 +14,11 @@ export class LocalSemanticProvider {
     this.maxPending = Math.max(1, Math.min(16, Number(maxPending) || 4));
     this.requestTimeoutMs = Math.max(50, Math.min(60_000, Number(requestTimeoutMs) || 10_000));
     this.startupTimeoutMs = Math.max(50, Math.min(60_000, Number(startupTimeoutMs) || 60_000));
-    this.workerFactory = workerFactory || (() => new Worker(new URL('./local-semantic-worker.mjs', import.meta.url), {
-      workerData: { directory }, resourceLimits: { maxOldGenerationSizeMb: 512 }, execArgv: [],
-      stdout: true, stderr: true,
-      // The local encoder does not need inherited integration credentials.
-      env: {},
-    }));
+    this.workerFactory = workerFactory || (() => new LocalSemanticProcess({ directory }));
     this.queue = []; this.active = null; this.worker = null; this.readyPromise = null;
     this.sequence = 0; this.closed = false; this.state = 'not-started'; this.failureCode = null;
     this.metrics = { requests: 0, embeddedTexts: 0, completed: 0, failed: 0, cancelled: 0,
-      totalQueueMs: 0, totalInferenceMs: 0, maxQueueMs: 0, maxInferenceMs: 0 };
+      totalQueueMs: 0, totalInferenceMs: 0, maxQueueMs: 0, maxInferenceMs: 0, peakSampledChildRssBytes: 0 };
   }
 
   async prepare() {
@@ -38,6 +33,8 @@ export class LocalSemanticProvider {
       const startup = setTimeout(() => this.failWorker(failure('SEMANTIC_STARTUP_TIMEOUT')), this.startupTimeoutMs);
       worker.on('message', message => {
         if (worker !== this.worker) return;
+        if (Number.isSafeInteger(message?.rssBytes) && message.rssBytes > 0)
+          this.metrics.peakSampledChildRssBytes = Math.max(this.metrics.peakSampledChildRssBytes, message.rssBytes);
         if (message?.type === 'ready') {
           clearTimeout(startup); this.state = 'ready'; this.rejectReady = null;
           resolve(this.stats()); this.drain();
@@ -101,7 +98,8 @@ export class LocalSemanticProvider {
     const queueMs = performance.now() - row.queuedAt;
     this.metrics.totalQueueMs += queueMs; this.metrics.maxQueueMs = Math.max(this.metrics.maxQueueMs, queueMs);
     row.timer = setTimeout(() => this.failWorker(failure('SEMANTIC_INFERENCE_TIMEOUT')), this.requestTimeoutMs);
-    this.worker.postMessage({ id: row.id, texts: row.texts, kind: row.kind });
+    try { this.worker.postMessage({ id: row.id, texts: row.texts, kind: row.kind }); }
+    catch { this.failWorker(failure('SEMANTIC_WORKER_FAILED')); }
   }
 
   finish(row, error, vectors) {
@@ -123,7 +121,7 @@ export class LocalSemanticProvider {
   stats() {
     return { status: this.state, provider: 'local', model: LOCAL_SEMANTIC_MODEL.id,
       modelRevision: LOCAL_SEMANTIC_MODEL.revision, runtimeVersion: LOCAL_SEMANTIC_MODEL.runtimeVersion,
-      manifestSha256: LOCAL_SEMANTIC_MANIFEST_SHA256, network: 'disabled',
+      manifestSha256: LOCAL_SEMANTIC_MANIFEST_SHA256, network: 'disabled', isolation: 'child-process',
       running: Boolean(this.active), queued: this.queue.length, failureCode: this.failureCode, ...this.metrics };
   }
 

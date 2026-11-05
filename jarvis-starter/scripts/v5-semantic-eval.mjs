@@ -20,6 +20,7 @@ const output = arg('--output');
 const provider = directory ? new LocalSemanticProvider({ directory: resolve(directory), requestTimeoutMs: 30_000 }) : null;
 const lag = monitorEventLoopDelay({ resolution: 10 });
 let report;
+let binding = {};
 
 try {
   if (!provider) throw new Error('Den ægte modeltest mangler --model-directory. Den må ikke tælles som bestået via en mock.');
@@ -27,6 +28,7 @@ try {
   const candidateCommit = git(['rev-parse', 'HEAD']);
   const applicationTree = git(['rev-parse', 'HEAD:jarvis-starter']);
   const workingTreeDirty = Boolean(git(['status', '--porcelain', '--untracked-files=no']));
+  binding = { candidateCommit, applicationTree, workingTreeDirty, runtime: process.version };
   assert.equal(workingTreeDirty, false, 'Den bindende modelmåling skal køres på en committet kandidat.');
   const datasetSha256 = createHash('sha256').update(await readFile(new URL('./fixtures/danish-memory-evaluation.mjs', import.meta.url))).digest('hex');
   assert.equal(DANISH_MEMORY_QUESTIONS.length, 80);
@@ -130,12 +132,16 @@ try {
     measurements: { documents: documents.length, coldLoadMs, initialIndexMs,
       warmRetrievalP50Ms: percentile(latencies, 0.5), warmRetrievalP95Ms: percentile(latencies, 0.95),
       eventLoopP95Ms: lag.percentile(95) / 1e6, startRssBytes: startRss, peakSampledRssBytes: peakSampledRss,
+      childPeakSampledRssBytes: beforeFallback.peakSampledChildRssBytes,
+      sumOfSampledRssPeaksBytes: peakSampledRss + beforeFallback.peakSampledChildRssBytes,
+      memoryMetric: 'Parent RSS and separately sampled local-model child RSS; their sum is not a simultaneous allocation peak or production sizing guarantee.',
       totalMs: performance.now() - started },
     index: index.stats(), provider: beforeFallback, cases,
   };
   if (report.status !== 'passed') process.exitCode = 1;
 } catch (error) {
-  report = { status: 'failed', reason: error.message, genuineModelAcceptance: 'not-established' };
+  report = { status: 'failed', ...binding, reason: error.message, code: error.code || 'SEMANTIC_ACCEPTANCE_FAILED',
+    provider: provider?.stats(), genuineModelAcceptance: 'not-established' };
   process.exitCode = 1;
 } finally {
   lag.disable(); await provider?.close();
