@@ -441,7 +441,8 @@ function applyTaskTemplate(category) {
     'task-prompt': category === 'briefing'
       ? 'Lav en kort morgenrapport om AI, cybersikkerhed, DORA, NIS2 og IT-revision i Danmark/Norden. Medtag kildelinks, datoer og hvad der faktisk er nyt siden sidst.'
       : 'Overvåg følgende præcise produkt, variant og forhandler: [INDSÆT PRODUKT OG LINK]. Registrér pris i DKK, lagerstatus, tidspunkt og kilde som strukturerede observationer. Skeln mellem ændret, uændret og ukendt; en fejlet læsning er ukendt.',
-    'task-repeat': 'daily', 'task-daily-time': category === 'briefing' ? '07:30' : '08:00' });
+    'task-repeat': 'daily', 'task-daily-time': category === 'briefing' ? '07:30' : '08:00' },
+    category === 'briefing' ? { skillId: 'daily-briefing' } : {});
   if (!accepted) return;
   selectTab('plan');
   $('task-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -451,7 +452,7 @@ $('monitor-template').addEventListener('click', () => applyTaskTemplate('monitor
 $('gift-template').addEventListener('click', () => {
   if (jobPolicyEditor.template({ 'task-category': 'monitor', 'task-title': 'Gaveidéer og tilbud',
     'task-prompt': 'Find 3 nye gaveidéer til [PERSON, ALDER, INTERESSER] under [BUDGET] kr. i danske butikker. Medtag pris, levering, links og sammenlign med tidligere forslag. Registrér struktureret observation: ændret, uændret eller ukendt. En fejlet kilde er ikke bevis for uændret.',
-    'task-repeat': '10080' })) selectTab('plan');
+    'task-repeat': '10080' }, { skillId: 'gift-planning' })) selectTab('plan');
 });
 
 const projectUi = JarvisProjects.attach({

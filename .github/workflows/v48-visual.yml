@@ -25,9 +25,7 @@ jobs:
       - name: Install pinned local inference runtime in ephemeral CI only
         id: runtime-install
         working-directory: jarvis-starter
-        # Bootstrap the exact public dependency lock for review. The captured
-        # lock must be committed and installation changed to npm ci before RC.
-        run: npm install --prefix local-semantic-runtime
+        run: npm ci --prefix local-semantic-runtime
       - name: Verify and prepare immutable public model assets
         working-directory: jarvis-starter
         run: node scripts/prepare-local-semantic-model.mjs --directory "$RUNNER_TEMP/jarvis-e5-small" --accept-public-download

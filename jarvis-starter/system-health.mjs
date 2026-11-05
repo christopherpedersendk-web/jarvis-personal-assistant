@@ -4,6 +4,7 @@ import { statfs, writeFile, unlink, mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import os from 'node:os';
+import { cleanProcessEnvironment } from './subprocess-safety.mjs';
 
 const run = promisify(execFile);
 
@@ -21,11 +22,11 @@ export async function storageReadiness(dataDirectory) {
   }
 }
 
-async function service(name) {
+async function service(name, { command = run, environment = process.env } = {}) {
   try {
-    const { stdout } = await run('systemctl', ['show', name,
+    const { stdout } = await command('systemctl', ['show', name,
       '--property=ActiveState,Result,ExecMainStatus,ActiveEnterTimestamp,InactiveEnterTimestamp',
-      '--no-pager'], { timeout: 3000 });
+      '--no-pager'], { timeout: 3000, maxBuffer: 8000, windowsHide: true, env: cleanProcessEnvironment(environment) });
     return Object.fromEntries(stdout.trim().split('\n').map(line => {
       const index = line.indexOf('=');
       return [line.slice(0, index), line.slice(index + 1)];
@@ -33,9 +34,10 @@ async function service(name) {
   } catch { return { ActiveState: 'unknown', Result: 'unavailable' }; }
 }
 
-export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0', publicationUncertain = false }) {
+export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0', publicationUncertain = false,
+  command = run, environment = process.env }) {
   const [backup, disk, storage] = await Promise.all([
-    service('jarvis-backup.service'),
+    service('jarvis-backup.service', { command, environment }),
     statfs(dataDirectory).catch(() => null),
     storageReadiness(dataDirectory),
   ]);

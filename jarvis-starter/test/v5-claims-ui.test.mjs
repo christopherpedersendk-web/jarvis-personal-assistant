@@ -39,7 +39,7 @@ function harness({ state = {}, saved = new Map(), authenticated = true, storageB
       try {
         if (path === '/api/personal-claims' && call.method === 'GET') return { claims: claims.list(), conflicts: claims.conflicts() };
         if (path === '/api/personal-claims' && call.method === 'POST') return { claim: await claims.propose({ ...call.body,
-          source: { kind: 'user', channel: 'manual', ...(call.body.sourceId ? { id: call.body.sourceId } : {}) } }) };
+          source: { kind: 'user', channel: 'manual', ...(call.body.sourceId !== undefined ? { id: call.body.sourceId } : {}) } }) };
         const [, , , id, action] = path.split('/');
         if (call.method === 'PATCH') return { claim: await claims.update(id, call.body) };
         return { claim: await claims.decision(id, call.body.expectedRevision, action, call.body) };
@@ -75,6 +75,26 @@ test('B1/K structured creation stores explicit source and Copenhagen validity on
     sourceId: 'organizer:synthetic:note', validFrom: '2030-11-06T08:00:00.000Z', expiresAt: '2030-11-07T08:00:00.000Z' });
   assert.equal(h.state.personalClaims[0].status, 'proposed'); assert.equal(h.writes().length, 1);
   assert.equal(h.field('claim-value').value, ''); assert.match(h.field('claim-status').textContent, /gemt, men ikke bekræftet/);
+});
+
+test('B1/K an optional empty source uses the actual HTTP contract and remains a proposed user-origin claim', async () => {
+  const h = harness(); await h.fill('claim-subject', 'syntetisk_uden_kildereference');
+  await h.fill('claim-value', 'En oplysning jeg selv har skrevet uden en ekstern kilde.'); await h.submit();
+  assert.equal(h.writes().length, 1); assert.equal(h.writes()[0].body.sourceId, '');
+  assert.equal(h.state.personalClaims.length, 1); assert.equal(h.state.personalClaims[0].status, 'proposed');
+  assert.deepEqual(h.state.personalClaims[0].source, { kind: 'user', channel: 'manual' });
+  assert.match(h.field('claim-status').textContent, /gemt, men ikke bekræftet/);
+  assert.ok(h.card(h.state.personalClaims[0].id));
+});
+
+test('B1/K explicitly clearing an optional source is a revision-bound proposal edit, not a null provenance', async () => {
+  const h = harness(), claim = await record(h); await h.ui.refresh();
+  await h.button(h.card(claim.id), 'Redigér forslag').emit('click'); await h.fill('claim-source-id', ''); await h.submit();
+  assert.equal(h.writes().length, 1); assert.equal(h.writes()[0].method, 'PATCH');
+  assert.equal(h.writes()[0].body.expectedRevision, 1); assert.equal(h.writes()[0].body.sourceId, '');
+  assert.equal(h.state.personalClaims[0].revision, 2); assert.equal(h.state.personalClaims[0].status, 'proposed');
+  assert.deepEqual(h.state.personalClaims[0].source, { kind: 'user', channel: 'manual' });
+  assert.equal(h.state.personalClaims[0].revisions[0].source.id, 'organizer:synthetic:note');
 });
 
 test('B1/R03 proposed edits use exact revision and retain an ambiguous stored DST instant unchanged', async () => {

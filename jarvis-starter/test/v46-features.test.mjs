@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareVersions, UpdateManager } from '../update-manager.mjs';
@@ -20,9 +20,14 @@ test('updater only stages a pinned GitHub tag and requires explicit approval', a
   const manager = await new UpdateManager({
     dataDirectory: directory, stagingDirectory: join(directory, 'stage'),
     repository: 'git@github.com:example/jarvis.git', currentVersion: 'v4.6.0',
+    environment: { DOCKER_HOST: 'unix:///synthetic/docker.sock' },
     readPackage: async () => JSON.stringify({ version: '4.7.0' }),
     command: async (program, args) => {
       calls.push([program, ...args]);
+      if (program === 'git' && args[0] === 'clone') {
+        await mkdir(join(args.at(-1), 'jarvis-starter'), { recursive: true });
+        await writeFile(join(args.at(-1), 'jarvis-starter/package.json'), '{"version":"4.7.0"}');
+      }
       if (args[0] === 'ls-remote') return { stdout: `${commit}\trefs/tags/v4.7.0\n` };
       if (args[0] === 'rev-parse') return { stdout: commit + '\n' };
       return { stdout: '' };

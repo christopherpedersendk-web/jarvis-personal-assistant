@@ -91,6 +91,33 @@ test('v5 HTTP: every v5 browser entrypoint is served with its real CSS/JS type',
   }
 });
 
+test('R04 HTTP requires the exact reviewed release SHA before any staging or approval work', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  const before = (await f.api('GET', '/api/updates')).data;
+  assert.equal(before.storage.ready, true); assert.equal(before.publicationUnknown, false);
+  await f.api('GET', '/api/updates', undefined, 401, false);
+  await f.api('POST', '/api/updates/action', { action: 'approve', version: 'v5.0.0', expectedSha: 'a'.repeat(40) }, 401, false);
+  for (const action of ['stage', 'approve']) for (const input of [{}, { version: 'v5.0.0' },
+    { version: 'v5.0.0', expectedSha: 'short' }, { version: 'v5.0.0', expectedSha: ['a'.repeat(40)] },
+    { version: 'v5.0.0-rc1', expectedSha: 'a'.repeat(40) }]) {
+    const rejected = (await f.api('POST', '/api/updates/action', { action, ...input }, 409)).data;
+    assert.equal(rejected.code, 'UPDATE_REVIEW_REQUIRED');
+  }
+  assert.deepEqual((await f.api('GET', '/api/updates')).data, before);
+});
+
+test('C5 HTTP rejects an impossible follow-up date and preserves an existing observation history', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  const input = { awaiting: 'Syntetisk svar', nextCheckAt: '2026-02-30T12:00:00Z',
+    stopCondition: 'Syntetisk svar modtaget', source: { kind: 'user', id: 'synthetic-manual' } };
+  await f.api('POST', '/api/follow-ups', input, 400);
+  assert.deepEqual((await f.api('GET', '/api/follow-ups')).data.cases, []);
+  const created = (await f.api('POST', '/api/follow-ups', { ...input, nextCheckAt: '2026-11-06T12:00:00+01:00' }, 201)).data.case;
+  await f.api('PATCH', `/api/follow-ups/${created.id}`, { action: 'observe', expectedRevision: 1,
+    nextCheckAt: input.nextCheckAt, observation: { status: 'unknown', source: 'synthetic', subject: 'Syntetisk svar' } }, 409);
+  assert.deepEqual((await f.api('GET', '/api/follow-ups')).data.cases, [created]);
+});
+
 test('v5 HTTP: independent personal knowledge, tasks and cases survive restart with revision controls', { timeout: 30_000 }, async t => {
   const f = await fixture(t, { legacy: { preferences: 'syntetisk', extraLegacy: { manual: true } } });
   for (const path of ['/api/overview', '/api/personal-tasks', '/api/personal-claims', '/api/follow-ups'])
@@ -161,6 +188,38 @@ test('D4 HTTP calendar cache is authenticated, local and unknown without a confi
   await f.api('GET', '/api/google/calendar/cache?start=2026-11-05', undefined, 400);
   assert.equal((await f.api('GET', '/api/google/calendar/status')).data.lastReadAt, null);
   assert.deepEqual((await f.api('GET', '/api/state')).data.mealHousehold.days, {}, 'calendar text cannot supply household attendance');
+});
+
+test('B1 HTTP legacy note history is authenticated, read-only, excluded from active context and retained after restart/archive', { timeout: 20_000 }, async t => {
+  const f = await fixture(t);
+  const note = (await f.api('POST', '/api/memories', { text: 'Syntetisk gammel akvarelpræference', category: 'preference' }, 201)).data.memory;
+  const path = `/api/memories/${note.id}`;
+  await f.api('GET', `${path}/history`, undefined, 401, false);
+  const edited = (await f.api('PUT', path, { text: 'Syntetisk ny præference for keramik', expectedRevision: note.revision })).data.memory;
+  assert.equal(edited.historyCount, 1); assert.ok(!Object.hasOwn(edited, 'revisionHistory'));
+  await f.api('PUT', path, { text: 'Stale overskrivning', expectedRevision: note.revision }, 409);
+  const old = (await f.api('GET', `${path}/history`)).data;
+  assert.equal(old.history[0].text, note.text); assert.equal(old.history[0].historical, true);
+  assert.equal(old.revision, edited.revision); assert.equal(old.history[0].revision, note.revision);
+  const same = (await f.api('PUT', path, { text: edited.text, expectedRevision: edited.revision })).data.memory;
+  assert.equal(same.revision, edited.revision); assert.equal(same.historyCount, 1);
+  const list = (await f.api('GET', '/api/memories')).data.memories;
+  assert.ok(list.every(item => !Object.hasOwn(item, 'revisionHistory')));
+  const context = (await f.api('GET', '/api/secretary')).raw;
+  assert.ok(context.includes(edited.text)); assert.ok(!context.includes(note.text));
+  const beforeRead = await readFile(join(f.dir, 'state.json'), 'utf8');
+  await f.api('GET', `${path}/history`); await f.api('GET', '/api/memories?includeArchived=yes');
+  assert.equal(await readFile(join(f.dir, 'state.json'), 'utf8'), beforeRead, 'history reads never publish state');
+  const archived = (await f.api('POST', `${path}/archive`, { expectedRevision: edited.revision })).data.memory;
+  assert.equal(archived.historyCount, 2);
+  assert.ok(!(await f.api('GET', '/api/memories')).data.memories.some(item => item.id === note.id));
+  assert.ok((await f.api('GET', '/api/memories?includeArchived=yes')).data.memories.some(item => item.id === note.id && item.archived));
+  await f.api('GET', '/api/memories?includeArchived=truthy', undefined, 400);
+  await f.stop(); await f.start();
+  const restored = (await f.api('GET', `${path}/history`)).data;
+  assert.equal(restored.archived, true); assert.equal(restored.historyCount, 2);
+  assert.deepEqual(restored.history.map(item => item.text), [note.text, edited.text]);
+  assert.ok(!(await f.api('GET', '/api/secretary')).raw.includes(edited.text));
 });
 
 test('H2/I4 fresh installations and implicit task creation never activate new background work', { timeout: 15_000 }, async t => {

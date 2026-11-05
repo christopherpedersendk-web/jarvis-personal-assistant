@@ -479,13 +479,13 @@
             <p class="muted small-text">JARVIS-job er automatiseret research, ikke dine personlige kalenderopgaver. Gem først et pauset job og gennemgå politikken. Kun et særskilt klik på start aktiverer modellen og læsning på nettet; ingen køb, kalenderændringer eller nye tilladelser.</p>
             <form id="task-form" class="task-form">
               <label for="task-category">Opgavetype</label>
-              <select id="task-category"><option value="research">Research</option><option value="briefing">Morgenrapport</option><option value="monitor">Overvågning / priser</option></select>
+              <select id="task-category"><option value="research">Undersøgelse</option><option value="briefing">Morgenrapport</option><option value="monitor">Overvågning / priser</option></select>
               <label for="task-title">Titel</label>
               <input id="task-title" maxlength="120" required placeholder="Fx Restaurantidéer til fredag" />
               <label for="task-prompt">Hvad skal JARVIS undersøge?</label>
               <textarea id="task-prompt" rows="3" maxlength="3500" required placeholder="Find 3 gode restauranter i København med priser og kildelinks …"></textarea>
               <label for="task-skill">Versionsbundet procedure (valgfri)</label>
-              <select id="task-skill"><option value="">Ingen særskilt skill – brug instruktionen ovenfor</option></select>
+              <select id="task-skill"><option value="">Ingen særskilt procedure – brug instruktionen ovenfor</option></select>
               <p id="task-skill-status" class="muted small-text" role="status">Henter gennemgåede versioner efter login.</p>
               <label for="task-parameters">Navngivne parametre (JSON-objekt)</label>
               <textarea id="task-parameters" rows="3" maxlength="4000" spellcheck="false" aria-describedby="task-parameters-help">{}</textarea>

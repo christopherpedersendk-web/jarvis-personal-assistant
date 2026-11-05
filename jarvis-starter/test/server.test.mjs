@@ -173,7 +173,10 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal(knowledge.mode, 'local-lexical');
   assert.ok(knowledge.matches.some(x => x.source.itemId === item.id));
   const skillsResponse = await fetch(`${base}/api/skills`, { headers: authorizedHeaders });
-  assert.equal((await skillsResponse.json()).skills.length, 4);
+  const versions = (await skillsResponse.json()).skills;
+  assert.equal(versions.length, 8, 'four current procedure versions and four preserved historical ones');
+  assert.equal(versions.filter(skill => skill.current && skill.version === '1.1.0').length, 4);
+  assert.equal(versions.filter(skill => !skill.current && skill.version === '1.0.0').length, 4);
   const integrationsResponse = await fetch(`${base}/api/integrations`, { headers: authorizedHeaders });
   const integrations = await integrationsResponse.json();
   assert.equal(integrations.integrations.find(x => x.id === 'google-calendar').implementation, 'available');

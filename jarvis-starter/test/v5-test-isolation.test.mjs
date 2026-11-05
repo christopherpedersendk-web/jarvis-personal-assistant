@@ -49,7 +49,7 @@ test('L/I5 all childserver test fixtures use the isolated environment helper wit
     servers++; assert.match(source, /env:\s*syntheticServerEnv\(/, name);
     assert.doesNotMatch(source, /\.\.\.\s*process\.env|env:\s*process\.env/, name);
   }
-  assert.equal(servers, 5);
+  assert.equal(servers, 6, 'includes the new synthetic recipe-instructions tool server fixture');
   const legacyBrowser = await readFile(new URL('../scripts/visual-smoke.mjs', import.meta.url), 'utf8');
   assert.match(legacyBrowser, /env:\s*syntheticServerEnv\(/);
   assert.doesNotMatch(legacyBrowser, /\.\.\.\s*process\.env|env:\s*process\.env/);

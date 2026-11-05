@@ -133,6 +133,10 @@ test('R04: metadata mismatch is rejected even for a pinned SHA', async () => {
     repository: 'git@github.com:example/jarvis.git', currentVersion: 'v4.9.1',
     readPackage: async () => JSON.stringify({ version: '4.9.1' }),
     command: async (_program, args) => {
+      if (_program === 'git' && args[0] === 'clone') {
+        await mkdir(join(args.at(-1), 'jarvis-starter'), { recursive: true });
+        await writeFile(join(args.at(-1), 'jarvis-starter/package.json'), '{"version":"4.9.1"}');
+      }
       if (args[0] === 'ls-remote') return { stdout: `${sha}\trefs/tags/v5.0.0\n` };
       if (args[0] === 'rev-parse') return { stdout: sha + '\n' };
       if (args[0] === 'docker') dockerCalls++;

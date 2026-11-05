@@ -224,7 +224,8 @@ test('H2/R11 HTTP exact skill version is authenticated, read-only, fully display
   assert.equal(detail.status, 200);
   assert.equal(detail.body.skill.name, 'daily-briefing'); assert.equal(detail.body.skill.version, '1.0.0');
   assert.equal(detail.body.skill.sourceId, 'skill:daily-briefing:1.0.0');
-  assert.equal(detail.body.skill.contentHash, catalog.body.skills.find(skill => skill.name === 'daily-briefing').contentHash);
+  assert.equal(detail.body.skill.contentHash, catalog.body.skills.find(skill => skill.name === 'daily-briefing' && skill.version === '1.0.0').contentHash);
+  assert.equal(detail.body.skill.current, false);
   assert.match(detail.body.skill.body, /^# Dags- og ugeoverblik/); assert.match(detail.body.skill.body, /7\. Ingen bookinger/);
   const missing = await f.request('/api/skills/daily-briefing/9.0.0');
   assert.equal(missing.status, 404); assert.equal(missing.body.code, 'SKILL_NOT_FOUND'); assert.equal(missing.body.skill, undefined);
@@ -233,5 +234,25 @@ test('H2/R11 HTTP exact skill version is authenticated, read-only, fully display
     activation: 'paused', skillId: 'daily-briefing', skillVersion: '1.0.0' });
   assert.equal(created.status, 201); assert.equal(created.body.task.status, 'paused');
   assert.equal(created.body.task.skillContentHash, detail.body.skill.contentHash);
+  assert.equal((await f.request('/api/tasks')).body.usage.started, 0);
+});
+
+test('H1 HTTP current procedure details expose their complete contract and retain exact historical read access', async t => {
+  const f = await fixture(t), catalog = (await f.request('/api/skills')).body.skills;
+  assert.equal(catalog.filter(skill => skill.current).length, 4);
+  assert.equal(catalog.filter(skill => !skill.current).length, 4);
+  const current = await f.request('/api/skills/personal-follow-up/1.1.0');
+  assert.equal(current.status, 200); assert.equal(current.body.skill.current, true);
+  assert.equal(current.body.skill.contract.schemaVersion, 1);
+  assert.deepEqual(current.body.skill.contract.budget.defaults, { maxRunsPerDay: 1, maxOutputTokens: 2500 });
+  const old = await f.request('/api/skills/personal-follow-up/1.0.0');
+  assert.equal(old.status, 200); assert.equal(old.body.skill.current, false);
+  assert.equal(old.body.skill.contentHash, '848d095c5925ea16f56666789305c055d77c05ecdf75d3c52cefb50a28fafa68');
+  const created = await f.request('/api/tasks', { title: 'Syntetisk ny procedure', prompt: 'Ingen afvikling',
+    activation: 'paused', skillId: 'personal-follow-up', skillVersion: '1.1.0' });
+  assert.equal(created.status, 201); assert.equal(created.body.task.status, 'paused');
+  assert.deepEqual(created.body.task.budget, current.body.skill.contract.budget.defaults);
+  assert.equal(created.body.task.skillContentHash, current.body.skill.contentHash);
+  assert.deepEqual(created.body.task.permissions, ['web.search']);
   assert.equal((await f.request('/api/tasks')).body.usage.started, 0);
 });

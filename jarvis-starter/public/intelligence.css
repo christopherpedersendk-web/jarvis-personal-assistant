@@ -2,7 +2,7 @@
 .intelligence-card{display:flex;flex-direction:column;gap:10px;background:linear-gradient(150deg,#17394b,#0b2032);border:1px solid #32667a;border-radius:17px;padding:20px;min-width:0}
 .intelligence-card h2{font-size:19px;margin:0;color:#e5f9ff}
 .intelligence-card>.compact-button{align-self:flex-start;margin-top:auto}
-.agenda-item{display:flex;align-items:start;gap:9px;width:100%;text-align:left;padding:10px 2px;background:transparent;border:0;border-bottom:1px solid #2d5364;color:#def2fc;cursor:pointer}
+.agenda-item{display:flex;align-items:start;gap:9px;width:100%;text-align:left;text-decoration:none;padding:10px 2px;background:transparent;border:0;border-bottom:1px solid #2d5364;color:#def2fc;cursor:pointer}
 .agenda-item:hover{background:#214b6033}
 .agenda-priority{color:#6fc4e4;font-size:16px}.agenda-priority.high{color:#ffd088}
 .agenda-content{display:flex;flex-direction:column;gap:4px;min-width:0}.agenda-content strong{font-size:13px}.agenda-content span{line-height:1.5}

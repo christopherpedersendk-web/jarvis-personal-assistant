@@ -10,7 +10,7 @@ const JarvisProjects = (() => {
   const operationNames = { create: 'Oprettelse', develop: 'Udvikling', archive: 'Arkivering',
     restore: 'Gendannelse', rollback: 'Tilbagerulning', install: 'Pakkeinstallation', test: 'Test' };
   const outcomeNames = { queued: 'I kø', running: 'Arbejder …', completed: 'Afsluttet',
-    failed: 'Fejlet', unknown: 'Ukendt udfald', partially_completed: 'Delvist gennemført' };
+    failed: 'Fejlet', blocked: 'Blokeret – ingen projektpakker publiceret', unknown: 'Ukendt udfald', partially_completed: 'Delvist gennemført' };
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const text = (value, max = 2000) => typeof value === 'string' ? value.slice(0, max) : '';
   const basis = project => ({ revision: project.revision,
@@ -24,9 +24,11 @@ const JarvisProjects = (() => {
     if (!attempt || !original?.contentHash || !Number.isSafeInteger(original.revision) || blocked(project)) return null;
     if (attempt.kind === 'install') {
       const result = project.packageInstallAttempt;
-      if (!result?.id || result.id === attempt.operationId || result.status !== 'completed' || result.revision !== original.revision
+      if (!result?.id || result.id === attempt.operationId || !['completed', 'blocked'].includes(result.status) || result.revision !== original.revision
         || result.contentHash !== original.contentHash || !Array.isArray(attempt.approvedPackages)
         || !same([...(result.packages || [])].sort(), [...attempt.approvedPackages].sort())) return null;
+      if ((result.status === 'blocked' || attempt.manifestHash || attempt.lockHash) && (!attempt.manifestHash || !attempt.lockHash ||
+          result.dependencyReview?.manifestHash !== attempt.manifestHash || result.dependencyReview?.lockHash !== attempt.lockHash)) return null;
       return { id: result.id, kind: 'install', status: result.status, revision: result.revision, contentHash: result.contentHash };
     }
     const result = project.operation;
@@ -105,6 +107,16 @@ const JarvisProjects = (() => {
       return entry.observed && entry.observed.revision === current.revision && entry.observed.listedHash === current.contentHash
         ? { revision: current.revision, contentHash: entry.observed.hash } : basis(current);
     }
+    function installationReview(entry) {
+      const review = entry.dependencyReview, latest = projectBasis(entry), packages = entry.current.pendingPackages || [];
+      const current = Boolean(review && entry.dependencyBasis && same(entry.dependencyBasis, latest) &&
+        latest.contentHash && latest.contentHash === entry.current.contentHash &&
+        same(entry.dependencyAttempt, { id: entry.current.packageInstallAttempt?.id || null, status: entry.current.packageInstallAttempt?.status || null }) &&
+        Array.isArray(review.directPackages) && same([...review.directPackages].sort(), [...packages].sort()));
+      const ready = current && review.status === 'ready' && review.mode === 'reviewed-lockfile-ci' &&
+        /^[a-f0-9]{64}$/.test(review.manifestHash || '') && /^[a-f0-9]{64}$/.test(review.lockHash || '');
+      return { review, current, ready };
+    }
     function updateProject(entry, project, missing = false) {
       entry.current = project; entry.missing = missing;
       entry.card.dataset.revision = String(project.revision);
@@ -138,6 +150,22 @@ const JarvisProjects = (() => {
       if (entry.log.textContent !== log) entry.log.textContent = log;
       entry.packages.textContent = project.pendingPackages?.length
         ? `Afventer særskilt installationsgodkendelse for revision ${project.revision}: ${project.pendingPackages.join(', ')}. Pakkenavne og versionsangivelser er det præcise foreslåede sæt; ingen pakker er godkendt af denne visning.` : '';
+      const dependency = installationReview(entry);
+      entry.dependencyStatus.hidden = !project.pendingPackages?.length;
+      const dependencyNotes = !dependency.review ? ['Pakkegrundlaget er endnu ikke gennemgået. Vælg Se projektfiler for at kontrollere package.json og den komplette låste afhængighedsplan.']
+        : !dependency.current ? ['Det læste pakkegrundlag gælder ikke længere de aktuelle pakker, revision eller kildefiler. Hent filerne igen; en ændret faktisk kildehash kræver en ny gennemgået projektrevision.']
+          : dependency.ready ? ['Pakkegrundlaget er klar til din særskilte godkendelse: package.json og offentlig v3-lås med SHA-512 for de låste pakker.']
+            : ['Installation er blokeret, indtil afhængighedsgrundlaget er gennemgået og rettet.'];
+      if (dependency.review) {
+        for (const reason of (Array.isArray(dependency.review.reasons) ? dependency.review.reasons : []).slice(0, 20))
+          dependencyNotes.push(`${text(reason.code, 100) || 'Gennemgang kræves'}: ${text(reason.message, 800) || 'Detaljer mangler.'}`);
+        if (dependency.review.manifestHash) dependencyNotes.push(`package.json-hash: ${dependency.review.manifestHash}`);
+        if (dependency.review.lockHash) dependencyNotes.push(`Låsefilhash: ${dependency.review.lockHash}`);
+        if (Number.isSafeInteger(dependency.review.dependencyCount)) dependencyNotes.push(`Låste afhængigheder: ${dependency.review.dependencyCount}.`);
+      }
+      dependencyNotes.push('npm ci klargør i en privat mappe uden livscyklusscripts. Kun node_modules publiceres; tidligere node_modules bevares til kontrolleret gendannelse. Læsning alene godkender intet.');
+      const dependencyText = dependencyNotes.join(' ');
+      if (entry.dependencyStatus.textContent !== dependencyText) entry.dependencyStatus.textContent = dependencyText;
       const writeBlocked = missing || entry.busy || Boolean(entry.attempt) || blocked(project);
       entry.build.disabled = writeBlocked || conflict;
       entry.build.textContent = entry.busy && entry.attempt?.kind === 'develop' ? 'JARVIS skriver kode …' : project.revision ? 'Videreudvikl' : 'Byg projekt';
@@ -145,7 +173,7 @@ const JarvisProjects = (() => {
       entry.rollback.disabled = writeBlocked; entry.rollback.hidden = !project.lastRollbackableRevision;
       entry.archive.disabled = writeBlocked;
       entry.install.hidden = !project.pendingPackages?.length;
-      entry.install.disabled = writeBlocked || install?.revision === project.revision;
+      entry.install.disabled = writeBlocked || !dependency.ready || install?.revision === project.revision && install.status !== 'blocked';
       entry.review.hidden = !conflict || missing;
       const candidate = matchingOutcome(entry);
       entry.resolve.hidden = !entry.attempt || !candidate || entry.busy || missing;
@@ -178,20 +206,31 @@ const JarvisProjects = (() => {
       const request = entry.request.value;
       if (kind === 'develop' && !same(entry.basis, latest)) { entry.message = 'Gennemgå først den nye projektrevision. Kladden er bevaret.'; updateProject(entry, current); return; }
       if (kind === 'develop' && request.trim().length < 4) { entry.message = 'Beskriv udviklingsopgaven med mindst fire tegn.'; updateProject(entry, current); return; }
-      if (kind === 'install' && (!current.pendingPackages?.length || current.packageInstallAttempt?.revision === current.revision)) return;
+      const dependency = installationReview(entry);
+      if (kind === 'install' && (!current.pendingPackages?.length || !dependency.ready ||
+          current.packageInstallAttempt?.revision === current.revision && current.packageInstallAttempt.status !== 'blocked')) return;
       const approvals = { rollback: 'Gendan filerne fra før den seneste udviklingsrunde? Nyere manuelle rettelser må ikke overskrives.',
         archive: `Arkivér "${current.title}"? Projektmappen bevares i det lokale arkiv. En ugemt kladde slettes ikke.`,
-        install: `Godkend præcis dette npm-sæt for revision ${current.revision}?\n${(current.pendingPackages || []).join('\n')}\n\nDette kan hente og køre pakkeværktøjer. Serverens særskilte installationslås og indholdskontrol gælder stadig.` };
+        install: `Godkend præcis dette npm-sæt for revision ${current.revision}?\n${(current.pendingPackages || []).join('\n')}\n\nKildehash: ${latest.contentHash}\npackage.json-hash: ${dependency.review?.manifestHash}\nLåsefilhash: ${dependency.review?.lockHash}\n\nnpm ci kan hente de offentlige, låste pakker til privat klargøring uden livscyklusscripts. Kun node_modules publiceres efter kontrol; eksisterende node_modules bevares i en recoverymappe til kontrolleret gendannelse. Intet er installeret alene ved at læse denne gennemgang. Godkend kun efter at have gennemgået filerne og den eksakte låsefil.` };
       if (approvals[kind] && !confirm(approvals[kind])) return;
       const epoch = generation, sentBasis = kind === 'develop' ? { ...entry.basis } : latest;
       entry.attempt = { kind, basis: sentBasis, operationId: kind === 'install' ? current.packageInstallAttempt?.id : current.operation?.id };
-      if (kind === 'install') entry.attempt.approvedPackages = [...current.pendingPackages];
+      if (kind === 'install') {
+        entry.attempt.approvedPackages = [...current.pendingPackages];
+        entry.attempt.manifestHash = dependency.review.manifestHash; entry.attempt.lockHash = dependency.review.lockHash;
+        entry.dependencyReview = null; entry.dependencyBasis = null;
+      }
       entry.busy = true; entry.message = ''; persist(); updateProject(entry, current);
       try {
         const path = `/api/projects/${encodeURIComponent(current.id)}` + (kind === 'archive' ? '' : `/${kind}`);
         const response = await api(path, json({ ...expected(sentBasis), ...(kind === 'develop' ? { request } : {}),
           ...(kind === 'install' ? { packages: [...current.pendingPackages] } : {}) }, kind === 'archive' ? 'DELETE' : 'POST'));
         if (!currentGeneration(epoch)) return;
+        if (kind === 'install') {
+          if (response.project) entry.current = response.project;
+          if (matchingOutcome(entry)?.status !== 'completed')
+            throw new Error('Serveren bekræftede ikke en afsluttet installation for det gennemgåede pakkesæt, revision og indhold. Hent status og afklar udfaldet før en ny handling.');
+        }
         entry.attempt = null;
         if (kind === 'develop' && entry.request.value === request) {
           entry.request.value = ''; entry.dirty = false;
@@ -199,7 +238,7 @@ const JarvisProjects = (() => {
         if (response.project) entry.current = response.project;
         if (kind === 'test' && response.test) entry.current = { ...entry.current, lastTest: response.test };
         entry.message = kind === 'develop' ? `${response.changedFiles?.length ?? 0} filer skrevet. ${testDescription({ ...entry.current, lastTest: response.test || entry.current.lastTest }).text}`
-          : kind === 'test' ? testDescription(entry.current).text : kind === 'install' ? 'Det præcist godkendte pakkesæt er registreret installeret. Test skal udføres igen.'
+          : kind === 'test' ? testDescription(entry.current).text : kind === 'install' ? 'Det præcist godkendte pakkesæts node_modules er registreret publiceret. Test skal udføres igen.'
             : kind === 'archive' ? 'Projektet er arkiveret. En eventuel lokal kladde er bevaret.' : 'Tilbagerulningen er registreret gennemført. Kontrollér den nye revision.';
         persist();
         try { await refreshProjects(); } catch (error) { if (currentGeneration(epoch)) entry.message += ` Oversigten kunne ikke opdateres: ${error.message}`; }
@@ -237,6 +276,7 @@ const JarvisProjects = (() => {
         entry.dirty = true; persist(); updateProject(entry, entry.current, entry.missing);
       });
       entry.packages = node('p', '', 'project-warning');
+      entry.dependencyStatus = status('project-dependency-status project-meta');
       entry.build = button('Videreudvikl', () => actProject(entry, 'develop'));
       entry.test = button('Test isoleret', () => actProject(entry, 'test'));
       entry.rollback = button('Fortryd seneste kodeændring', () => actProject(entry, 'rollback'));
@@ -253,6 +293,8 @@ const JarvisProjects = (() => {
           const viewed = { revision: current.revision, contentHash: current.sourceContentHash || current.contentHash };
           if (entry.current.revision === current.revision) entry.observed = { revision: current.revision, listedHash: entry.current.contentHash, hash: viewed.contentHash };
           entry.viewBasis = viewed; entry.omitted = current.omittedFiles?.length || 0;
+          entry.dependencyReview = current.dependencyReview || null; entry.dependencyBasis = { ...viewed };
+          entry.dependencyAttempt = { id: current.packageInstallAttempt?.id || null, status: current.packageInstallAttempt?.status || null };
           const openPaths = new Set([...entry.fileNodes].filter(([, item]) => item.open).map(([path]) => path));
           const nextPaths = new Set();
           for (const file of current.files || []) {
@@ -291,7 +333,7 @@ const JarvisProjects = (() => {
       entry.files = node('div', '', 'project-source-files project-files'); entry.files.hidden = true; entry.fileNodes = new Map();
       entry.filesStatus = node('p', '', 'project-files-status project-meta'); entry.filesStatus.hidden = true;
       entry.card.append(entry.title, entry.location, entry.description, entry.operationStatus, entry.testStatus, entry.testLog,
-        label, entry.request, entry.draftStatus, entry.result, entry.packages, controls, draftControls, entry.filesStatus, entry.files);
+        label, entry.request, entry.draftStatus, entry.result, entry.packages, entry.dependencyStatus, controls, draftControls, entry.filesStatus, entry.files);
       projectCards.set(project.id, entry); return entry;
     }
 

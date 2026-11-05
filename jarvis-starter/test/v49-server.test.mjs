@@ -196,6 +196,14 @@ test('v4.9 HTTP workflows preserve review boundaries and survive server restarts
     assert.equal(meal.dishes[0].adults, 3);
     assert.equal(meal.dishes[0].theme, 'child_friendly');
     meal = (await f.api('POST', `/api/meals/plans/${meal.id}/shopping-list`, { expectedRevision: meal.revision })).plan;
+    assert.equal(meal.shoppingNeedsReview, true, 'changed portions preserve the earlier manual choice but not its old review');
+    assert.equal(meal.shoppingList.find(item => item.name === 'pasta').quantity, 250);
+    await f.api('POST', `/api/meals/plans/${meal.id}/nemlig-draft`, { expectedRevision: meal.revision }, { status: 409 });
+    const reviewItems = meal.shoppingList.map(({ name, unit, quantity }) => ({ name, unit, quantity }));
+    meal = (await f.api('PUT', `/api/meals/plans/${meal.id}/shopping-list`, { expectedRevision: meal.revision, items: reviewItems })).plan;
+    assert.equal(meal.shoppingNeedsReview, false, 'the positive restart fixture starts only after an explicit current local review');
+    assert.equal(meal.shoppingList.find(item => item.name === 'pasta').quantity, 250);
+    assert.deepEqual((await f.api('GET', '/api/nemlig/status')).proposals, [], 'reviewing local quantities is not basket approval');
   });
 
   await t.test('recipe intake cannot forge Discord provenance or media and reviewed source changes invalidate plans', async () => {

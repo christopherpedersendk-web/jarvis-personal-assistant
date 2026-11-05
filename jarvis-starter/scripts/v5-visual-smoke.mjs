@@ -140,7 +140,9 @@ async function verifyClaimCorrection(page, originalId, label) {
   await page.goBack();
   // Historical exact sources remain addressable without treating them as active
   // facts or opening every archived record in the account.
-  await page.evaluate(id => selectTab('knowledge', { sourceId: `claim:${id}` }), originalId);
+  // Exercise a genuinely copied source URL, including document reload and the
+  // authenticated initial-source coordinator, not only a tab state change.
+  await page.goto(`${origin}/?view=knowledge&source=${encodeURIComponent(`claim:${originalId}`)}`, { waitUntil: 'domcontentloaded' });
   await page.locator(`[data-claim-id="${originalId}"].source-target`).waitFor({ state: 'visible' });
   assert.match(await page.locator(`[data-claim-id="${originalId}"]`).innerText(), /Erstattet — kun historik/);
   await page.goBack();
@@ -248,10 +250,251 @@ async function verifyNoteDraft(page, label) {
   await input.fill(`Gennemgået syntetisk note ${label}`);
   const saved = await uiWrite(page, 'PUT', `/api/memories/${id}`, () => editor.locator('[type="submit"]').click());
   assert.equal(saved.input.expectedRevision, current.revision);
-  await page.evaluate(id => selectTab('knowledge', { sourceId: `memory:${id}` }), id);
+  await page.goto(`${origin}/?view=knowledge&source=${encodeURIComponent(`memory:${id}`)}`, { waitUntil: 'domcontentloaded' });
   await page.locator(`[data-memory-id="${id}"].source-target`).waitFor({ state: 'visible' });
   await page.goBack(); assert.equal(await page.locator('#memory-workbench-text').inputValue(), unsent);
+  const historyReads = [], historyPath = `/api/memories/${id}/history`;
+  const trackHistory = request => { if (new URL(request.url()).pathname === historyPath) historyReads.push(request.method()); };
+  page.on('request', trackHistory);
+  try {
+    const details = card.locator('.memory-v49-history'); await openDetails(details);
+    const laterDraft = `Ugemt rettelse mens historik læses ${label}`;
+    await input.fill(laterDraft); await input.focus();
+    await refreshNotes(page); assert.deepEqual(historyReads, [], `${label}: opening history and polling must not automatically fetch prior facts`);
+    const reading = page.waitForResponse(response => new URL(response.url()).pathname === historyPath);
+    await details.getByRole('button', { name: 'Hent tidligere revisioner', exact: true }).click();
+    const historyResponse = await reading; assert.equal(historyResponse.status(), 200);
+    const history = await historyResponse.json(); assert.equal(history.historyCount, 2);
+    assert.deepEqual(history.history.map(item => item.revision), [1, 2]);
+    await details.locator('[data-memory-revision="1"]').waitFor({ state: 'visible' });
+    assert.match(await details.innerText(), new RegExp(`Syntetisk gemt note ${label}`));
+    assert.match(await details.innerText(), /ikke i søgning eller modelkontekst/);
+    assert.equal(await input.inputValue(), laterDraft);
+    await input.evaluate(field => { field.focus(); field.setSelectionRange(2, 8); window.syntheticHistoryNoteInput = field; });
+    await refreshNotes(page);
+    assert.deepEqual(await page.evaluate(() => ({ same: document.activeElement === window.syntheticHistoryNoteInput,
+      selection: [window.syntheticHistoryNoteInput.selectionStart, window.syntheticHistoryNoteInput.selectionEnd] })),
+    { same: true, selection: [2, 8] }, `${label}: loading historical facts never replaces the current correction draft`);
+    assert.deepEqual(historyReads, ['GET']);
+    assert.equal(await page.evaluate(() => (sessionStorage.getItem('jarvis:v5:memory-note-edits') || '').includes('revisionHistory')), false);
+    await card.getByRole('button', { name: 'Fortryd rettelse', exact: true }).click();
+    const archived = await uiWrite(page, 'POST', `/api/memories/${id}/archive`,
+      () => card.getByRole('button', { name: 'Arkivér fra aktiv hukommelse', exact: true }).click());
+    assert.equal(archived.input.expectedRevision, saved.body.memory.revision); assert.equal(archived.body.memory.historyCount, 3);
+    assert.equal((await fixtureRead(page, '/api/memories')).memories.some(item => item.id === id), false);
+    await page.goto(`${origin}/?view=knowledge&source=${encodeURIComponent(`memory:${id}`)}`, { waitUntil: 'domcontentloaded' });
+    await page.locator(`[data-memory-id="${id}"].source-target`).waitFor({ state: 'visible' });
+    assert.match(await card.innerText(), /Arkiveret · kun læsning · bruges ikke/);
+    assert.equal(await card.locator('.memory-v49-editor').isVisible(), false);
+    assert.equal(await card.getByRole('button', { name: 'Arkivér fra aktiv hukommelse', exact: true }).isVisible(), false);
+    assert.deepEqual(historyReads, ['GET'], `${label}: an archived deep link is read-only and does not load revision contents implicitly`);
+    await openDetails(details);
+    const archivedReading = page.waitForResponse(response => new URL(response.url()).pathname === historyPath);
+    await details.getByRole('button', { name: 'Hent tidligere revisioner', exact: true }).click();
+    const archiveResponse = await archivedReading; assert.equal(archiveResponse.status(), 200);
+    assert.equal((await archiveResponse.json()).archived, true);
+    await details.locator('[data-memory-revision="3"]').waitFor({ state: 'visible' });
+    await card.screenshot({ path: join(screenshotDir, `${label}-note-history.png`), animations: 'disabled' });
+    await page.goBack(); assert.equal(await page.locator('#memory-workbench-text').inputValue(), unsent);
+    await page.locator('#memory-show-archived').check(); await refreshNotes(page);
+    assert.equal((await fixtureRead(page, '/api/memories?includeArchived=yes')).memories.find(item => item.id === id).active, false);
+    assert.match(await card.innerText(), /Arkiveret · kun læsning/);
+    await page.locator('#memory-show-archived').uncheck(); await refreshNotes(page);
+    assert.deepEqual(historyReads, ['GET', 'GET']);
+  } finally { page.off('request', trackHistory); }
   await page.locator('#memory-editor-mode').selectOption('claim');
+}
+
+async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDraft) {
+  const start = new Date(`${householdDay}T12:00:00Z`); start.setUTCDate(start.getUTCDate() + 2);
+  const startDate = start.toISOString().slice(0, 10), inventoryBefore = await fixtureRead(page, '/api/meals/inventory');
+  const calendarReads = [];
+  const trackCalendar = request => { if (/^\/api\/google\/calendar\/(?:events|upcoming)$/.test(new URL(request.url()).pathname)) calendarReads.push(request.method()); };
+  page.on('request', trackCalendar);
+  try {
+    // The preceding household flow explicitly discarded its stale day draft.
+    // The separate, incomplete recipe draft remains untouched; plans consume
+    // the saved reviewed recipe revision, never these unsaved editor fields.
+    await page.locator('#meal-start').fill(startDate); await page.locator('#meal-days').selectOption('3');
+    await page.locator('#meal-use-calendar').uncheck();
+    const created = await uiWrite(page, 'POST', '/api/meals/plans',
+      () => page.locator('#meal-plan-form button[type="submit"]').click(), [201]);
+    assert.equal(created.input.useCalendar, false); assert.equal(created.body.plan.days, 3);
+    const id = created.body.plan.id, plan = page.locator(`[data-record-key="plan:${id}"]`);
+    await plan.waitFor({ state: 'visible' });
+    const [fromDate, toDate, unaffectedDate] = created.body.plan.dishes.map(dish => dish.date);
+    assert.ok(created.body.plan.dishes.every(dish => dish.servings === 3.25 && !dish.skip && !dish.locked));
+    await plan.locator(`[data-meal-date="${fromDate}"]`).getByLabel('Ret', { exact: true }).selectOption(recipeId);
+    const selected = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
+      () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
+    assert.equal(selected.input.expectedRevision, created.body.plan.revision);
+    const sourceBefore = selected.body.plan.dishes.find(dish => dish.date === fromDate);
+    assert.equal(sourceBefore.recipeId, recipeId); assert.equal(sourceBefore.ingredients.find(item => item.name === 'ris').quantity, 325);
+    const leftovers = plan.locator('.meal-leftovers-editor'); await openDetails(leftovers);
+    await leftovers.getByRole('button', { name: 'Tilføj planlagte rester', exact: true }).click();
+    const row = leftovers.locator('.meal-leftovers-row'), minutes = row.locator('[data-leftover-field="minutes"]');
+    assert.equal(await minutes.inputValue(), '', `${label}: leftover preparation time is never invented`);
+    assert.equal(await row.locator('[data-leftover-field="servings"]').inputValue(), '3.25');
+    await minutes.focus(); await minutes.evaluate(input => { window.syntheticLeftoverMinutes = input; });
+    await page.evaluate(() => refreshMeals());
+    assert.equal(await page.evaluate(() => document.activeElement === window.syntheticLeftoverMinutes && window.syntheticLeftoverMinutes.isConnected), true);
+    assert.equal(await minutes.inputValue(), '');
+    await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-meals').waitFor({ state: 'visible' });
+    await page.evaluate(() => refreshMeals());
+    assert.equal(await minutes.inputValue(), '', `${label}: an incomplete leftover estimate survives reload without becoming zero`);
+    assert.equal(Number(await plan.getAttribute('data-revision')), selected.body.plan.revision);
+    assert.equal(await page.locator(`[data-record-key="recipe:${recipeId}"]`).getByLabel('Titel', { exact: true }).inputValue(), recipeDraft);
+    const concurrent = await page.request.put(`${origin}/api/meals/plans/${id}`, { headers: { Authorization: `Bearer ${token}` },
+      data: { expectedRevision: selected.body.plan.revision,
+        dishes: selected.body.plan.dishes.map(dish => ({ date: dish.date, ...(dish.date === unaffectedDate ? { locked: true } : {}) })) } });
+    assert.equal(concurrent.status(), 200); const current = (await concurrent.json()).plan;
+    await page.evaluate(() => refreshMeals()); assert.match(await plan.locator('[data-edit-status]').innerText(), /ændret et andet sted/);
+    await minutes.fill('12');
+    const rejected = await uiWrite(page, 'POST', `/api/meals/plans/${id}/leftovers`,
+      () => leftovers.getByRole('button', { name: 'Gem planlagte rester', exact: true }).click(), [400, 409]);
+    assert.equal(rejected.input.expectedRevision, selected.body.plan.revision); assert.match(rejected.body.error, /revision|ændret/i);
+    assert.equal(await minutes.inputValue(), '12');
+    assert.equal((await fixtureRead(page, '/api/meals')).plans.find(item => item.id === id).plannedLeftovers?.length || 0, 0);
+    await plan.getByRole('button', { name: 'Genindlæs / kassér lokale rettelser', exact: true }).click();
+    await page.waitForFunction(({ id, revision }) => document.querySelector(`[data-record-key="plan:${id}"]`)?.dataset.revision === String(revision),
+      { id, revision: current.revision });
+    await openDetails(leftovers); await leftovers.getByRole('button', { name: 'Tilføj planlagte rester', exact: true }).click();
+    await minutes.fill('12');
+    const saved = await uiWrite(page, 'POST', `/api/meals/plans/${id}/leftovers`,
+      () => leftovers.getByRole('button', { name: 'Gem planlagte rester', exact: true }).click());
+    assert.deepEqual(saved.input, { expectedRevision: current.revision, links: [{ fromDate, toDate, servings: 3.25, minutes: 12 }] });
+    const source = saved.body.plan.dishes.find(dish => dish.date === fromDate), target = saved.body.plan.dishes.find(dish => dish.date === toDate);
+    assert.equal(source.plannedCookServings, 6.5); assert.equal(source.ingredients.find(item => item.name === 'ris').quantity, 650);
+    assert.equal(target.leftoverFromDate, fromDate); assert.deepEqual(target.ingredients, []);
+    assert.equal(saved.body.plan.dishes.find(dish => dish.date === unaffectedDate).locked, true);
+    const targetCard = plan.locator(`[data-meal-date="${toDate}"]`);
+    assert.match(await targetCard.innerText(), /Planlagte rester fra/);
+    assert.deepEqual(await targetCard.locator('input,select,textarea').evaluateAll(fields => fields.filter(field => !field.disabled).map(field => field.type)), ['checkbox']);
+    assert.match(await plan.locator('.meal-price-summary').innerText(), /Samlet pris: ukendt/);
+    assert.doesNotMatch(await plan.locator('.meal-price-summary').innerText(), /inden for budget|Samlet pris: 0/);
+    await targetCard.getByRole('link', { name: `Åbn den præcise tilberedningsdag ${fromDate}`, exact: true }).click();
+    await plan.locator(`[data-meal-date="${fromDate}"].source-target`).waitFor({ state: 'visible' });
+    assert.equal(new URL(page.url()).searchParams.get('source'), `meal-plan:${id}:${fromDate}`);
+    await page.goBack();
+    await plan.screenshot({ path: join(screenshotDir, `${label}-planned-leftovers.png`), animations: 'disabled' });
+    await leftovers.getByRole('button', { name: 'Fjern fordeling', exact: true }).click();
+    assert.equal((await fixtureRead(page, '/api/meals')).plans.find(item => item.id === id).plannedLeftovers.length, 1,
+      `${label}: removing a local row cannot itself mutate a saved plan`);
+    const removed = await uiWrite(page, 'POST', `/api/meals/plans/${id}/leftovers`,
+      () => leftovers.getByRole('button', { name: 'Gem planlagte rester', exact: true }).click());
+    assert.deepEqual(removed.input, { expectedRevision: saved.body.plan.revision, links: [] });
+    assert.deepEqual(removed.body.plan.dishes, current.dishes, `${label}: unlink restores original meal choices and preserves the unrelated manual lock`);
+    await verifyShoppingChoices(page, label, removed.body.plan);
+    assert.deepEqual(await fixtureRead(page, '/api/meals/inventory'), inventoryBefore, `${label}: planned leftovers do not record consumption, purchase, delivery or new inventory`);
+    assert.deepEqual(calendarReads, [], `${label}: useCalendar:false must cause zero upstream calendar-read requests`);
+  } finally { page.off('request', trackCalendar); }
+}
+
+async function verifyShoppingChoices(page, label, previous) {
+  const id = previous.id, sourceDate = previous.dishes[0].date;
+  const plan = page.locator(`[data-record-key="plan:${id}"]`);
+  const source = plan.locator(`[data-meal-date="${sourceDate}"]`);
+  const prohibitedReadsOrWrites = [];
+  const trackRetailer = request => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/nemlig/') || path.endsWith('/nemlig-draft') ||
+        request.method() !== 'GET' && path.startsWith('/api/shopping-drafts')) prohibitedReadsOrWrites.push(path);
+  };
+  page.on('request', trackRetailer);
+  try {
+    // The preceding E1 check already proved the unchanged three-day plan and
+    // unrelated lock. Explicitly skip its other two meals now, so this separate
+    // G1 case has exactly the selected recipe's known 200 g / two portions.
+    // This avoids assuming the other generated recipes contain no rice.
+    for (const dish of previous.dishes.slice(1))
+      await plan.locator(`[data-meal-date="${dish.date}"]`).getByLabel('Spring denne dag over', { exact: true }).check();
+    const isolated = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
+      () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
+    assert.equal(isolated.input.expectedRevision, previous.revision);
+    assert.ok(isolated.body.plan.dishes.slice(1).every(dish => dish.skip && dish.ingredients.length === 0));
+    assert.equal(isolated.body.plan.dishes[2].locked, true, `${label}: the separate shopping case still preserves the unrelated lock`);
+    assert.equal(isolated.body.plan.dishes[0].servings, 3.25);
+    assert.deepEqual(isolated.body.plan.dishes[0].ingredients, [{ name: 'ris', quantity: 325, unit: 'g' }]);
+    const build = () => uiWrite(page, 'POST', `/api/meals/plans/${id}/shopping-list`,
+      () => plan.getByRole('button', { name: /^(Opret|Genberegn) indkøbsliste$/ }).click());
+    const initial = await build();
+    assert.equal(initial.input.expectedRevision, isolated.body.plan.revision);
+    assert.equal(initial.body.plan.shoppingList.length, 1);
+    assert.equal(initial.body.plan.shoppingList[0].quantity, 325);
+    const quantity = plan.locator('.meal-list-editor').getByLabel('Mængde', { exact: true });
+    const openList = () => openDetails(plan.locator('.meal-list-editor').locator('..'));
+    await openList(); await quantity.fill('1000');
+    const chosen = await uiWrite(page, 'PUT', `/api/meals/plans/${id}/shopping-list`,
+      () => plan.getByRole('button', { name: 'Gem rettelser til listen', exact: true }).click());
+    assert.deepEqual(chosen.input, { expectedRevision: initial.body.plan.revision, items: [{ name: 'ris', quantity: 1000, unit: 'g' }] });
+    assert.equal(chosen.body.plan.shoppingList[0].quantity, 1000);
+    assert.equal(chosen.body.plan.shoppingNeedsReview, false);
+
+    await source.getByLabel('Lås denne ret ved nye forslag', { exact: true }).check();
+    const locked = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
+      () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
+    assert.equal(locked.input.expectedRevision, chosen.body.plan.revision);
+    const sameBasis = await build();
+    assert.equal(sameBasis.input.expectedRevision, locked.body.plan.revision);
+    assert.equal(sameBasis.body.plan.shoppingList[0].quantity, 1000);
+    assert.equal(sameBasis.body.plan.shoppingNeedsReview, false, `${label}: a pure lock change must not invalidate the ingredient basis`);
+
+    await source.getByLabel('Portioner', { exact: true }).fill('4');
+    const increased = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
+      () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
+    assert.equal(increased.input.expectedRevision, sameBasis.body.plan.revision);
+    assert.equal(increased.body.plan.dishes[0].ingredients[0].quantity, 400);
+    assert.equal(increased.body.plan.dishes[0].locked, true);
+    const changed = await build();
+    assert.equal(changed.input.expectedRevision, increased.body.plan.revision);
+    assert.equal(changed.body.plan.shoppingList[0].quantity, 1000);
+    assert.equal(changed.body.plan.shoppingNeedsReview, true);
+    const choice = changed.body.plan.shoppingReview.rows.find(item => item.name === 'ris' && item.unit === 'g');
+    assert.equal(choice.previousBasis.quantity, 325); assert.equal(choice.computedQuantity, 400); assert.equal(choice.selectedQuantity, 1000);
+    const review = plan.locator('[data-shopping-choice="ris|g"]');
+    assert.match(await review.innerText(), /dit valg: 1000 g.*beregnet at tilføje: 400 g/s);
+    assert.match(await review.innerText(), /Oprindeligt beregnet behov: 325 g/);
+    assert.equal(await plan.getByRole('button', { name: 'Find varer på Nemlig', exact: true }).isDisabled(), true);
+    await plan.screenshot({ path: join(screenshotDir, `${label}-shopping-choice-review.png`), animations: 'disabled' });
+
+    await openList(); await quantity.fill('');
+    await quantity.evaluate(input => { input.focus(); window.syntheticShoppingQuantity = input; });
+    const reset = plan.locator('[data-shopping-reset="ris|g"]');
+    assert.equal(await reset.isDisabled(), true, `${label}: switching to the calculated quantity must not discard incomplete manual fields`);
+    await page.evaluate(() => refreshMeals());
+    assert.equal(await page.evaluate(() => document.activeElement === window.syntheticShoppingQuantity && window.syntheticShoppingQuantity.isConnected), true);
+    assert.equal(await quantity.inputValue(), '');
+    await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('#tab-meals').waitFor({ state: 'visible' });
+    await page.evaluate(() => refreshMeals());
+    assert.equal(await quantity.inputValue(), ''); assert.equal(await reset.isDisabled(), true);
+    assert.equal(Number(await plan.getAttribute('data-revision')), changed.body.plan.revision);
+    const stillSaved = (await fixtureRead(page, '/api/meals')).plans.find(item => item.id === id);
+    assert.equal(stillSaved.revision, changed.body.plan.revision); assert.equal(stillSaved.shoppingList[0].quantity, 1000);
+    await plan.getByRole('button', { name: 'Genindlæs / kassér lokale rettelser', exact: true }).click();
+    await page.waitForFunction(id => document.querySelector(`[data-record-key="plan:${id}"] [data-shopping-reset="ris|g"]`)?.disabled === false, id);
+    assert.equal(await quantity.inputValue(), '1000');
+    const restored = await uiWrite(page, 'PUT', `/api/meals/plans/${id}/shopping-list`, () => reset.click());
+    assert.deepEqual(restored.input, { expectedRevision: changed.body.plan.revision, items: changed.body.plan.shoppingList,
+      useComputed: [{ name: 'ris', unit: 'g' }] });
+    assert.equal(restored.body.plan.shoppingList[0].quantity, 400);
+    assert.deepEqual(restored.body.plan.manualShoppingOverrides, []); assert.equal(restored.body.plan.shoppingNeedsReview, false);
+    assert.equal(await plan.getByRole('button', { name: 'Find varer på Nemlig', exact: true }).isDisabled(), false);
+
+    // An explicit zero is a durable omission, not consumption or inventory.
+    await openList(); await quantity.fill('0');
+    const omitted = await uiWrite(page, 'PUT', `/api/meals/plans/${id}/shopping-list`,
+      () => plan.getByRole('button', { name: 'Gem rettelser til listen', exact: true }).click());
+    assert.equal(omitted.input.expectedRevision, restored.body.plan.revision);
+    assert.deepEqual(omitted.input.items, [{ name: 'ris', quantity: 0, unit: 'g' }]);
+    assert.deepEqual(omitted.body.plan.shoppingList, []);
+    const recomputed = await build();
+    assert.equal(recomputed.input.expectedRevision, omitted.body.plan.revision);
+    assert.deepEqual(recomputed.body.plan.shoppingList, []);
+    assert.equal(recomputed.body.plan.shoppingReview.rows[0].excluded, true);
+    assert.match(await plan.locator('.meal-shopping-review').innerText(), /eksplicit udeladt/);
+    assert.match(await plan.innerText(), /ikke dokumentation for, at ingredienserne er på lager/);
+    assert.deepEqual(prohibitedReadsOrWrites, [], `${label}: manual shopping review, polling and reload never search products, create retailer drafts or write a basket`);
+  } finally { page.off('request', trackRetailer); }
 }
 
 async function verifyHistory(page, label) {
@@ -336,6 +579,58 @@ async function verifyProjectDrafts(page, label) {
   assert.equal(await request.inputValue(), draft);
   const actual = (await fixtureRead(page, `/api/projects/${project.id}`)).project;
   assert.equal(actual.revision, 0); assert.equal(actual.files.length, 0); assert.deepEqual(actual.pendingPackages, []);
+  const packages = ['synthetic-package@1.0.0'];
+  let syntheticProject = { ...actual, revision: 1, contentHash: 'e'.repeat(64), pendingPackages: packages };
+  let dependencyReview = { status: 'dependency-review-required', directPackages: packages,
+    reasons: [{ code: 'LOCK_REQUIRED', message: 'Syntetisk test: en komplet offentlig v3-låsefil mangler.' }] };
+  const listed = async route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch(), data = await response.json();
+    data.projects = data.projects.map(item => item.id === project.id ? syntheticProject : item);
+    return route.fulfill({ response, json: data });
+  };
+  const inspected = route => route.request().method() !== 'GET' ? route.continue() : route.fulfill({ json: {
+    project: { ...syntheticProject, sourceContentHash: syntheticProject.contentHash, dependencyReview,
+      files: [{ path: 'package.json', content: '{"private":true,"description":"Kun syntetisk læsefixture"}' }] },
+  } });
+  const inspectPath = `${origin}/api/projects/${project.id}`;
+  async function readDependencyReview(text) {
+    const waiting = page.waitForResponse(response => response.url() === inspectPath && response.request().method() === 'GET');
+    await card.getByRole('button', { name: 'Se projektfiler', exact: true }).click();
+    assert.equal((await waiting).status(), 200);
+    await page.waitForFunction(({ id, text }) => document.querySelector(`[data-project-id="${id}"] .project-dependency-status`)?.textContent.includes(text),
+      { id: project.id, text });
+  }
+  await page.route('**/api/projects', listed); await page.route(inspectPath, inspected);
+  try {
+    await page.evaluate(() => refreshProjects());
+    const install = card.getByRole('button', { name: 'Godkend npm-installation', exact: true });
+    assert.equal(await install.isDisabled(), true);
+    await readDependencyReview('LOCK_REQUIRED'); assert.equal(await install.isDisabled(), true);
+    assert.match(await card.locator('.project-dependency-status').innerText(), /Installation er blokeret/);
+    dependencyReview = { status: 'ready', directPackages: packages, reasons: [], mode: 'reviewed-lockfile-ci',
+      manifestHash: 'a'.repeat(64), lockHash: 'b'.repeat(64), dependencyCount: 2 };
+    await readDependencyReview('Pakkegrundlaget er klar'); assert.equal(await install.isDisabled(), false);
+    assert.match(await card.locator('.project-dependency-status').innerText(), /uden livscyklusscripts.*node_modules.*gendannelse/);
+    assert.equal(await request.inputValue(), draft);
+    syntheticProject = { ...syntheticProject, packageInstallAttempt: { id: 'synthetic-blocked', revision: 1, contentHash: syntheticProject.contentHash,
+      packages, status: 'blocked', dependencyReview, note: 'Syntetisk downloadfejl før publicering; intet installeret.' } };
+    await page.evaluate(() => refreshProjects());
+    assert.equal(await install.isDisabled(), true, `${label}: a changed attempt invalidates the old dependency inspection`);
+    assert.match(await card.locator('.project-operation-status').innerText(), /Blokeret – ingen projektpakker publiceret/);
+    await readDependencyReview('Pakkegrundlaget er klar'); assert.equal(await install.isDisabled(), false);
+    // No approval/installation click occurs. This test controls read responses
+    // only and must leave the underlying empty project and package state intact.
+    await card.screenshot({ path: join(screenshotDir, `${label}-project-dependency-review.png`), animations: 'disabled' });
+    syntheticProject = { ...syntheticProject, packageInstallAttempt: { ...syntheticProject.packageInstallAttempt, status: 'unknown' } };
+    await page.evaluate(() => refreshProjects());
+    assert.equal(await install.isDisabled(), true); assert.match(await card.locator('.project-operation-status').innerText(), /Ukendt udfald/);
+    assert.equal(await card.getByRole('button', { name: 'Arkivér projekt', exact: true }).isDisabled(), true);
+  } finally { await page.unroute('**/api/projects', listed); await page.unroute(inspectPath, inspected); }
+  await page.evaluate(() => refreshProjects()); assert.equal(await request.inputValue(), draft);
+  const unchanged = (await fixtureRead(page, `/api/projects/${project.id}`)).project;
+  assert.equal(unchanged.revision, 0); assert.deepEqual(unchanged.pendingPackages, []);
+  assert.equal(unchanged.packageInstallAttempt, undefined);
 }
 
 async function verifyPausedJob(page, label) {
@@ -867,6 +1162,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await page.evaluate(() => refreshMeals());
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
   assert.equal(horizontalOverflow, false, `${label}: structured editors must fit the ${width} × ${height} viewport`);
+  await verifyMealLeftovers(page, label, day, recipeId, rawTitle);
 }
 
 async function runDevice(type, width, height, label) {
@@ -994,10 +1290,16 @@ async function runDevice(type, width, height, label) {
   const value = `Syntetisk personligt faktum ${label}`;
   await page.locator('#claim-subject').fill(subject);
   await page.locator('#claim-value').fill(value);
-  await page.locator('#personal-claim-form [type="submit"]').click();
-  const createdClaim = page.locator('[data-claim-id]').filter({ hasText: subject }).first();
+  const claimCreated = await uiWrite(page, 'POST', '/api/personal-claims',
+    () => page.locator('#personal-claim-form [type="submit"]').click(), [201]);
+  assert.equal(claimCreated.input.sourceId, '', `${label}: an omitted optional source uses an empty string, not an invalid null provenance`);
+  assert.equal(claimCreated.body.claim.subject, subject); assert.equal(claimCreated.body.claim.status, 'proposed');
+  const createdClaim = page.locator(`[data-claim-id="${claimCreated.body.claim.id}"]`);
   await createdClaim.waitFor({ state: 'visible' });
-  await createdClaim.getByRole('button', { name: 'Bekræft oplysning' }).click();
+  assert.match(await createdClaim.innerText(), new RegExp(subject));
+  const claimConfirmed = await uiWrite(page, 'POST', `/api/personal-claims/${claimCreated.body.claim.id}/confirm`,
+    () => createdClaim.getByRole('button', { name: 'Bekræft oplysning', exact: true }).click());
+  assert.equal(claimConfirmed.input.expectedRevision, claimCreated.body.claim.revision);
   await createdClaim.getByText('Bekræftet af dig').waitFor({ state: 'visible' });
   await page.locator('#knowledge-query').fill(value);
   await page.locator('#knowledge-search-form button').click();
@@ -1042,7 +1344,7 @@ async function runDevice(type, width, height, label) {
   await page.locator('[data-tab="home"]').first().click();
   await page.locator('#tab-home').screenshot({ path: join(screenshotDir, `${label}-home.png`), animations: 'disabled' });
   await context.close();
-  return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts without model activity, field-bound settings drafts, claim correction/replacement/history, organizer drafts/conflicts, household precedence/guests/holiday/absence/portions, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
+  return `${label}: navigation, compact Today/history pagination, personal task edit/lock/local placement, unknown-capacity guard, follow-up unknown/snooze/cancel, paused job policy edits, project/form drafts and dependency review without model/installer activity, field-bound settings drafts, claim correction/replacement/history, lazy legacy-note history/read-only archive, organizer drafts/conflicts, household precedence/guests/holiday/absence/portions, explicit revision-bound planned leftovers/unlink/unknown pricing, manual shopping quantities/basis review/reset/exclusion without retailer activity, structured drafts, revision conflicts, exact source return, keyboard focus, selected contrast/reflow and first-screen composer passed`;
 }
 
 try {

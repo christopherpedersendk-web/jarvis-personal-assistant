@@ -1,9 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { atomicStateWrite, durableExclusiveBackup, readPrivateStateText } from './state-schema.mjs';
 import { createJobTransitions } from './job-state-transition.mjs';
+import { checkJavaScriptSyntax } from './subprocess-safety.mjs';
 
 // Explicitly allow-listed, non-server-executable targets for the first release.
 export const EDITABLE_FILES = ['persona.md', 'public/styles.css', 'public/tasks.css', 'public/index.html', 'public/app.js'];
@@ -11,14 +11,7 @@ export const EDITABLE_FILES = ['persona.md', 'public/styles.css', 'public/tasks.
 function digest(text) { return createHash('sha256').update(text).digest('hex'); }
 
 async function checkJavascript(source) {
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--check', '--input-type=commonjs'], { stdio: ['pipe', 'ignore', 'pipe'] });
-    let errors = '';
-    child.stderr.on('data', chunk => { errors += chunk.toString().slice(0, 500); });
-    child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve() : reject(new Error(`JavaScript har syntaksfejl: ${errors.slice(0, 350)}`)));
-    child.stdin.end(source);
-  });
+  await checkJavaScriptSyntax(source, { inputType: 'commonjs' });
 }
 
 export class CodeAgent {

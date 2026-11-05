@@ -245,9 +245,10 @@ export class TaskEngine {
     }
     const next = dailyTime ? new Date(nextLocalTime(now, dailyTime, timeZone)) : input.runAt ? new Date(input.runAt) : now;
     if (Number.isNaN(next.getTime()) || next.getTime() > now.getTime() + 366 * 24 * 3600_000) throw new Error('Ugyldig dato eller mere end et år fremme.');
+    const selectedSkill = input.skillId && this.skillsRegistry ? this.skillsRegistry.resolve(input.skillId, input.skillVersion) : null;
     const task = { id: randomUUID(), revision: 1, title, prompt, intervalMinutes, category, dailyTime, timeZone,
       retryPolicy: checkedRetry(input.retryPolicy), missedRunPolicy: checkedMissed(input.missedRunPolicy),
-      deliveryPolicy: checkedDelivery(input.deliveryPolicy), budget: checkedBudget(input.budget),
+      deliveryPolicy: checkedDelivery(input.deliveryPolicy), budget: checkedBudget(input.budget === undefined ? selectedSkill?.contract?.budget.defaults : input.budget),
       parameters: checkedParameters(input.parameters), permissions: [...READ_PERMISSIONS],
       retryAttempt: 0, consecutiveFailures: 0, skillId: input.skillId || null, skillVersion: input.skillVersion || null,
       deliveryChannel: 'inbox', startOnActivation: !input.runAt && !dailyTime,

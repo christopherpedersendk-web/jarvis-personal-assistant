@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { TaskEngine } from '../task-engine.mjs';
+import { loadBundledSkills } from '../skills-registry.mjs';
+import { fileURLToPath } from 'node:url';
 
 const source = await readFile(new URL('../public/job-policy.js', import.meta.url), 'utf8');
 const jobs = vm.runInNewContext(`${source}\nJarvisJobs;`, { Intl, Date });
@@ -85,7 +87,7 @@ class Element {
   scrollIntoView() {}
 }
 
-async function ui({ storage = new Map(), customApi, confirm = () => true } = {}) {
+async function ui({ storage = new Map(), customApi, confirm = () => true, skillsRegistry = null } = {}) {
   const document = { activeElement: null, detachments: 0 };
   document.createElement = tag => new Element(document, tag);
   document.body = document.createElement('body');
@@ -101,12 +103,12 @@ async function ui({ storage = new Map(), customApi, confirm = () => true } = {})
   make('div', 'tasks', plan); make('span', 'usage', plan); make('button', 'logout');
   let owner = 'synthetic-owner-session', executions = 0, controls;
   const state = {}, requests = [];
-  const engine = new TaskEngine({ state, save: async () => {}, now: () => new Date('2026-11-05T10:00:00Z'), runTask: async () => { executions++; return 'Read'; } });
+  const engine = new TaskEngine({ state, save: async () => {}, skillsRegistry, now: () => new Date('2026-11-05T10:00:00Z'), runTask: async () => { executions++; return 'Read'; } });
   const call = async (path, options = {}) => {
     requests.push({ path, ...options });
     if (customApi) { const result = await customApi(path, options); if (result !== undefined) return result; }
     const body = options.body ? JSON.parse(options.body) : {};
-    if (path === '/api/skills') return { skills: [{ name: 'daily-briefing', version: '1.0.0' }] };
+    if (path === '/api/skills') return { skills: skillsRegistry ? skillsRegistry.catalog() : [{ name: 'daily-briefing', version: '1.0.0' }] };
     if (path === '/api/tasks' && options.method === 'POST') return { task: await engine.create(body) };
     const action = path.match(/^\/api\/tasks\/([^/]+)\/action$/);
     if (action) return { task: await engine.action(action[1], body.action, { expectedRevision: body.expectedRevision }) };
@@ -225,4 +227,34 @@ test('I5 job drafts exclude recognized secrets and logout clears private draft t
   assert.equal(f.fields.get('task-prompt').value, '');
   assert.equal(f.fields.get('task-title').value, '');
   assert.equal(f.storage.size, 0);
+});
+
+test('H1 new procedure templates use current 1.1.0 defaults and create only paused, exactly bound jobs', async () => {
+  const registry = await loadBundledSkills(fileURLToPath(new URL('../', import.meta.url)));
+  const f = await ui({ skillsRegistry: registry });
+  await f.controls.loadSkills();
+  assert.equal(f.controls.template({ 'task-title': 'Syntetisk opfølgning', 'task-prompt': 'Læs kun syntetisk kilde' },
+    { skillId: 'personal-follow-up' }), true);
+  assert.equal(f.fields.get('task-skill').value, 'personal-follow-up@1.1.0');
+  assert.equal(f.fields.get('task-budget-runs').value, '1'); assert.equal(f.fields.get('task-budget-tokens').value, '2500');
+  const options = [...f.fields.get('task-skill').options];
+  assert.match(options.find(item => item.value === 'personal-follow-up@1.1.0').textContent, /aktuel/);
+  assert.match(options.find(item => item.value === 'personal-follow-up@1.0.0').textContent, /historisk/);
+  await f.save(); const created = f.engine.list()[0];
+  assert.equal(created.skillVersion, '1.1.0'); assert.equal(created.status, 'paused');
+  assert.equal(created.skillContentHash, registry.detail('personal-follow-up', '1.1.0').contentHash);
+  await f.engine.tick(); assert.equal(f.executions(), 0);
+});
+
+test('H1 loading the current catalogue never upgrades an existing 1.0.0 job policy or manual version choice', async () => {
+  const registry = await loadBundledSkills(fileURLToPath(new URL('../', import.meta.url)));
+  const f = await ui({ skillsRegistry: registry });
+  const old = await f.engine.create({ title: 'Gammel version', prompt: 'Syntetisk', activation: 'paused',
+    skillId: 'daily-briefing', skillVersion: '1.0.0', budget: { maxRunsPerDay: 7, maxOutputTokens: 2000 } });
+  f.controls.edit(old); await f.controls.loadSkills(); f.render();
+  assert.equal(f.fields.get('task-skill').value, 'daily-briefing@1.0.0');
+  assert.equal(f.fields.get('task-budget-runs').value, '7');
+  await f.set('task-title', 'Kun titel ændres'); await f.save();
+  const saved = f.engine.list()[0]; assert.equal(saved.skillVersion, '1.0.0'); assert.equal(saved.skillContentHash, old.skillContentHash);
+  assert.deepEqual(saved.budget, old.budget); assert.equal(saved.status, 'paused');
 });

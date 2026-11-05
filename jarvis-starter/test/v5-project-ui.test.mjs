@@ -12,6 +12,8 @@ const record = (overrides = {}) => ({ id: 'synthetic-one', title: 'Syntetisk pro
   pendingPackages: [], operation: { id: 'operation-2', kind: 'develop', status: 'completed' }, ...overrides });
 const proposal = (overrides = {}) => ({ id: 'synthetic-proposal', file: 'persona.md', request: 'Syntetisk anmodning',
   summary: 'Syntetisk ændring', status: 'pending', ...overrides });
+const dependencyReview = (directPackages, overrides = {}) => ({ status: 'ready', reasons: [], directPackages,
+  mode: 'reviewed-lockfile-ci', manifestHash: 'a'.repeat(64), lockHash: 'b'.repeat(64), dependencyCount: 2, ...overrides });
 
 // Executable DOM contract double, not real browser evidence. Removing a focused
 // subtree deliberately blurs it; keyed polling cannot pass by restoring value
@@ -201,12 +203,108 @@ test('A4 unrelated operation kind, revision, content or package set cannot resol
 test('R06 package approval displays and sends the exact versioned set, while prior attempts block retries', async () => {
   const h = harness(), packages = ['@scope/name@1.2.3', 'zod@3.2.1']; h.render([record({ pendingPackages: packages })]);
   assert.match(h.card().querySelector('.project-warning').textContent, /@scope\/name@1\.2\.3, zod@3\.2\.1/);
-  h.request = async request => { assert.deepEqual(request.body, { expectedRevision: 2, expectedContentHash: 'hash-2', packages });
-    h.projects = [record({ packageInstallAttempt: { id: 'install-one', revision: 2, status: 'completed', packages } })]; return { project: h.projects[0] }; };
-  await h.button(h.card(), 'Godkend npm-installation').emit('click'); assert.equal(h.calls.length, 1);
+  assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true);
+  h.request = async request => {
+    if (request.method === 'GET') return { project: { ...record({ pendingPackages: packages }), sourceContentHash: 'hash-2',
+      files: [], dependencyReview: dependencyReview(packages) } };
+    assert.deepEqual(request.body, { expectedRevision: 2, expectedContentHash: 'hash-2', packages });
+    h.projects = [record({ packageInstallAttempt: { id: 'install-one', revision: 2, contentHash: 'hash-2', status: 'completed', packages,
+      dependencyReview: dependencyReview(packages) } })];
+    return { project: h.projects[0] };
+  };
+  await h.button(h.card(), 'Se projektfiler').emit('click');
+  assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, false);
+  await h.button(h.card(), 'Godkend npm-installation').emit('click'); assert.equal(h.calls.length, 2);
   assert.match(h.confirmations[0], /revision 2/);
+  assert.match(h.confirmations[0], /Låsefilhash.*npm ci.*uden livscyklusscripts.*node_modules.*recoverymappe/s);
+  assert.match(h.card().querySelector('.project-result').textContent, /node_modules.*publiceret/);
   h.render([record({ pendingPackages: packages, packageInstallAttempt: { id: 'install-one', revision: 2, status: 'unknown', packages } })]);
   for (const label of ['Videreudvikl', 'Godkend npm-installation', 'Arkivér projekt']) assert.equal(h.button(h.card(), label).disabled, true);
+});
+
+test('R06/K dependency review failures are readable without any installer call or lost project draft', async () => {
+  const h = harness(), packages = ['zod@3.2.1'], initial = record({ pendingPackages: packages }); h.render([initial]);
+  const card = h.card(), input = card.querySelector('textarea'); await h.fill(input, 'Ugemt projektønske'); input.focus();
+  h.request = async () => ({ project: { ...initial, sourceContentHash: 'hash-2', files: [{ path: 'package.json', content: '{"synthetic":true}' }],
+    dependencyReview: dependencyReview(packages, { status: 'dependency-review-required', reasons: [{ code: 'LOCK_REQUIRED', message: 'Komplet offentlig v3-låsefil mangler.' }] }) } });
+  await h.button(card, 'Se projektfiler').emit('click');
+  assert.match(card.querySelector('.project-dependency-status').textContent, /blokeret.*LOCK_REQUIRED.*v3-låsefil mangler/);
+  assert.equal(h.button(card, 'Godkend npm-installation').disabled, true);
+  await h.button(card, 'Godkend npm-installation').emit('click');
+  assert.equal(h.calls.length, 1); assert.equal(h.calls[0].method, 'GET'); assert.equal(h.confirmations.length, 0);
+  assert.equal(input.value, 'Ugemt projektønske'); assert.equal(h.document.activeElement, input); assert.equal(h.card(), card);
+});
+
+test('R06/J6 installation requires inspect hashes and exact package set; polling and reload cannot create an approval', async () => {
+  const packages = ['zod@3.2.1'];
+  for (const variation of [
+    { sourceContentHash: 'manual-other-hash', review: dependencyReview(packages) },
+    { sourceContentHash: 'hash-2', review: dependencyReview(['zod@4.0.0']) },
+    { sourceContentHash: 'hash-2', review: dependencyReview(packages, { lockHash: null }) },
+    { sourceContentHash: 'hash-2', review: dependencyReview(packages, { manifestHash: 'incomplete' }) },
+    { sourceContentHash: 'hash-2', review: dependencyReview(packages, { mode: 'unreviewed-install' }) },
+  ]) {
+    const h = harness(), initial = record({ pendingPackages: packages }); h.render([initial]);
+    h.request = async () => ({ project: { ...initial, sourceContentHash: variation.sourceContentHash, files: [], dependencyReview: variation.review } });
+    await h.button(h.card(), 'Se projektfiler').emit('click');
+    assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true);
+    await h.button(h.card(), 'Godkend npm-installation').emit('click'); assert.equal(h.calls.length, 1);
+  }
+  const h = harness(), initial = record({ pendingPackages: packages }); h.render([initial]);
+  h.request = async () => ({ project: { ...initial, sourceContentHash: 'hash-2', files: [], dependencyReview: dependencyReview(packages) } });
+  await h.button(h.card(), 'Se projektfiler').emit('click'); assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, false);
+  const next = harness({ saved: h.saved }); next.render([initial]); assert.equal(next.button(next.card(), 'Godkend npm-installation').disabled, true);
+  h.render([record({ pendingPackages: packages, packageInstallAttempt: { id: 'separate-blocked-attempt', revision: 2, status: 'blocked' } })]);
+  assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true, 'another known blocked attempt invalidates pre-attempt inspection');
+  h.render([record({ revision: 3, contentHash: 'hash-3', pendingPackages: packages })]);
+  assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true);
+  assert.match(h.card().querySelector('.project-dependency-status').textContent, /ikke længere.*revision/);
+});
+
+test('A/R06 blocked staging is not unknown or installed; a new explicit review is required before a new approval', async () => {
+  const h = harness(), packages = ['zod@3.2.1'], initial = record({ pendingPackages: packages }); h.render([initial]);
+  h.request = async request => {
+    if (request.method === 'GET') return { project: { ...h.projects[0], sourceContentHash: 'hash-2', files: [], dependencyReview: dependencyReview(packages) } };
+    h.projects = [record({ pendingPackages: packages, packageInstallAttempt: { id: 'blocked-install', revision: 2, contentHash: 'hash-2',
+      packages, status: 'blocked', dependencyReview: dependencyReview(packages), note: 'Syntetisk downloadfejl før publicering.' } })];
+    throw Object.assign(new Error('Ingen projektpakker publiceret'), { status: 409 });
+  };
+  await h.button(h.card(), 'Se projektfiler').emit('click'); await h.button(h.card(), 'Godkend npm-installation').emit('click');
+  assert.match(h.card().querySelector('.project-operation-status').textContent, /Blokeret – ingen projektpakker publiceret/);
+  assert.doesNotMatch(h.card().querySelector('.project-operation-status').textContent, /Ukendt udfald/);
+  assert.doesNotMatch(h.card().querySelector('.project-result').textContent, /registreret.*publiceret|registreret installeret/);
+  assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true, 'an explicit new inspection is needed even when nothing was published');
+  await h.button(h.card(), 'Godkend npm-installation').emit('click'); assert.equal(h.calls.filter(call => call.method === 'POST').length, 1);
+  await h.button(h.card(), 'Se projektfiler').emit('click'); assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, false);
+  assert.equal(h.calls.filter(call => call.method === 'POST').length, 1, 'viewing again never itself retries installation');
+});
+
+test('A/R06 a 200 installation response without the exact completed outcome never reports success or unlocks a retry', async () => {
+  const packages = ['zod@3.2.1'];
+  for (const variation of [{ status: 'blocked' }, { status: 'unknown' }, { contentHash: 'other-hash' }, { packages: ['zod@4.0.0'] }]) {
+    const h = harness(), initial = record({ pendingPackages: packages }); h.render([initial]);
+    h.request = async request => request.method === 'GET'
+      ? { project: { ...initial, sourceContentHash: 'hash-2', files: [], dependencyReview: dependencyReview(packages) } }
+      : { project: record({ pendingPackages: packages, packageInstallAttempt: { id: 'unexpected-install', revision: 2,
+        contentHash: 'hash-2', status: 'completed', packages, dependencyReview: dependencyReview(packages), ...variation } }) };
+    await h.button(h.card(), 'Se projektfiler').emit('click'); await h.button(h.card(), 'Godkend npm-installation').emit('click');
+    assert.match(h.card().querySelector('.project-result').textContent, /bekræftede ikke.*afsluttet installation/);
+    assert.doesNotMatch(h.card().querySelector('.project-result').textContent, /registreret.*publiceret/);
+    assert.equal(h.button(h.card(), 'Godkend npm-installation').disabled, true);
+    assert.equal(h.calls.filter(call => call.method === 'POST').length, 1);
+  }
+});
+
+test('A/R06 unknown installation can match a blocked no-publication record only for its exact reviewed manifest and lock', () => {
+  const packages = ['zod@3.2.1'], review = dependencyReview(packages);
+  const attempt = { kind: 'install', operationId: 'older', basis: { revision: 2, contentHash: 'hash-2' },
+    approvedPackages: packages, manifestHash: review.manifestHash, lockHash: review.lockHash };
+  const result = { id: 'blocked-exact', revision: 2, contentHash: 'hash-2', status: 'blocked', packages, dependencyReview: review };
+  assert.equal(ProjectUi.matchingOutcome({ attempt, current: record({ packageInstallAttempt: result }) }).status, 'blocked');
+  for (const delta of [{ id: 'older' }, { status: 'unknown' }, { contentHash: 'other' }, { revision: 3 }, { packages: ['zod@4.0.0'] },
+    { dependencyReview: { ...review, lockHash: 'c'.repeat(64) } }, { dependencyReview: { ...review, manifestHash: 'c'.repeat(64) } }])
+    assert.equal(ProjectUi.matchingOutcome({ attempt, current: record({ packageInstallAttempt: { ...result, ...delta } }) }), null);
+  assert.equal(ProjectUi.matchingOutcome({ attempt: { ...attempt, lockHash: undefined }, current: record({ packageInstallAttempt: result }) }), null);
 });
 
 test('K5 test labels distinguish unavailable, stale, skipped and unknown without inventing a Docker cause', () => {

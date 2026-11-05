@@ -12,9 +12,9 @@ const PROVIDERS = Object.freeze([
 
 export function integrationCatalog({ discordStatus = 'disabled', discordConfigured = false, huePaired = false, sonosConfigured = false,
   googleCalendarConfigured = false, googleCalendarConnected = false, googleCalendarStatus = null,
-  discordSnapshot = null, hueStatus = null, sonosStatus = null, nemligConfigured = false } = {}) {
+  discordSnapshot = null, hueStatus = null, sonosStatus = null, nemligConfigured = false, nemligStatus = null } = {}) {
   return PROVIDERS.map(provider => {
-    const home = provider.id === 'hue' ? hueStatus : provider.id === 'sonos' ? sonosStatus : null;
+    const home = provider.id === 'hue' ? hueStatus : provider.id === 'sonos' ? sonosStatus : provider.id === 'nemlig' ? nemligStatus : null;
     const homeStatus = home && ({ not_configured: 'not_configured', not_verified: 'configured', connected: 'connected',
       expired_login: 'expired', unavailable: 'unavailable', stale: 'stale' })[home.connectionState];
     const status = homeStatus || (provider.id === 'discord' && discordConfigured && discordStatus === 'connected' ? 'connected'

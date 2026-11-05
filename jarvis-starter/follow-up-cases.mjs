@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeObservation } from './task-engine.mjs';
+import { planningInstant } from './capacity-planner.mjs';
 
 function time(value, label) {
-  if (typeof value !== 'string' || !/Z$|[+-]\d\d:\d\d$/.test(value) || !Number.isFinite(Date.parse(value)))
-    throw new Error(`${label} kræver et ISO-tidspunkt med tidszone.`);
-  return new Date(value).toISOString();
+  return new Date(planningInstant(value, label)).toISOString();
 }
 
 function text(value, label, max) {
@@ -62,9 +61,10 @@ export class FollowUpCases {
       record.nextCheckAt = time(changes.nextCheckAt, 'Næste kontrol');
     } else if (action === 'observe') {
       const observation = normalizeObservation(changes.observation, this.now());
+      const nextCheckAt = changes.nextCheckAt === undefined ? record.nextCheckAt : time(changes.nextCheckAt, 'Næste kontrol');
       record.observations.unshift(observation);
       record.observations = record.observations.slice(0, 30);
-      if (changes.nextCheckAt) record.nextCheckAt = time(changes.nextCheckAt, 'Næste kontrol');
+      record.nextCheckAt = nextCheckAt;
     } else if (action === 'complete' || action === 'cancel') {
       record.status = action === 'complete' ? 'completed' : 'cancelled';
       record.nextCheckAt = null;

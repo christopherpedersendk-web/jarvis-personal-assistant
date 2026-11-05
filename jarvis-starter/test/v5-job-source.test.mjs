@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
+test('K job procedure copy is Danish while stable API/category identifiers stay unchanged', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const policy = await readFile(new URL('../public/job-policy.js', import.meta.url), 'utf8');
+  assert.match(html, /<option value="research">Undersøgelse<\/option>/);
+  assert.match(html, /Ingen særskilt procedure – brug instruktionen ovenfor/);
+  assert.doesNotMatch(html, /<option value="research">Research<\/option>/);
+  assert.match(policy, /Ingen særskilt procedureversion/); assert.match(policy, /Procedurekataloget er utilgængeligt/);
+});
+
 test('H2/R11 skill source navigation waits for its exact ID/version record, never a nearby version', async () => {
   const script = await readFile(new URL('../public/intelligence.js', import.meta.url), 'utf8');
   let complete, refreshes = 0;
@@ -13,7 +22,7 @@ test('H2/R11 skill source navigation waits for its exact ID/version record, neve
     targets.set(selector, { classList: { add: () => highlighted.push(version) }, scrollIntoView() {} });
   }
   const status = { textContent: '', classList: { toggle() {} } };
-  const document = { getElementById: () => ({ querySelector: () => status }), querySelector: selector => targets.get(selector),
+  const document = { getElementById: id => id === 'logout' ? { addEventListener() {} } : ({ querySelector: () => status }), querySelector: selector => targets.get(selector),
     querySelectorAll: () => [], addEventListener() {} };
   const context = vm.createContext({ URL, Date, Promise, document, CSS: { escape: value => value },
     window: { location: { href: 'https://synthetic.invalid/?view=knowledge&source=skill%3Adaily-briefing%3A2.0.0' } },

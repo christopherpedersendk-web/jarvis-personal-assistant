@@ -5,6 +5,7 @@ import { activePersonalMemory } from './secretary-core.mjs';
 import { currentClaim, claimConflicts } from './personal-claims.mjs';
 import { containsSecret } from './privacy.mjs';
 import { resolveHouseholdAttendance } from './meal-planner.mjs';
+import { personalTaskRecords } from './personal-tasks.mjs';
 
 // Function words are not identifying evidence. Keep negation/boundary words
 // such as ikke, aldrig, ingen, uden and kun: removing them can reverse meaning.
@@ -13,6 +14,9 @@ const STOP = new Set(('jeg mig min mine mit du din dine dit det den der de er va
   'dem han hun vi vores jer jeres sig sin sine sit denne dette disse så end helst gerne og eller af fra for med som til på om i at en et også lige noget nogle hos').split(' '));
 
 export const HYBRID_RETRIEVAL_STRATEGY = 'semantic-primary-exact-lexical-4-to-1-v1';
+const MEMORY_MEANINGS = Object.freeze({ fact: 'Bekræftet oplysning', preference: 'Præference',
+  temporary: 'Midlertidig oplysning', planned: 'Planlagt handling – ikke bevis for udført handling',
+  completed: 'Brugerbekræftet udført handling' });
 
 function terms(value, max = 600) {
   return (String(value || '').normalize('NFKC').toLocaleLowerCase('da-DK').match(/[\p{L}\p{N}]{2,}/gu) || [])
@@ -104,17 +108,18 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
   const conflicting = new Set(claimConflicts(state, now).map(item => item.subject));
   for (const claim of (state.personalClaims || []).filter(item => currentClaim(item, now) && !conflicting.has(item.subject)).slice(0, 200)) {
     if (!claim.id || typeof claim.value !== 'string') continue;
-    documents.push({ ...makeDocument(`claim:${claim.id}`, 'memory', 'Bekræftet oplysning',
+    documents.push({ ...makeDocument(`claim:${claim.id}`, 'memory', MEMORY_MEANINGS[claim.category] || 'Oplysning med ukendt kategori',
       `${claim.subject}: ${claim.value}`, { kind: 'claim', id: claim.id, revision: claim.revision,
         category: claim.category, provenance: claim.source }, claim.updatedAt),
-      confirmation: 'user-confirmed', expiresAt: claim.expiresAt || null });
+      confirmation: 'user-confirmed', validFrom: claim.validFrom || null, expiresAt: claim.expiresAt || null });
   }
   for (const memory of (state.memories || []).filter(item => activePersonalMemory(item, now)).slice(0, 200)) {
     if (!memory.id || typeof memory.text !== 'string') continue;
     documents.push({ ...makeDocument(`memory:${memory.id}`, 'memory', 'Hukommelse', memory.text,
       { kind: 'memory', id: memory.id, revision: memory.revision || 1, category: memory.category || 'fact',
         provenance: memory.source ? { kind: memory.source.kind, channel: memory.source.channel } : { kind: 'legacy', channel: 'legacy' } },
-      memory.updatedAt || memory.createdAt), confirmation: 'user-confirmed', expiresAt: memory.expiresAt || null });
+      memory.updatedAt || memory.createdAt), confirmation: 'user-confirmed', validFrom: memory.validFrom || null,
+      expiresAt: memory.expiresAt || null });
   }
   for (const collection of (state.organizer || []).filter(item => !item.archived).slice(0, 80)) {
     for (const item of (collection.items || []).slice(0, 200)) {
@@ -130,7 +135,10 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
       `${task.title} · Status: ${task.status || 'ukendt'} · ${task.prompt || ''}`,
       { kind: 'task', id: task.id }, task.updatedAt || task.createdAt));
   }
-  for (const task of (state.personalTasks || []).filter(item => item.status !== 'archived').slice(0, 200)) {
+  // Use the domain's visibility policy, not an unrelated 200-record cutoff.
+  // The aggregate encoder bound below yields honest lexical fallback; it never
+  // deletes late sources from either path or bypasses archival/privacy checks.
+  for (const task of personalTaskRecords(state)) {
     if (!task.id || !task.title) continue;
     documents.push(makeDocument(`personal-task:${task.id}`, 'personal-task', 'Personlig opgave',
       `${task.title} · Formål: ${task.purpose || ''} · Status: ${task.status} · Varighed: ${task.durationMinutes} minutter · Frist: ${task.deadline || 'ikke angivet'}`,
@@ -277,7 +285,7 @@ export class PersonalKnowledge {
     const documents = getDocuments();
     if (!this.semanticScorer) return fallback('disabled', documents);
     if (documents.length > 2000) return fallback('index-limit', documents);
-    const signature = doc => JSON.stringify([doc.text, doc.source, doc.updatedAt, doc.confirmation, doc.expiresAt]);
+    const signature = doc => JSON.stringify([doc.text, doc.source, doc.updatedAt, doc.confirmation, doc.validFrom, doc.expiresAt]);
     const before = new Map(documents.map(doc => [doc.id, signature(doc)]));
     let semantic;
     const timeoutMs = Math.max(50, Math.min(10_000, Number(options.semanticTimeoutMs) || 1500));
@@ -352,8 +360,25 @@ export class PersonalKnowledge {
   }
 
   formatContext(matches) {
-    return matches.map(doc => `[${doc.id} · ${doc.label}${doc.source.revision ? ` · revision ${doc.source.revision}` : ''}${doc.updatedAt ? ` · opdateret ${doc.updatedAt}` : ''}] ${doc.text}`)
-      .join('\n').slice(0, 5200);
+    const omitted = 'Flere kilder er udeladt af pladsgrænsen; hent den præcise kilde ved behov.';
+    const lines = []; let length = 0;
+    for (const doc of matches) {
+      const source = doc.source || {}, provenance = source.provenance;
+      const meaning = ['claim', 'memory'].includes(source.kind)
+        ? MEMORY_MEANINGS[source.category] || 'Ukendt kategori – må ikke fortolkes som bekræftet faktum' : null;
+      const fields = [doc.id, meaning || doc.label];
+      if (source.revision) fields.push(`revision ${source.revision}`);
+      if (provenance) fields.push(`Kilde: ${provenance.kind || 'ukendt'}/${provenance.channel || 'ukendt'}${provenance.id ? ` (${provenance.id})` : ''}`);
+      if (doc.validFrom) fields.push(`Gyldig fra: ${doc.validFrom}`);
+      if (doc.expiresAt) fields.push(`Udløber: ${doc.expiresAt}`);
+      if (doc.updatedAt) fields.push(`opdateret ${doc.updatedAt}`);
+      const line = `[${fields.join(' · ')}] ${doc.text}`;
+      // Keep meaning, identity and the full bounded statement together. Cutting
+      // through a sentence could remove a negation or its limiting condition.
+      if (length + line.length + 1 + omitted.length > 5200) { lines.push(omitted); break; }
+      lines.push(line); length += line.length + 1;
+    }
+    return lines.join('\n');
   }
 
   context(query) {

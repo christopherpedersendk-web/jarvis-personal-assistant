@@ -3,7 +3,8 @@ const sourceKinds = Object.freeze({
   organizer: 'knowledge', memory: 'knowledge', claim: 'knowledge', skill: 'knowledge', task: 'plan',
   'personal-task': 'plan', 'follow-up': 'plan', project: 'projects',
   household: 'meals', 'household-day': 'meals', 'household-rhythm': 'meals',
-  recipe: 'meals', 'meal-profile': 'meals', 'meal-plan': 'meals',
+  recipe: 'meals', 'meal-profile': 'meals', 'meal-plan': 'meals', 'shopping-draft': 'meals',
+  'google-calendar': 'home', 'nemlig-proposal': 'meals',
 });
 let sourceNavigationSequence = 0;
 
@@ -25,14 +26,53 @@ function sourceStatus(view, message) {
 
 async function focusRecordedSource(sourceId) {
   const sequence = ++sourceNavigationSequence;
-  if (typeof sourceId !== 'string' || sourceId.length > 200) return;
+  if (typeof sourceId !== 'string' || sourceId.length > (sourceId.startsWith('google-calendar:') ? 2000 : 200)) return;
   const parts = sourceId.split(':');
   const kind = parts[0];
   const view = sourceKinds[kind];
   if (!view) return;
   sourceStatus(view, '');
+  if (kind === 'google-calendar') {
+    let valid = false;
+    try {
+      const calendarId = decodeURIComponent(parts[1] || ''), date = parts[2] || '';
+      const eventId = decodeURIComponent(parts[3] || ''), fetchedAt = decodeURIComponent(parts[4] || '');
+      const instant = new Date(`${date}T12:00:00Z`);
+      valid = parts.length === 5 && calendarId.length > 0 && calendarId.length <= 500 && eventId.length > 0 && eventId.length <= 1024
+        && !/[\u0000-\u001f\u007f]/.test(calendarId + eventId)
+        && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(instant.getTime()) && instant.toISOString().slice(0, 10) === date
+        && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d\d:\d\d)$/.test(fetchedAt) && Number.isFinite(Date.parse(fetchedAt));
+    } catch { /* Malformed URI components are data, never a guessed source. */ }
+    if (!valid) {
+      sourceStatus(view, 'Kalenderkilden mangler en præcis kalender, gyldig dato, aftale eller cacheversion. Ingen anden kilde er åbnet.');
+      return;
+    }
+    if (typeof window.openRecordedCalendarSource !== 'function') throw new Error('Kalenderkildens lokale visning er ikke tilgængelig.');
+    const opened = await window.openRecordedCalendarSource(sourceId, { isCurrent: () => sourceRequestCurrent(sequence, sourceId) });
+    if (!sourceRequestCurrent(sequence, sourceId)) return;
+    if (opened !== true) {
+      sourceStatus(view, 'Den præcise kalenderkilde er ikke længere i den lokale cache. Ingen anden aftale eller ny Google-læsning er brugt.');
+      return;
+    }
+  }
   const householdSource = ['household', 'household-day', 'household-rhythm'].includes(kind);
   const householdDate = householdSource && parts[1] && parts[1] !== 'default' ? parts[1] : null;
+  const mealDate = kind === 'meal-plan' && parts[2] ? parts[2] : null;
+  if (mealDate) {
+    const parsed = new Date(`${mealDate}T12:00:00Z`);
+    if (parts.length !== 3 || !/^\d{4}-\d{2}-\d{2}$/.test(mealDate) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== mealDate) {
+      sourceStatus(view, 'Kilden har en ugyldig dato. Ingen anden dato er åbnet, og ingen ændringer er foretaget.');
+      return;
+    }
+  }
+  if (kind === 'shopping-draft' && (parts.length !== 3 || !parts[1] || !parts[2])) {
+    sourceStatus(view, 'Kilden mangler det præcise indkøbsforslag eller linje-ID. Ingen anden vare er åbnet.');
+    return;
+  }
+  if (kind === 'nemlig-proposal' && (parts.length !== 2 || !/^[a-zA-Z0-9_-]{1,100}$/.test(parts[1] || ''))) {
+    sourceStatus(view, 'Kilden mangler det præcise kurvforslag. Ingen anden kilde er åbnet.');
+    return;
+  }
   if (view === 'meals') {
     if (householdDate) {
       const parsedDate = new Date(`${householdDate}T12:00:00Z`);
@@ -43,7 +83,12 @@ async function focusRecordedSource(sourceId) {
       }
       document.getElementById('meal-family-start').value = householdDate;
     }
-    await refreshMeals();
+    // Price provenance is a local draft read, not product refresh, selection,
+    // approval or basket activity. Exact older sources are retained by the
+    // bounded domain renderer without discarding another card's draft.
+    if (kind === 'nemlig-proposal') await refreshNemlig();
+    else if (kind === 'shopping-draft') await refreshShoppingDrafts();
+    else await refreshMeals();
     if (!sourceRequestCurrent(sequence, sourceId)) return;
     // Render the requested date after the awaited domain refresh. A synthetic
     // button click could race a second async refresh and replace the highlight.
@@ -60,7 +105,7 @@ async function focusRecordedSource(sourceId) {
   else if (kind === 'memory') {
     const pending = [];
     document.dispatchEvent(new CustomEvent('jarvis:memories-changed', {
-      detail: { waitUntil: promise => pending.push(Promise.resolve(promise)) },
+      detail: { sourceId, waitUntil: promise => pending.push(Promise.resolve(promise)) },
     }));
     await Promise.allSettled(pending);
   }
@@ -90,7 +135,10 @@ async function focusRecordedSource(sourceId) {
     'household-rhythm': `[data-household-date="${CSS.escape(householdDate || '')}"]`,
     recipe: `[data-record-key="${CSS.escape(`recipe:${parts[1] || ''}`)}"]`,
     'meal-profile': '#meal-profile-form',
-    'meal-plan': `[data-record-key="${CSS.escape(`plan:${parts[1] || ''}`)}"]`,
+    'meal-plan': `[data-record-key="${CSS.escape(`plan:${parts[1] || ''}`)}"]${mealDate ? ` [data-meal-date="${CSS.escape(mealDate)}"]` : ''}`,
+    'shopping-draft': `[data-record-key="${CSS.escape(`shopping-draft:${parts[1] || ''}`)}"] [data-shopping-line-id="${CSS.escape(parts[2] || '')}"]`,
+    'google-calendar': `[data-calendar-source-id="${CSS.escape(sourceId)}"]`,
+    'nemlig-proposal': `[data-record-key="${CSS.escape(`nemlig-proposal:${parts[1] || ''}`)}"]`,
   };
   // The reviewed-memory editor finishes its own guarded refresh asynchronously.
   let target;
@@ -128,6 +176,11 @@ document.addEventListener('jarvis:source-route', event => {
       }
     }
   }
+});
+
+document.getElementById('logout')?.addEventListener('click', () => {
+  sourceNavigationSequence++;
+  document.querySelectorAll('.source-target').forEach(node => node.classList.remove('source-target'));
 });
 
 // A copied source URL must also work on a new page load, after login/refresh.
@@ -219,7 +272,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
       if (!card) { card = kind === 'skills' ? skillCard(record) : connectorCard(record); slot.cards.set(key, card); root.append(card); }
       const parts = card.catalogParts; write(parts.unavailable, ''); delete card.dataset.catalogUnavailable;
       if (kind === 'skills') {
-        write(parts.heading, `${record.name} · version ${record.version}`); write(parts.description, record.description || '');
+        write(parts.heading, `${record.name} · version ${record.version}${record.current === true ? ' · Aktuel' : record.current === false ? ' · Historisk' : ''}`); write(parts.description, record.description || '');
         write(parts.triggers, `Udløsere: ${(record.triggers || []).join(' · ')}`);
         write(parts.binding, `Indholdshash: ${record.contentHash || 'Ikke dokumenteret'}. Sammenlign med jobbets faktiske kørselsgrundlag.`);
         if (details.has(key) && record.contentHash && details.get(key).contentHash !== record.contentHash) {
@@ -281,7 +334,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
       if (!current(captured, epoch)) return;
       const target = slots.skills.cards.get(key);
       if (!target) throw new Error('Denne præcise version er ikke i den aktuelle lokale oversigt.');
-      write(target.catalogParts.message, `Præcis version ${value.version} · hash ${value.contentHash} · kun læsning`);
+      write(target.catalogParts.message, `Præcis version ${value.version} · hash ${value.contentHash} · kun læsning${value.current === false ? ' · Historisk version; eksisterende jobbinding er bevaret.' : value.contract ? ' · Fuld procedurekontrakt med eksempler og testgrundlag.' : ''}`);
       write(target.catalogParts.body, value.body);
       if (open) target.catalogParts.disclosure.open = true;
       return value;

@@ -1,41 +1,42 @@
-# JARVIS v5.0.0 implementation
+# JARVIS v5.0.0 – implementeringsplan
 
-Source of requirements: `JARVIS_v5_0_0_Plan_og_teknisk_overdragelse.docx` (owner-provided, 4 November 2026). The document's A–L clauses, R01–R13 register and M0–M7 gates are authoritative for desired behavior. This directory records observed implementation evidence and unresolved gaps.
+Kilde: JARVIS_v5_0_0_Plan_og_teknisk_overdragelse.docx, ejerens dokument af4. november2026. Hele A–L, R01–R13, M0–M7 og afsnit5–6 er læst og styrer ønsket adfærd. Observeret kode og faktisk udførte tests styrer påstandene om nuværende adfærd. Alle P0/P1 skal være løst og verificeret før release; ingen scope-reduktion eller mellemliggende4.x-release er aftalt.
 
-## Authorised scope
+## Tilladelse og baseline
 
-M0–M6: isolated development, synthetic tests, reviewable candidate. M7 (merge, tag/release publication, production installation) remains a separately approved action. No live Nemlig basket changes, real scheduled jobs, new integration permissions, external indexing of personal information, calendar writes, orders or payments.
+M0–M6 omfatter isoleret udvikling, syntetiske tests, lokale commits og den eksisterende udviklingsgren/draft PR. Merge til main, stabilt tag/release og produktion er tre særskilte M7-beslutninger. Ingen reelle Nemlig-writes, nye recurringjobs, kontorettigheder, eksterne persondataindeks, kalenderwrites, kontakt, ordre eller betaling.
 
-## Source baseline
+Baseline v4.9.1 og main blev verificeret til **6b2b0736a32e0968d5db233512672d197b4885f7**, root-træ **3de6cd0accb7f5c637835b55ca0049276b5ab08b**, app-træ **900407cb571c6a82e3a5131077455c540876d457**. Oprindeligt149/149 tests. Historisk v4.9.0 og øvrige tags bevares. De24 historiske Nemlig-Python-tests er ikke ny kandidatverifikation.
 
-- Private repository: `christopherpedersendk-web/jarvis-personal-assistant`.
-- Reviewed tag `v4.9.1` and `main`: `6b2b0736a32e0968d5db233512672d197b4885f7`, verified through the authorised GitHub connector on 2026-11-04.
-- Verified source tree: `3de6cd0accb7f5c637835b55ca0049276b5ab08b`. All 99 retrieved text-file Git blob hashes matched; local `git write-tree` also matched.
-- Remote branch `feature/v5-foundation` was created from the above commit. The isolated local Git repository contains a reconstructed source snapshot whose initial *tree* matches the baseline, but whose local root commit has different history because CLI Git authentication is unavailable. Publish subsequent changes against the remote baseline using the connector's Git Data API, never by force-pushing this reconstructed local history.
-- Node runtime checked: `v24.22.1` (documented minimum `>=22.6.0`).
-- Initial `npm test` from unchanged source: **149 passed, 0 failed**, elapsed 1.53 seconds per Node test summary.
+Det oprindelige dirty worktree bevares. Arbejdet fortsætter i jarvis-v5-resume/feature/v5-resume, remote feature/v5-foundation og draft PR #7. Lokal Git-historik er rekonstrueret; udgiv kun identiske trees mod faktisk remote-parent via Git Data API, aldrig force-push. Appkrav er Node>=22.6.0; lokal Node24.22.1 og faktisk CI Node22.23.4 dokumenteres hver for sig.
 
-## Milestone gates
+## Milepæle og acceptporte
 
-| Milestone | Goal | Evidence needed |
+| Milepæl | Leverance | Krævet evidens |
 |---|---|---|
-| M0 | Confirm baseline, scope, R register, measured behavior | SHA/tree, tests, traceability and baseline performance |
-| M1 | Stabilise critical storage, settings, draft and approvals | R01–R06 and hard safety regressions under fault injection |
-| M2 | Shared revisions, sources, journal, queue and API contracts | Deterministic persistence/restart tests and truthful status |
-| M3 | Memory, general planning, follow-up and skills/jobs | 80 Danish memory questions, 30 planning cases, recurrent job failure tests |
-| M4 | Household, recipe, weekly meals and Nemlig review | Reviewable end-to-end workflow without live writes |
-| M5 | Danish navigation, editors and context-preserving UI | Desktop/mobile Chromium and WebKit, drafts and source links |
-| M6 | Candidate, migration, restore, rollback and performance | Candidate-bound tests, measured results and manual-test register |
+| M0 | Baseline, arkitektur, P0/P1 og R-register | SHA/tree, oprindelige tests,69-rækkers matrix, repræsentativ førmåling |
+| M1 | Lager/settings/kladder/handlinger/godkendelser | R01–R06 og sikkerhedsregression under fejlindsprøjtning |
+| M2 | Fælles revision/kilde/fejlkontrakt, journal og kø | Serialisering, genstart, cancellation, sandfærdig readiness; JSON-/SQLite-beslutning |
+| M3 | Uafhængig hukommelse og generel planlægning; sager/procedurer/jobs | ≥80 danske spørgsmål/≥90 % kilde@5 med ægte semantik; ≥30 forskellige planlægningsscenarier; policy- og recoverytests |
+| M4 | Husstand, opskrift, aftensmad, lager og indkøb | Samlet redigerbart workflow med syntetiske integrationer, nul utilsigtede writes |
+| M5 | Dansk navigation, fælles editorer, kilder og kladder | Begge browsermotorer/størrelser, keyboard/fokus, reflow/kontrast og manuelle kontroller |
+| M6 | Reviewbar kandidat, migration/restore/performance | Præcis kandidatbinding, regressions-/integrations-/browserbevis og udført manuel accept |
+| M7 | Merge, stabil release, produktion | Tre separate ejerbeslutninger; administratorreview, ingen genvej i rettigheder |
 
-## Boundaries with special risk
+Milepæle fortsættes ved teknisk opfyldte kriterier; manglende manuel kontrol blokerer accept, ikke uafhængig sikker implementering. Aktuelle resultater og næste præcise handling står i progress.md.
 
-1. The actual owner click on **Overfør til Nemlig** authorises only the reviewed proposal/revision. All earlier steps are reads or local drafts; preserve unrelated basket contents. No order, payment or checkout routes.
-2. Unknown external write results are never blindly retried. No local version guarantee can make Nemlig's external basket read/write sequence atomic.
-3. Google Calendar is read-only and its events are not evidence of household attendance.
-4. Imported content cannot confer permissions or become a confirmed personal preference without review.
-5. Migration/rollback must preserve newer user data; an old app must reject unknown newer schema versions.
-6. P2 Home OAuth/Nest battery integration, calendar write/Google Tasks and general browser booking are outside the v5 release gate.
+## Arkitektur og grænser
 
-## Working notes
+- Modulær monolit med gradvis frontendopdeling; ingen unødvendig serviceopdeling.
+- JSON/skema1 med én serialiseret skriver, copy-on-write, fsync og privat recoveryjournal beholdes på målt grundlag. To filrenames eller to pakkemappeflytninger er ikke én atomisk transaktion. Ukendt publicering spærrer yderligere writes.
+- Ægte lokal multilingual-E5 er opt-in med faste modelassets/runtime-lock og inkrementelt indeks; lokal lexical fallback er tilgængelig. Intet automatisk download eller eksternt indeks.
+- Nemlig: faktisk ejerklik på Overfør til Nemlig, engangsintention bundet til revision/gennemgået forslag, add-only og bevarede andre kurvelinjer. Model, Discord, tale, skills/jobs kan ikke skabe klikket. Lokale checks er ikke ekstern atomicitet.
+- Google er read-only; ukendt kalender er ikke fri kapacitet eller husstandsfremmøde. Import/modeltekst er data, ikke tilladelser eller bekræftede fakta.
+- Aftensmad, eksplicit husstand, bekræftet lager og simple reservationer. Planlagt mad/restemad/kurv er ikke forbrug, køb, levering eller lager.
+- Fuld Sonos OAuth, batteri-Nest-events, Home bridge, Google Tasks/kalenderwrites og browserbooking er P2. Eksisterende Home-funktioner og ærlig status bevares.
 
-Keep individual requirements and R fixes in `requirements-matrix.md`; update `verification.md` after actual test commands; record architecture choices in `decisions.md`; keep `progress.md` resumable. No test runs with real credentials, external calendar writes or a genuine Nemlig basket.
+## Dokumenter og arbejdsform
+
+Kravmatrixen forbinder alle56 A–L og13 R-fund med placering, test, prioritet, milepæl og status. decisions.md begrunder væsentlige valg; verification.md og rå evidence bevarer også fejlresultater. migration-and-rollback.md afgrænser recovery, manual-acceptance.md bevarer ukørte manuelle checks, release-notes.md og release-proposal.md må ikke beskrive udviklingskode som frigivet.
+
+Brug fokuserede ændringer, syntetiske data og separat konfiguration. Et dokumenteret kodefund er ikke dokumentation for en brugerhændelse. Ingen testcase, kvalitetsgrænse eller relevant scope reduceres for at få grønt.

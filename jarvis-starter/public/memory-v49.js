@@ -10,6 +10,7 @@
   const sources = { user: 'Oplyst af dig', assistant: 'Forslag fra JARVIS', legacy: 'Tidligere gemt' };
   const channels = { manual: 'brugerfladen', text: 'chat', discord: 'Discord', voice: 'stemme', legacy: 'tidligere version' };
   let loading = null;
+  let loadingArchived = false, loadingGeneration = -1, pinnedMemoryId = null;
   let generation = 0;
   let counter = 0;
   let owner = localStorage.getItem('jarvisAccessToken') || '';
@@ -67,8 +68,11 @@
 
   const toolbar = element('div', '', 'memory-v49-toolbar');
   const refreshButton = button('Opdater hukommelsen');
+  const showArchived = document.createElement('input'); showArchived.type = 'checkbox'; showArchived.id = 'memory-show-archived';
+  const archiveLabel = element('label'); archiveLabel.htmlFor = showArchived.id;
+  archiveLabel.append(showArchived, element('span', 'Vis arkiverede noter'));
   const count = element('span', '', 'muted micro');
-  toolbar.append(refreshButton, count);
+  toolbar.append(refreshButton, archiveLabel, count);
   const feedback = element('p', '', 'memory-v49-feedback muted small-text');
   feedback.id = 'memory-workbench-status'; feedback.setAttribute('role', 'status'); feedback.setAttribute('aria-live', 'polite');
   const createForm = element('form', '', 'memory-v49-create');
@@ -89,6 +93,7 @@
   const noteDraftKey = 'jarvis:v5:memory-note-draft';
   const editDraftKey = 'jarvis:v5:memory-note-edits';
   const modeKey = 'jarvis:v5:memory-mode';
+  const archiveKey = 'jarvis:v5:memory-archived-visible';
   let draftStorageAvailable = true;
   let editStorageAvailable = true, newUncertain = false;
   const restored = new Map();
@@ -112,6 +117,7 @@
         if (newText.value) feedback.textContent = 'Ugemt hukommelseskladde er gendannet fra denne browserfane.';
       } else if (saved) sessionStorage.removeItem(noteDraftKey);
       editorMode.value = sessionStorage.getItem(modeKey) === 'claim' ? 'claim' : 'note';
+      showArchived.checked = sessionStorage.getItem(archiveKey) === 'yes';
       const raw = sessionStorage.getItem(editDraftKey);
       if (raw && raw.length <= 650_000) {
         const edits = JSON.parse(raw);
@@ -122,7 +128,7 @@
               typeof saved.fields.expires === 'string' && saved.fields.expires.length <= 40 && !unsafeDraft(JSON.stringify(saved))) restored.set(saved.base.id, saved);
         }
       }
-    } else { sessionStorage.removeItem(noteDraftKey); sessionStorage.removeItem(editDraftKey); sessionStorage.removeItem(modeKey); }
+    } else { for (const key of [noteDraftKey, editDraftKey, modeKey, archiveKey]) sessionStorage.removeItem(key); }
   } catch { /* invalid or unavailable tab storage must never prevent editing */ }
   function saveNoteDraft() {
     try {
@@ -168,11 +174,15 @@
     feedback.textContent = message;
     if (withToast) toast(message);
   }
+  function currentSummary(record) {
+    const { revisionHistory, ...current } = record;
+    return { ...current, historyCount: record.historyCount ?? (Array.isArray(revisionHistory) ? revisionHistory.length : 0) };
+  }
 
   function renderCard(item, saved = null) {
     const card = element('article', '', 'memory-v49-card');
     card.dataset.memoryId = String(item.id);
-    const view = { base: { ...item }, latest: { ...item }, missing: false,
+    const view = { base: currentSummary(item), latest: currentSummary(item), missing: false,
       uncertain: saved?.uncertain === true, message: saved?.message || '', failed: saved?.failed === true };
     const heading = element('div', '', 'memory-v49-card-heading');
     const categoryLabel = element('span', '', 'micro'), state = element('span', '', 'memory-v49-state');
@@ -204,21 +214,73 @@
     const footer = element('div', '', 'memory-v49-actions');
     const confirmButton = button('Bekræft hukommelsen', 'primary'), archive = button('Arkivér fra aktiv hukommelse', 'quiet');
     footer.append(confirmButton, archive); card.append(footer);
+    const historyDetails = element('details', '', 'memory-v49-history');
+    const historySummary = element('summary', 'Tidligere revisioner'); historyDetails.append(historySummary);
+    const historyStatus = element('p', 'Historik hentes kun, når du vælger det. Tidligere indhold bliver ikke aktuelle fakta.', 'muted micro');
+    historyStatus.setAttribute('role', 'status');
+    const historyBody = element('div'), historyRead = button('Hent tidligere revisioner');
+    historyDetails.append(historyStatus, historyRead, historyBody); card.append(historyDetails);
+    let historyRevision = null, historyLoading = false, historyError = '';
+    function historyNotice() {
+      const latest = view.latest || view.base;
+      historySummary.textContent = 'Tidligere revisioner (' + (latest.historyCount || 0) + ')';
+      historyStatus.textContent = historyError || (historyLoading ? 'Henter tidligere revisioner …'
+        : historyRevision === null ? 'Historik hentes kun, når du vælger det. Tidligere indhold bliver ikke aktuelle fakta.'
+          : historyRevision !== latest.revision ? 'Den viste historik gælder revision ' + historyRevision +
+            '; noten har siden ændret sig. Hent historikken igen for at gennemgå den nyeste version.'
+            : 'Historik til og med notens revision ' + historyRevision + '. Tidligere indhold bruges ikke i søgning eller modelkontekst.');
+      historyRead.disabled = historyLoading;
+    }
+    historyRead.addEventListener('click', async () => {
+      if (historyLoading || !owner || owner !== localStorage.getItem('jarvisAccessToken')) return;
+      const currentOwner = owner, session = authEpoch; historyLoading = true; historyError = ''; historyNotice();
+      try {
+        const data = await api('/api/memories/' + encodeURIComponent(item.id) + '/history');
+        if (session !== authEpoch || currentOwner !== localStorage.getItem('jarvisAccessToken')) return;
+        if (data.id !== item.id || !Number.isInteger(data.revision) || !Array.isArray(data.history) || data.history.length > 101)
+          throw new Error('Serveren returnerede ikke notens identificerbare revisionshistorik.');
+        const entries = [];
+        if (data.earlierRevisionsUnavailable) entries.push(element('p', 'Revisioner før ' + data.firstCapturedRevision +
+          ' er ikke registreret. Der er ikke rekonstrueret en ukendt fortid.', 'muted small-text'));
+        if (!data.history.length) entries.push(element('p', 'Ingen tidligere revisioner er registreret for denne note.', 'muted'));
+        for (const entry of [...data.history].reverse()) {
+          const row = element('section', '', 'memory-v49-history-entry'); row.dataset.memoryRevision = String(entry.revision);
+          row.append(element('h4', 'Revision ' + entry.revision + ' · historik'), element('p', entry.text || '', 'memory-v49-text'));
+          if (entry.redacted) row.append(element('p', 'Følsomt ældre indhold er skjult i denne læsevisning; ingen ny personlig oplysning er oprettet.', 'muted micro'));
+          else {
+            const provenance = entry.source || {};
+            row.append(element('p', (categories[entry.category] || 'Ukendt kategori') + ' · ' +
+              (entry.status === 'proposed' ? 'Tidligere forslag — ikke bekræftet' : entry.status === 'confirmed'
+                ? 'Tidligere bekræftet — ikke aktuel' : 'Historisk status: ' + (entry.status || 'ukendt')), 'muted micro'));
+            row.append(element('p', (sources[provenance.kind] || 'Ukendt kilde') + ' · ' +
+              (channels[provenance.channel] || 'ukendt kanal') + (provenance.messageId ? ' · ' + provenance.messageId : ''), 'muted micro'));
+            if (entry.expiresAt) row.append(element('p', Number.isFinite(Date.parse(entry.expiresAt))
+              ? 'Datidens udløb: ' + displayDate(entry.expiresAt) : 'Den historiske revision havde et ugyldigt udløbstidspunkt.', 'muted micro'));
+          }
+          row.append(element('p', ({ update: 'Rettet', confirm: 'Bekræftet', archive: 'Arkiveret' })[entry.change] +
+            ' ' + displayDate(entry.replacedAt), 'muted micro')); entries.push(row);
+        }
+        historyBody.replaceChildren(...entries); historyRevision = data.revision;
+      } catch (error) { if (session === authEpoch && currentOwner === localStorage.getItem('jarvisAccessToken'))
+        historyError = 'Historikken kunne ikke hentes: ' + error.message + '. En tidligere visning er ikke opdateret.'; }
+      finally { if (session === authEpoch && currentOwner === localStorage.getItem('jarvisAccessToken')) { historyLoading = false; historyNotice(); } }
+    });
     const fields = () => ({ text: input.value, category: category.value, expires: expires.value, fold: fold.value });
     const baseFields = () => ({ text: view.base.text || '', category: view.base.category || 'fact',
       expires: localDateTime(view.base.expiresAt), fold: 'reject' });
     const dirty = () => JSON.stringify(fields()) !== JSON.stringify(baseFields());
-    view.keep = () => dirty() || view.uncertain || busyIds.has(item.id) || details.open || card.contains(document.activeElement);
-    view.snapshot = () => ({ base: view.base, fields: fields(), open: details.open, uncertain: view.uncertain,
-      message: view.message, failed: view.failed });
+    view.keep = () => dirty() || view.uncertain || busyIds.has(item.id) || details.open || historyDetails.open || card.contains(document.activeElement);
+    view.snapshot = () => ({ base: currentSummary(view.base), fields: fields(), open: details.open, uncertain: view.uncertain,
+      message: view.message, failed: view.failed, historyOpen: historyDetails.open });
     const changed = () => view.missing || view.latest?.revision !== view.base.revision;
     function renderSummary() {
       const record = view.base, expiry = record.expiresAt ? Date.parse(record.expiresAt) : NaN;
       const expired = Number.isFinite(expiry) && expiry <= Date.now();
       categoryLabel.textContent = categories[record.category] || 'Faktum';
-      state.textContent = view.missing || record.archived ? 'Arkiveret eller utilgængelig · kladden er bevaret'
+      state.textContent = view.missing ? 'Arkiveret eller utilgængelig · kladden er bevaret'
+        : record.archived || view.latest?.archived ? 'Arkiveret · kun læsning · bruges ikke'
         : expired ? 'Udløbet · bruges ikke' : record.status === 'proposed' ? 'Forslag · afventer dig' : 'Bekræftet';
-      state.className = 'memory-v49-state ' + (expired || view.missing ? 'expired' : record.status === 'proposed' ? 'proposed' : 'confirmed');
+      state.className = 'memory-v49-state ' + (expired || view.missing || record.archived || view.latest?.archived ? 'expired' : record.status === 'proposed' ? 'proposed' : 'confirmed');
       summary.textContent = record.text || '';
       const provenance = record.source || { kind: 'legacy', channel: 'legacy' };
       metadata.textContent = (sources[provenance.kind] || 'Kilde ikke angivet') + ' · ' +
@@ -226,14 +288,20 @@
         ' · Opdateret ' + displayDate(record.updatedAt || record.createdAt) + ' · Revision ' + record.revision;
       expiryText.hidden = !record.expiresAt; expiryText.textContent = record.expiresAt ? 'Udløb: ' + displayDate(record.expiresAt) : '';
       confirmButton.hidden = record.status !== 'proposed';
+      historyNotice();
     }
     function controls() {
-      const isDirty = dirty(), busy = busyIds.has(item.id), blocked = busy || view.uncertain || changed();
+      const isDirty = dirty(), busy = busyIds.has(item.id), readOnly = view.base.archived || view.latest?.archived;
+      const blocked = busy || view.uncertain || changed() || readOnly;
+      const historyFull = view.base.historyCount >= 100;
       if (isDirty) dirtyIds.add(item.id); else dirtyIds.delete(item.id);
       card.setAttribute('aria-busy', String(busy));
-      saveButton.disabled = !isDirty || blocked; cancel.disabled = !isDirty || busy || view.uncertain;
-      confirmButton.disabled = blocked || isDirty || Boolean(view.base.expiresAt && Date.parse(view.base.expiresAt) <= Date.now());
+      saveButton.disabled = !isDirty || blocked || historyFull; cancel.disabled = !isDirty || busy || view.uncertain;
+      confirmButton.disabled = blocked || isDirty || historyFull || Boolean(view.base.expiresAt && Date.parse(view.base.expiresAt) <= Date.now());
       archive.disabled = blocked || isDirty;
+      details.hidden = Boolean(view.base.archived && !isDirty);
+      footer.hidden = Boolean(readOnly);
+      for (const control of [input, category, expires, fold]) control.disabled = Boolean(view.base.archived);
       reload.hidden = !changed(); reload.disabled = busy || view.uncertain;
       review.hidden = !view.uncertain; review.disabled = busy;
       editStatus.textContent = [
@@ -241,6 +309,8 @@
         changed() ? 'Ændret et andet sted. Kladden bruger revision ' + view.base.revision +
           (view.missing ? '; noten er arkiveret eller utilgængelig.' : '; gennemgå den nyeste revision.') : '',
         view.message,
+        readOnly ? 'Noten er arkiveret. Den kan kun læses; visningen hverken genaktiverer eller ændrer den.' : '',
+        historyFull ? '100 historiske revisioner er bevaret. Opret en ny note eller arkivér denne; ingen historik slettes automatisk.' : '',
         isDirty ? 'Ugemt rettelse er bevaret i denne fane.' : '',
         !editStorageAvailable && isDirty ? 'Browseren kan ikke gendanne kladden efter lukning; behold fanen åben.' : '',
       ].filter(Boolean).join(' ');
@@ -251,21 +321,22 @@
       fold.value = ['reject', 'earlier', 'later'].includes(value.fold) ? value.fold : 'reject';
     }
     function apply(record, preserveFields = false) {
-      view.base = { ...record }; view.latest = { ...record }; view.missing = Boolean(record.archived);
+      view.base = currentSummary(record); view.latest = currentSummary(record); view.missing = false;
       if (!preserveFields) put(baseFields());
       renderSummary(); controls();
     }
     view.observe = record => {
-      view.latest = record ? { ...record } : null; view.missing = !record || Boolean(record.archived);
-      if (record && !view.keep() && !view.missing && record.revision !== view.base.revision) apply(record);
+      view.latest = record ? currentSummary(record) : null; view.missing = !record;
+      if (record && !view.keep() && record.revision !== view.base.revision) apply(record);
       else { renderSummary(); controls(); }
     };
     view.controls = controls;
     card.memoryView = view;
-    put(saved?.fields || baseFields()); details.open = saved?.open === true || dirty();
+    put(saved?.fields || baseFields()); details.open = saved?.open === true || dirty(); historyDetails.open = saved?.historyOpen === true;
     renderSummary(); controls();
     for (const type of ['input', 'change']) form.addEventListener(type, () => { saveEditDrafts(); controls(); });
     details.addEventListener('toggle', saveEditDrafts);
+    historyDetails.addEventListener('toggle', saveEditDrafts);
     cancel.addEventListener('click', () => {
       if (cancel.disabled) return;
       put(baseFields()); view.message = 'Den lokale rettelse er kasseret. Ingen serverændring.'; view.failed = false;
@@ -295,7 +366,7 @@
       } catch (error) { view.message = error.message; view.failed = true; controls(); }
     });
     async function mutate(operation, success) {
-      if (busyIds.has(item.id) || view.uncertain || changed() || !owner || owner !== localStorage.getItem('jarvisAccessToken')) return;
+      if (busyIds.has(item.id) || view.uncertain || changed() || view.base.archived || view.latest?.archived || !owner || owner !== localStorage.getItem('jarvisAccessToken')) return;
       const currentOwner = owner, session = authEpoch, submitted = JSON.stringify(fields());
       generation++; busyIds.add(item.id); view.uncertain = true; view.message = 'Gemmer …'; view.failed = false;
       saveEditDrafts(); controls();
@@ -305,7 +376,7 @@
         if (!result.memory?.id || !Number.isInteger(result.memory.revision)) throw new Error('Serveren returnerede ikke et identificerbart gemt hukommelsespunkt.');
         view.uncertain = false;
         const newerDraft = JSON.stringify(fields()) !== submitted;
-        if (result.memory.archived && !newerDraft) {
+        if (result.memory.archived && !newerDraft && !showArchived.checked && pinnedMemoryId !== item.id) {
           const wasFocused = card.contains(document.activeElement);
           card.remove(); cards.delete(item.id); dirtyIds.delete(item.id); restored.delete(item.id);
           if (wasFocused) { feedback.tabIndex = -1; feedback.focus(); }
@@ -361,19 +432,25 @@
     const next = renderCard(item, restored.get(item.id));
     restored.delete(item.id); cards.set(item.id, next); list.prepend(next); return next;
   }
-  function refreshMemories({ userRequested = false } = {}) {
+  function refreshMemories({ userRequested = false, sourceId } = {}) {
     const current = localStorage.getItem('jarvisAccessToken');
     if (!current) return Promise.resolve();
     if (owner !== current) { clearNotes(); owner = current; }
-    if (loading) return loading;
+    if (typeof sourceId === 'string' && /^memory:[a-zA-Z0-9_-]{1,100}$/.test(sourceId)) pinnedMemoryId = sourceId.slice(7);
+    const includeArchived = showArchived.checked || Boolean(pinnedMemoryId);
+    if (loading) return loadingArchived === includeArchived && loadingGeneration === generation ? loading
+      : loading.catch(() => {}).then(() => refreshMemories({ userRequested }));
     const requestGeneration = generation, session = authEpoch, currentOwner = owner;
     refreshButton.disabled = true;
     const pending = (async () => {
       try {
-        const data = await api('/api/memories');
+        const data = await api('/api/memories' + (includeArchived ? '?includeArchived=yes' : ''));
         if (requestGeneration !== generation || session !== authEpoch || currentOwner !== localStorage.getItem('jarvisAccessToken')) return;
         if (!Array.isArray(data.memories)) throw new Error('Hukommelsen kunne ikke læses.');
-        const records = data.memories.filter(item => item && !item.archived && typeof item.id === 'string' && typeof item.text === 'string').slice(0, 250);
+        const available = data.memories.filter(item => item && (!item.archived || showArchived.checked || item.id === pinnedMemoryId) &&
+          typeof item.id === 'string' && typeof item.text === 'string');
+        const pinned = available.find(item => item.id === pinnedMemoryId);
+        const records = [...(pinned ? [pinned] : []), ...available.filter(item => item !== pinned)].slice(0, 250);
         const ids = new Set(records.map(item => item.id));
         for (const item of records) replaceCard(item);
         for (const [id, card] of cards) if (!ids.has(id)) {
@@ -391,9 +468,14 @@
         if (session === authEpoch) refreshButton.disabled = false;
       }
     })();
-    loading = pending; return pending;
+    loadingArchived = includeArchived; loadingGeneration = requestGeneration; loading = pending; return pending;
   }
   refreshButton.addEventListener('click', () => refreshMemories({ userRequested: true }).catch(() => {}));
+  showArchived.addEventListener('change', () => {
+    pinnedMemoryId = null; generation++;
+    try { if (owner && showArchived.checked) sessionStorage.setItem(archiveKey, 'yes'); else sessionStorage.removeItem(archiveKey); } catch { /* The visible choice still works without browser storage. */ }
+    return refreshMemories({ userRequested: true }).catch(() => {});
+  });
   const newReview = button('Kontrollér ny notes gemningsudfald');
   createForm.append(newReview);
   function newControls() {
@@ -437,16 +519,17 @@
   });
   function clearNotes() {
     authEpoch++; generation++; owner = ''; loading = null;
+    pinnedMemoryId = null; showArchived.checked = false;
     cards.clear(); dirtyIds.clear(); busyIds.clear(); restored.clear(); list.replaceChildren();
     newText.value = ''; newCategory.value = 'fact'; newUncertain = false; notify(''); updateCount(); newControls();
     editorMode.value = 'note'; createForm.classList.remove('hidden'); claimForm.classList.add('hidden');
-    try { for (const key of [noteDraftKey, editDraftKey, modeKey]) sessionStorage.removeItem(key); } catch { /* DOM is cleared even when storage is unavailable. */ }
+    try { for (const key of [noteDraftKey, editDraftKey, modeKey, archiveKey]) sessionStorage.removeItem(key); } catch { /* DOM is cleared even when storage is unavailable. */ }
   }
   const knowledgeVisible = () => !document.getElementById('tab-knowledge')?.classList.contains('hidden');
   document.addEventListener('jarvis:refreshed', () => { if (knowledgeVisible()) return refreshMemories().catch(() => {}); });
   document.addEventListener('jarvis:view-changed', event => { if (event.detail?.view === 'knowledge') return refreshMemories().catch(() => {}); });
   document.addEventListener('jarvis:memories-changed', event => {
-    const pending = refreshMemories(); event.detail?.waitUntil?.(pending); return pending.catch(() => {});
+    const pending = refreshMemories({ sourceId: event.detail?.sourceId }); event.detail?.waitUntil?.(pending); return pending.catch(() => {});
   });
   document.getElementById('logout')?.addEventListener('click', clearNotes);
   window.addEventListener('beforeunload', event => {

@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { dockerProcessEnvironment, localDockerEndpoint, runBoundedProcess } from './subprocess-safety.mjs';
 
 // No host shell, no mounted secrets, no network, no write access to project sources.
 const nodeScript = String.raw`
@@ -36,20 +36,24 @@ if (tests.length) {
 process.exit(failed ? 1 : 0);
 `;
 
-async function command(binary, args, timeoutMs = 35_000) {
-  return await new Promise(resolve => {
-    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false });
-    let output = '';
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
-    for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { output = (output + data.toString()).slice(-9000); });
-    child.on('error', error => { clearTimeout(timer); resolve({ ok: false, output: error.message, timedOut, unavailable: error.code === 'ENOENT' }); });
-    child.on('close', code => { clearTimeout(timer); resolve({ ok: code === 0 && !timedOut, output, timedOut, code }); });
-  });
+function checkedSnapshot(files) {
+  if (!Array.isArray(files) || files.length > 300) throw new Error('Testsnapshot er for stort eller ugyldigt.');
+  const names = new Set(); let total = 0;
+  for (const file of files) {
+    if (!file || typeof file.path !== 'string' || file.path.length > 140 || !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(file.path) ||
+        file.path.split('/').some(segment => !segment || segment.startsWith('.') || segment === 'node_modules') ||
+        names.has(file.path.toLowerCase()) || typeof file.content !== 'string' || Buffer.byteLength(file.content) > 2 * 1024 * 1024)
+      throw new Error('Testsnapshot har en usikker, gentaget eller for stor fil. Ingen kode blev kørt.');
+    names.add(file.path.toLowerCase()); total += Buffer.byteLength(file.content);
+    if (total > 8 * 1024 * 1024) throw new Error('Testsnapshot overstiger 8 MiB. Ingen kode blev kørt.');
+  }
+  return files;
 }
 
-export async function dockerTest(files, { runner = command } = {}) {
-  const supported = files.filter(file => /\.(?:html|css|js|mjs|json|py|md|svg|txt)$/.test(file.path));
+export async function dockerTest(files, { runner, environment = process.env } = {}) {
+  const childEnvironment = dockerProcessEnvironment(environment);
+  runner ||= (binary, args, timeoutMs) => runBoundedProcess(binary, args, { environment: childEnvironment, timeoutMs });
+  const supported = checkedSnapshot(files).filter(file => /\.(?:html|css|js|mjs|json|py|md|svg|txt)$/.test(file.path));
   if (!supported.length) return { status: 'skipped', summary: 'Ingen understøttede tekstfiler at teste.' };
   const hasNode = supported.some(file => /\.(?:js|mjs|json)$/.test(file.path));
   const hasPython = supported.some(file => file.path.endsWith('.py'));
@@ -57,8 +61,11 @@ export async function dockerTest(files, { runner = command } = {}) {
   if (hasNode) scripts.push({ image: 'node:22-alpine', args: ['node', '-e', nodeScript] });
   if (hasPython) scripts.push({ image: 'python:3.12-alpine', args: ['sh', '-c', 'python -B -c "import ast,pathlib; [ast.parse(p.read_text(),filename=str(p)) for p in pathlib.Path(\"/workspace\").rglob(\"*.py\")]" && if find /workspace -name "test_*.py" | grep -q .; then cd /workspace && python -B -m unittest discover -v; fi'] });
   if (!scripts.length) return { status: 'skipped', summary: 'Kun HTML/CSS – ingen eksekverbare tests. Gennemgå projektet i browseren.' };
+  const endpoint = await localDockerEndpoint(runner, { environment });
+  if (!endpoint.ok) return { status: 'unavailable', summary: endpoint.reason };
+  const local = (args, timeoutMs) => runner('docker', ['--host', endpoint.host, ...args], timeoutMs);
   for (const { image } of scripts) {
-    const check = await runner('docker', ['image', 'inspect', image], 12_000);
+    const check = await local(['image', 'inspect', image], 12_000);
     if (!check.ok) return { status: 'unavailable', summary: `Docker eller image ${image} mangler. Installér Docker Desktop og hent image manuelt med docker pull ${image}. Ingen kode blev kørt på Windows.` };
   }
   const temporary = await mkdtemp(join(tmpdir(), 'jarvis-test-'));
@@ -72,7 +79,7 @@ export async function dockerTest(files, { runner = command } = {}) {
     }
     for (const { image, args } of scripts) {
       const containerName = `jarvis-test-${randomUUID()}`;
-      const result = await runner('docker', [
+      const result = await local([
         'run', '--rm', '--pull', 'never', '--name', containerName, '--network', 'none', '--read-only',
         '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '64',
         '--memory', '256m', '--cpus', '1', '--user', '65534:65534',
@@ -80,12 +87,20 @@ export async function dockerTest(files, { runner = command } = {}) {
         '--mount', `type=bind,source=${temporary},target=/workspace,readonly`,
         '--workdir', '/workspace', image, ...args,
       ], 40_000);
-      if (result.timedOut) await runner('docker', ['rm', '-f', containerName], 8_000);
-      reports.push({ image, ok: result.ok, output: result.output.slice(-7000) });
+      let cleanup;
+      if (!result.ok) {
+        try { cleanup = await local(['rm', '-f', containerName], 8_000); }
+        catch { cleanup = { ok: false }; }
+      }
+      reports.push({ image, ok: result.ok, output: result.output.slice(-7000),
+        ...(cleanup ? { containerName, cleanupVerified: cleanup.ok === true } : {}) });
       if (!result.ok) break;
     }
     const passed = reports.every(x => x.ok);
-    return { status: passed ? 'passed' : 'failed', summary: passed ? 'Alle tilgængelige isolerede tests bestod.' : 'Mindst én isoleret test fejlede.', reports };
+    const cleanupUnknown = reports.some(report => report.cleanupVerified === false);
+    return { status: passed ? 'passed' : 'failed', summary: passed ? 'Alle tilgængelige isolerede tests bestod.'
+      : cleanupUnknown ? 'Test fejlede, og oprydning af testcontaineren kunne ikke verificeres. Kontrollér det viste containernavn manuelt.'
+        : 'Mindst én isoleret test fejlede.', reports };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }

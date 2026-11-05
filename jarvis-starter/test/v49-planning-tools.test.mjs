@@ -230,3 +230,60 @@ test('calendar and large basket outputs explicitly report truncation and omit se
   assert.equal(basket.basket.Lines.length, 80); assert.equal(basket.totalLines, 100); assert.equal(basket.truncated, true);
   assert.equal(f.state.mealHousehold.configured, false, 'reading appointments does not infer attendance');
 });
+
+async function manualRicePlan(f) {
+  await f.meals.setHousehold({ adults: 2, children: [] });
+  const plan = await f.meals.createPlan({ startDate: '2026-11-05', days: 1 });
+  await f.meals.updatePlan(plan.id, { expectedRevision: plan.revision, dishes: [{ date: '2026-11-05',
+    title: 'Syntetisk risret', diet: 'vegan', ingredients: [{ name: 'ris', quantity: 250, unit: 'g' }] }] });
+  await f.meals.buildShoppingList(plan.id, { expectedRevision: plan.revision });
+  await f.handle('edit_meal_shopping_list', { id: plan.id, expectedRevision: plan.revision,
+    items: [{ name: 'ris', quantity: 1000, unit: 'g' }] });
+  return plan;
+}
+
+test('G1 model plan views preserve manual quantities and expose changed basis without falsely claiming readiness', async () => {
+  const f = fixture(), plan = await manualRicePlan(f);
+  const priorRevision = plan.revision;
+  await f.meals.updatePlan(plan.id, { expectedRevision: plan.revision, dishes: [{ date: '2026-11-05', servings: 4 }] });
+  const before = structuredClone(f.state);
+  const read = await f.handle('get_meal_plan', { id: plan.id });
+  assert.equal(read.plan.shoppingNeedsReview, true);
+  assert.deepEqual(f.state, before, 'view-time review projection must not mutate durable choices');
+  const built = await f.handle('build_meal_shopping_list', { id: plan.id, expectedRevision: plan.revision });
+  assert.equal(built.plan.shoppingList[0].quantity, 1000);
+  const review = built.plan.shoppingReview.rows[0];
+  assert.equal(review.selectedQuantity, 1000); assert.equal(review.computedQuantity, 500);
+  assert.equal(review.previousBasis.quantity, 250); assert.equal(review.source.revision, priorRevision);
+  assert.equal(review.currentBasis.sources[0].date, '2026-11-05');
+  assert.equal(review.currentBasis.constraints.diet, 'vegan');
+  assert.match(built.note, /kræver.*gennemgang/i); assert.doesNotMatch(built.note, /kan nu forberedes/);
+  assert.equal(f.calls.length, 0, 'a local review does not search products, read the basket or transfer');
+});
+
+test('G1 model local-list edit accepts an explicit zero as durable exclusion, not an external write', async () => {
+  const f = fixture(), plan = await manualRicePlan(f);
+  const edited = await f.handle('edit_meal_shopping_list', { id: plan.id, expectedRevision: plan.revision,
+    items: [{ name: 'ris', quantity: 0, unit: 'g' }] });
+  assert.deepEqual(edited.plan.shoppingList, []); assert.equal(edited.plan.shoppingNeedsReview, false);
+  assert.equal(edited.plan.shoppingReview.rows[0].excluded, true);
+  const built = await f.handle('build_meal_shopping_list', { id: plan.id, expectedRevision: plan.revision });
+  assert.deepEqual(built.plan.shoppingList, []); assert.equal(built.plan.shoppingNeedsReview, false);
+  assert.equal(f.calls.length, 0);
+});
+
+test('G1 model review metadata is bounded and does not echo arbitrary source fields or fingerprints', async () => {
+  const f = fixture(), plan = await manualRicePlan(f);
+  const project = f.meals.shoppingProjection.bind(f.meals);
+  f.meals.shoppingProjection = record => {
+    const projection = project(record), row = projection.shoppingReview.rows[0];
+    row.source.raw = 'NEVER_ECHO'; row.source.fingerprint = 'NEVER_ECHO';
+    row.currentBasis.credentials = 'NEVER_ECHO';
+    row.currentBasis.sources = Array.from({ length: 100 }, () => ({ date: '2026-11-05', quantity: 250,
+      recipeId: 'owner-recipe', raw: 'NEVER_ECHO', recipeSources: [{ kind: 'owner-meal', id: 'owner-source', raw: 'NEVER_ECHO' }] }));
+    return projection;
+  };
+  const result = await f.handle('get_meal_plan', { id: plan.id });
+  assert.equal(result.plan.shoppingReview.rows[0].currentBasis.sources.length, 7);
+  assert.doesNotMatch(JSON.stringify(result), /NEVER_ECHO|baseFingerprint|manualShoppingOverrides/);
+});

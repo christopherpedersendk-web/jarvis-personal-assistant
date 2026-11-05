@@ -2,11 +2,15 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
 import { createJobTransitions } from './job-state-transition.mjs';
+import { IntegrationHealth } from './integration-health.mjs';
 
 const READ_TOOLS = new Set(['search_products', 'get_product_details', 'get_basket']);
 const WRITE_TOOL = 'set_basket_quantities';
 const MAX_BYTES = 2_000_000;
+export const nemligClientInfo = Object.freeze({ name: 'jarvis',
+  version: JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version });
 
 function publicProduct(item) {
   if (!item || typeof item !== 'object') return null;
@@ -44,8 +48,17 @@ function publicLine(line) {
   return out;
 }
 
-function unpack(response) {
-  if (response?.isError) throw new Error('Nemlig afviste forespørgslen.');
+function transportFailure(message, metadata) {
+  const error = new Error(message);
+  // Only explicit numeric HTTP metadata is authoritative. Error prose or a
+  // JSON-RPC error code is not proof that credentials have expired.
+  const status = [metadata?.httpStatus, metadata?.status, metadata?.statusCode].find(value => [401, 403].includes(value));
+  if (status) error.status = status;
+  return error;
+}
+
+export function decodeNemligResponse(response) {
+  if (response?.isError) throw transportFailure('Nemlig afviste forespørgslen.', response.structuredContent?.error || response.structuredContent);
   if (response?.structuredContent) {
     const structured = response.structuredContent;
     return Object.hasOwn(structured, 'result') ? structured.result : structured;
@@ -100,12 +113,12 @@ export function callLocalNemligMcp(name, args = {}, { directory = process.env.NE
         send({ method: 'notifications/initialized' });
         send({ id: 2, method: 'tools/call', params: { name, arguments: args } });
       } else if (response.id === 2) {
-        if (response.error) { fail(new Error('Nemlig MCP kunne ikke udføre forespørgslen.')); return; }
-        try { finish(unpack(response.result)); } catch (error) { fail(error); }
+        if (response.error) { fail(transportFailure('Nemlig MCP kunne ikke udføre forespørgslen.', response.error.data)); return; }
+        try { finish(decodeNemligResponse(response.result)); } catch (error) { fail(error); }
       }
     });
     send({ id: 1, method: 'initialize', params: {
-      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'jarvis', version: '4.9.1' },
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: nemligClientInfo,
     } });
   });
 }
@@ -116,10 +129,11 @@ function fingerprint(basket) {
 }
 
 export class NemligShopping {
-  constructor({ state, save = async () => {}, transact, callTool = callLocalNemligMcp, now = () => new Date(), validateSourcePlan = () => {} }) {
+  constructor({ state, save = async () => {}, transact, callTool = callLocalNemligMcp, now = () => new Date(), validateSourcePlan = () => {}, validateSourceDraft = () => {} }) {
     this.state = state; this.save = save; this.callTool = callTool; this.now = now;
     this.transact = transact || createJobTransitions(state);
     this.validateSourcePlan = validateSourcePlan;
+    this.validateSourceDraft = validateSourceDraft;
     this.state.nemligProposals ||= [];
     for (const proposal of this.state.nemligProposals) if (proposal.status === 'applying') {
       proposal.status = 'unknown';
@@ -127,17 +141,28 @@ export class NemligShopping {
     }
     this.applying = false;
     this.seenProducts = new Map();
+    this.health = new IntegrationHealth({ now });
   }
 
-  enabled() { return this.callTool !== callLocalNemligMcp || (process.env.NEMLIG_ENABLE_LIVE === 'yes' && Boolean(process.env.NEMLIG_MCP_DIR && process.env.NEMLIG_MCP_UV)); }
-  status() { return { configured: this.enabled(), canPlaceOrder: false, approvalRequired: true,
+  enabled() { return this.callTool !== callLocalNemligMcp || (process.env.NEMLIG_ENABLE_LIVE === 'yes' &&
+    Boolean(process.env.NEMLIG_MCP_DIR && process.env.NEMLIG_MCP_UV) && isAbsolute(process.env.NEMLIG_MCP_DIR) && isAbsolute(process.env.NEMLIG_MCP_UV)); }
+  healthBasis() {
+    return this.callTool !== callLocalNemligMcp ? { adapter: 'injected' } : {
+      enabled: process.env.NEMLIG_ENABLE_LIVE, directory: process.env.NEMLIG_MCP_DIR, command: process.env.NEMLIG_MCP_UV,
+      user: process.env.NEMLIG_USER, password: process.env.NEMLIG_PASS,
+    }; // Hashed in RAM only; never emitted in status, logs, prompts or indexes.
+  }
+  status() { return { ...this.health.snapshot(this.healthBasis(), this.enabled()), canPlaceOrder: false, approvalRequired: true,
     proposals: this.state.nemligProposals.slice(0, 10).map(x => ({ ...x, revision: x.revision || 1,
       ...(x.status === 'applying' && !this.applying ? { status: 'unknown', result: { message: 'Slutstatus mangler. Kontrollér kurven; overførslen gentages ikke.' } } : {}) })) }; }
 
   async search(query, limit = 10) {
     if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100) throw new Error('Skriv et konkret varenavn.');
-    const raw = await this.callTool('search_products', { query: query.trim(), limit: Math.min(20, Math.max(1, Number(limit) || 10)) });
-    if (!Array.isArray(raw)) throw new Error('Nemlig returnerede et uventet søgeresultat.');
+    const raw = await this.health.check(this.healthBasis(), async () => {
+      const result = await this.callTool('search_products', { query: query.trim(), limit: Math.min(20, Math.max(1, Number(limit) || 10)) });
+      if (!Array.isArray(result)) throw new Error('Nemlig returnerede et uventet søgeresultat.');
+      return result;
+    });
     const products = raw.slice(0, 20).map(publicProduct).filter(Boolean);
     for (const product of products) if (/^\d{1,18}$/.test(String(product.Id))) {
       this.seenProducts.set(String(product.Id), { name: String(product.Name || '').slice(0, 120), seenAt: this.now().getTime() });
@@ -146,13 +171,16 @@ export class NemligShopping {
     return products;
   }
 
-  async basket() { return basketSummary(await this.callTool('get_basket', {})); }
+  async basket() { return this.health.check(this.healthBasis(), async () => basketSummary(await this.callTool('get_basket', {}))); }
 
   async details(productId) {
     const id = String(productId);
     if (!/^\d{1,18}$/.test(id)) throw new Error('Ugyldigt produkt-ID.');
-    const product = publicProduct(await this.callTool('get_product_details', { product_id: id }));
-    if (!product || String(product.Id) !== id || typeof product.Name !== 'string' || !product.Name.trim()) throw new Error('Varen kunne ikke verificeres hos Nemlig.');
+    const product = await this.health.check(this.healthBasis(), async () => {
+      const result = publicProduct(await this.callTool('get_product_details', { product_id: id }));
+      if (!result || String(result.Id) !== id || typeof result.Name !== 'string' || !result.Name.trim()) throw new Error('Varen kunne ikke verificeres hos Nemlig.');
+      return result;
+    });
     if (product.IsAvailable === false || product.Availability === false) throw new Error('Varen er ikke tilgængelig. Vælg et alternativ.');
     this.seenProducts.set(id, { name: product.Name.slice(0, 120), seenAt: this.now().getTime() });
     return product;
@@ -161,12 +189,13 @@ export class NemligShopping {
   assertSourceCurrent(proposal) {
     if (proposal.sourcePlan) {
       const plan = this.state.mealPlans?.find(x => x.id === proposal.sourcePlan.id);
-      if (!plan || plan.status !== 'shopping_ready' || plan.revision !== proposal.sourcePlan.revision) throw new Error('Madplanen eller indkøbslisten er ændret. Opret et nyt kurvforslag.');
-      this.validateSourcePlan(plan);
+      if (!plan || plan.status !== 'shopping_ready' || plan.revision !== proposal.sourcePlan.revision || plan.shoppingNeedsReview) throw new Error('Madplanen eller indkøbslisten er ændret eller kræver gennemgang. Opret et nyt kurvforslag.');
+      this.validateSourcePlan(plan, proposal);
     }
     if (proposal.sourceDraft) {
       const draft = this.state.shoppingDrafts?.find(x => x.id === proposal.sourceDraft.id);
       if (!draft || draft.revision !== proposal.sourceDraft.revision) throw new Error('Indkøbsforslaget er ændret. Opret et nyt kurvforslag.');
+      this.validateSourceDraft(draft, proposal);
     }
   }
 
@@ -275,7 +304,8 @@ export class NemligShopping {
       }
       let status; let recordedResult;
       try {
-        const result = await this.callTool(WRITE_TOOL, { items: proposal.additions.map(x => ({ product_id: x.productId, quantity: x.target })) });
+        const result = await this.health.check(this.healthBasis(), () => this.callTool(WRITE_TOOL,
+          { items: proposal.additions.map(x => ({ product_id: x.productId, quantity: x.target })) }));
         const outcomes = Array.isArray(result.results) ? result.results : [];
         const expectedIds = new Set(proposal.additions.map(x => x.productId));
         const outcomeIds = outcomes.map(x => String(x.product_id));

@@ -1,11 +1,13 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, lstat, unlink, rename, open } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
 import { atomicStateWrite } from './state-schema.mjs';
 import { createJobTransitions } from './job-state-transition.mjs';
+import { checkJavaScriptSyntax } from './subprocess-safety.mjs';
+import { requireNpmReview } from './npm-package-review.mjs';
+export { installNpmPackages } from './npm-package-review.mjs';
 
 export function projectContentHash(files) {
   return createHash('sha256').update(JSON.stringify(files.map(({ path, content }) => [path, content])
@@ -189,18 +191,7 @@ async function safePath(projectDir, name) {
 }
 
 async function checkJavaScript(source) {
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--check', '--input-type=module'], { stdio: ['pipe', 'ignore', 'pipe'] });
-    let errorText = '';
-    const timeout = setTimeout(() => child.kill(), 8000);
-    child.stderr.on('data', data => { errorText += data.toString().slice(0, 600); });
-    child.on('error', reject);
-    child.on('close', code => {
-      clearTimeout(timeout);
-      code === 0 ? resolve() : reject(new Error(`JavaScript-syntaksfejl: ${errorText.slice(0, 400)}`));
-    });
-    child.stdin.end(source);
-  });
+  await checkJavaScriptSyntax(source, { inputType: 'module' });
 }
 
 export class ProjectAgent {
@@ -412,7 +403,12 @@ export class ProjectAgent {
       sourceScope: 'Projektkilde uden versionsstyringsmapper, node_modules og privat konfiguration.', totalSourceBytes: totalBytes };
   }
 
-  async inspect(id) { return this.capture(id, { purpose: 'model' }); }
+  async inspect(id) {
+    const snapshot = await this.capture(id, { purpose: 'model' });
+    if (snapshot.pendingPackages?.length && this.installer?.preflight)
+      snapshot.dependencyReview = await this.installer.preflight(join(this.root, snapshot.slug), snapshot.pendingPackages);
+    return snapshot;
+  }
   async testSnapshot(id) { return this.capture(id, { purpose: 'test' }); }
   async sourceSnapshot(id) { return this.capture(id, { purpose: 'hash' }); }
 
@@ -568,7 +564,7 @@ export class ProjectAgent {
     } finally { this.busy = false; }
   }
 
-  async install(id, approved, expectedRevision) {
+  async install(id, approved, expectedRevision, expectedContentHash) {
     const project = this.get(id);
     this.assertSettled(project);
     if (!this.installer) throw new Error('Installation er ikke tilgængelig.');
@@ -576,8 +572,9 @@ export class ProjectAgent {
     const pending = project.pendingPackages || [];
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision !== project.revision)
       throw new Error('Projektet er ændret efter godkendelsesvisningen. Opdater og gennemgå pakkerne igen.');
+    await this.assertBasis(id, { expectedRevision, expectedContentHash });
     if (!exactlyApprovedPackages(pending, approved)) throw new Error('Godkend præcis de viste npm-pakker.');
-    if (project.packageInstallAttempt?.revision === expectedRevision)
+    if (project.packageInstallAttempt?.revision === expectedRevision && project.packageInstallAttempt.status !== 'blocked')
       throw new Error('En tidligere pakkeinstallation har allerede haft effekt eller ukendt udfald. Kontrollér projektet før ny godkendelse.');
     this.busy = true;
     try {
@@ -588,43 +585,43 @@ export class ProjectAgent {
         throw new Error('Pakkegrundlaget mangler en fuldstændig kildehash. Opret og gennemgå en ny projektrevision før installation.');
       if (project.contentHash !== approvedContentHash)
         throw new Error('Projektets indhold er ændret efter den viste revision. Ny gennemgang kræves før pakkeinstallation.');
+      if (this.installer.enabled && !this.installer.enabled())
+        throw Object.assign(new Error('Installation er slået fra. Særskilt administratorvalg kræves; ingen pakker er klargjort eller installeret.'), { code: 'INSTALLATION_DISABLED', status: 409 });
+      const dependencyReview = this.installer.preflight
+        ? requireNpmReview(await this.installer.preflight(join(this.root, project.slug), pending)) : null;
       const attempt = { id: randomUUID(), revision: expectedRevision, packages: [...pending], status: 'running',
-        contentHash: approvedContentHash, at: new Date().toISOString() };
+        contentHash: approvedContentHash, ...(dependencyReview ? { dependencyReview } : {}), at: new Date().toISOString() };
+      if (this.installer.stagingDirectory) attempt.stagingDirectory = this.installer.stagingDirectory(join(this.root, project.slug), attempt.id);
       await this.checkpoint(id, current => { current.packageInstallAttempt = attempt; });
+      let installResult;
       try {
-        if (this.get(id).revision !== expectedRevision || (await this.sourceSnapshot(id)).sourceContentHash !== attempt.contentHash)
-          throw new Error('Projektets indhold er ændret efter godkendelsen.');
-        await this.installer(join(this.root, project.slug), pending);
+        const verifyBasis = async () => {
+          const actualHash = (await this.sourceSnapshot(id)).sourceContentHash;
+          if (this.get(id).revision !== expectedRevision || actualHash !== attempt.contentHash ||
+              expectedContentHash !== undefined && actualHash !== expectedContentHash)
+            throw Object.assign(new Error('Projektets indhold er ændret efter godkendelsen. Ingen nye pakker publiceret.'), { installationNotStarted: true });
+        };
+        await verifyBasis();
+        installResult = await this.installer(join(this.root, project.slug), pending, {
+          operationId: attempt.id, expectedContentHash: attempt.contentHash, verifyBasis,
+        });
       } catch (error) {
         await this.checkpoint(id, current => {
-          current.packageInstallAttempt.status = 'unknown'; current.packageInstallAttempt.finishedAt = new Date().toISOString();
-          current.packageInstallAttempt.note = 'Pakkeinstallationen kan være delvist gennemført. Kontrollér projektet.';
+          current.packageInstallAttempt.status = error.installationNotStarted ? 'blocked' : 'unknown';
+          current.packageInstallAttempt.finishedAt = new Date().toISOString();
+          current.packageInstallAttempt.note = error.installationNotStarted
+            ? 'Ingen projektpakker publiceret. Ret det beskrevne review-/klargøringsproblem, og gennemgå grundlaget før en ny særskilt godkendelse.'
+            : 'Pakkeinstallationen kan være delvist gennemført. Kontrollér projektet og den bevarede recoverymappe.';
         }).catch(() => {}); // Durable running record blocks unsafe retry.
         throw error;
       }
       const contentHash = (await this.sourceSnapshot(id)).sourceContentHash;
       return this.checkpoint(id, current => {
         current.packageInstallAttempt.status = 'completed'; current.packageInstallAttempt.finishedAt = new Date().toISOString();
+        if (installResult?.previousModulesPreserved) current.packageInstallAttempt.previousModulesPreserved = true;
         current.pendingPackages = []; current.updatedAt = new Date().toISOString(); current.lastTest = null;
         current.contentHash = contentHash;
       });
     } finally { this.busy = false; }
   }
-}
-
-export async function installNpmPackages(projectDir, packages) {
-  if (process.env.JARVIS_ALLOW_NPM_INSTALL !== 'yes') throw new Error('Installation er slået fra. Sæt JARVIS_ALLOW_NPM_INSTALL=yes i .env og genstart efter sikkerhedsvurdering.');
-  await new Promise((resolve, reject) => {
-    const windows = process.platform === 'win32';
-    const executable = windows ? process.execPath : 'npm';
-    const args = windows ? [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')] : [];
-    const child = spawn(executable,
-      [...args, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', '--', ...packages],
-      { cwd: projectDir, shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
-    let output = '';
-    const timeout = setTimeout(() => child.kill(), 120_000);
-    child.stderr.on('data', data => { output += data.toString().slice(0, 250); });
-    child.on('error', reject);
-    child.on('close', code => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(`npm-installation fejlede (${code}): ${output.slice(0, 500)}`)); });
-  });
 }

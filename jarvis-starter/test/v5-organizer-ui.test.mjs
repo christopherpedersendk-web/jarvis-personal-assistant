@@ -91,6 +91,9 @@ async function fixture({ state = null, saved = new Map(), authenticated = true, 
   document.querySelector = selector => document.body.querySelector(selector);
   document.addEventListener = (type, action) => { if (!document.events.has(type)) document.events.set(type, []); document.events.get(type).push(action); };
   document.emit = async (type, detail = {}) => { for (const action of document.events.get(type) || []) await action({ detail }); await tick(); };
+  const routed = [];
+  document.dispatchEvent = event => { if (event.type === 'jarvis:source-route') routed.push(event.detail.id);
+    for (const action of document.events.get(event.type) || []) action(event); };
   const element = (tag, id, parent = document.body) => { const node = document.createElement(tag); node.id = id; parent.append(node); return node; };
   const home = element('section', 'tab-home'), knowledge = element('section', 'tab-knowledge'), plan = element('section', 'tab-plan');
   for (const [key, section] of [['home', home], ['knowledge', knowledge], ['plan', plan]]) section.classList.toggle('hidden', key !== view);
@@ -131,6 +134,7 @@ async function fixture({ state = null, saved = new Map(), authenticated = true, 
   };
   const confirm = message => { confirmations.push(message); return confirmResult; };
   const context = vm.createContext({ document, console, Date, JSON, Object, Promise, setInterval: fn => intervals.push(fn),
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: () => token }, sessionStorage: { getItem: key => saved.get(key) || null,
       setItem: (key, value) => { if (storageBlocked) throw new Error('blocked storage'); saved.set(key, value); }, removeItem: key => saved.delete(key) },
     window: { addEventListener: (type, action) => windowEvents.set(type, action) }, confirm, prompt: () => null, toast() {},
@@ -138,7 +142,7 @@ async function fixture({ state = null, saved = new Map(), authenticated = true, 
   vm.runInContext(source, context);
   await document.emit('DOMContentLoaded'); await tick();
   const byId = id => document.getElementById(id), button = (root, label) => root.querySelectorAll('button').find(node => node.textContent === label);
-  return { document, core, state, saved, calls, byId, button, selected, confirmations, intervals, windowEvents,
+  return { document, core, state, saved, calls, byId, button, selected, routed, confirmations, intervals, windowEvents,
     collections: () => core.list(), writes: () => calls.filter(call => call.method !== 'GET' && call.path !== '/api/organizer/search'),
     card: id => document.querySelector('[data-collection-id="' + id + '"]'),
     row: (collectionId, itemId) => document.querySelector('[data-organizer-item-id="' + collectionId + ':' + itemId + '"]'),
@@ -358,6 +362,7 @@ test('R11 exact source attributes and source search link survive a concurrent di
   await h.type(h.byId('organizer-query'), 'Første note'); await h.byId('organizer-search').emit('submit');
   await h.button(h.byId('organizer-search-results'), 'Åbn præcist punkt').emit('click'); await h.refresh();
   assert.deepEqual(h.selected, [{ tab: 'knowledge', sourceId: 'organizer:' + collection.id + ':' + item.id }]);
+  assert.deepEqual(h.routed, ['organizer:' + collection.id + ':' + item.id], 'URL change must also invoke the exact source coordinator');
   assert.equal(h.row(collection.id, item.id), row); assert.equal(h.fields(editor(row)).notes.value, 'Bevar mens jeg åbner kilden');
   assert.equal(h.writes().length, 0);
 });

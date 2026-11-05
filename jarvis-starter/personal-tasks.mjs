@@ -10,6 +10,16 @@ const CREATE_FIELDS = new Set(['title', 'purpose', 'expectedOutcome', 'durationM
   'allowedWindows', 'source', 'projectId', 'lockedStart', 'plannedStart', 'nextFollowUpAt']);
 const UPDATE_FIELDS = new Set([...CREATE_FIELDS, 'status']);
 
+export const MAX_PERSONAL_TASKS = 250;
+
+// Admission and visibility are different policies. A preserved older dataset
+// may exceed today's creation bound; reads must not silently hide its records.
+// Completed work remains an explicitly completed historical source until it is
+// archived. Consumers must not reinterpret it as an automated job.
+export function personalTaskRecords(state, { includeArchived = false } = {}) {
+  return (state.personalTasks || []).filter(task => includeArchived || task.status !== 'archived');
+}
+
 function timestamp(value, label) {
   if (value === null || value === undefined || value === '') return null;
   return new Date(planningInstant(value, label)).toISOString();
@@ -121,12 +131,12 @@ export class PersonalTasks {
   }
 
   list({ includeArchived = false } = {}) {
-    return this.state.personalTasks.filter(task => includeArchived || task.status !== 'archived')
-      .map(task => structuredClone(task));
+    return personalTaskRecords(this.state, { includeArchived }).map(task => structuredClone(task));
   }
 
   async create(input) {
-    if (this.list().length >= 250) throw new Error('Højst 250 aktive personlige opgaver.');
+    if (personalTaskRecords(this.state).length >= MAX_PERSONAL_TASKS)
+      throw new Error(`Højst ${MAX_PERSONAL_TASKS} aktive personlige opgaver.`);
     const id = randomUUID();
     const fields = validated(input, id, this.state.personalTasks);
     const at = this.now().toISOString();

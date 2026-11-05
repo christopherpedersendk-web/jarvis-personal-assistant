@@ -1,56 +1,52 @@
 # JARVIS v5 – aktuelt stoppunkt
 
-Opdateret 5. november 2026. **Alle P0 og P1 skal være løst og verificeret før release.** Der er ingen rapporterede brugerhændelser; R01–R13 og nye adversarielle tests beskriver kodefund og acceptkrav.
+Opdateret 5. november 2026. **Alle P0 og P1 skal være løst og verificeret før release.** R01–R13 og nye reproduktioner er kode-/testfund, ikke rapporterede brugerhændelser.
 
-## Identitet og arbejdsområde
+## Identitet
 
-- Baseline: `v4.9.1` / `6b2b0736a32e0968d5db233512672d197b4885f7`, verificeret mod tag og main. Oprindelig suite: 149/149. Historiske tags er urørte.
-- Repository: `christopherpedersendk-web/jarvis-personal-assistant`.
-- Aktivt isoleret worktree: `jarvis-v5-resume`, lokal branch `feature/v5-resume`. Det gamle `jarvis-v5-work` med brugerens eksisterende ændringer er bevaret urørt.
-- Remote udviklingsbranch: `feature/v5-foundation`; [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7).
-- Senest publicerede remote: **`6892cf3dcbbd9dd3bf98a2286c7970017572bab9`**, lokal commit `badd3f96f188a0c13f34e7ffaee3075fc7121e7a`, identisk tree `e5ec7826cb1283911a6d78b87937204b32fda254` og app-subtree `c1f9272923d57bc1083ea646e1c67f98b6a0d121`. Main er genkontrolleret og står stadig på baseline.
-- Næste afgrænsede **runtime/recovery-checkpoint** er låst i Git-index til app-subtree **`b519b67f04ccbdf90a7d8971ac28934f689876eb`**. Kun rootens semantic-process/auditrettelser og evidens er med; andre igangværende slices er ikke staged. Fuld test køres i separat checkout. Commit/remote/CI tilføjes efter faktisk publicering.
-- Lokal Git-historik er rekonstrueret. Publicér kun gennem den godkendte Git Data-arbejdsgang med eksisterende remote-parent, identiske blob/tree-hashes og forventet ref-SHA; **aldrig force-push lokal historik**.
+- Repository: christopherpedersendk-web/jarvis-personal-assistant.
+- Baseline: v4.9.1 / **6b2b0736a32e0968d5db233512672d197b4885f7**, root-træ **3de6cd0accb7f5c637835b55ca0049276b5ab08b**, app-træ **900407cb571c6a82e3a5131077455c540876d457**. Oprindelig suite149/149. Main står fortsat på baseline ved seneste kontrol; genkontrollér før publicering. Historiske tags er urørte; v4.9.0 er ikke baseline.
+- Aktivt isoleret worktree: jarvis-v5-resume, lokal branch **feature/v5-resume**. Det gamle jarvis-v5-work på fa92e039df4a2b7182843d091ffc7f5127d5a2c0 med17 eksisterende ændrede stier er bevaret.
+- Remote: **feature/v5-foundation**, [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7).
+- Seneste publicerede runtimecheckpoint: **2f94679d0e5d800fb3623134e7368bb69c77f178**, lokal **70eaf81ba64b20613b7cd073c265cced5418c3fa**, root-træ **b153cf9dde2c51ffc6e3be7fdcf66db541bb7189**, app-træ **b519b67f04ccbdf90a7d8971ac28934f689876eb**.
+- Lokal historik er rekonstrueret. Publicér præcise commitblobs gennem Git Data API med faktisk remote-parent, matchende tree og forventet ref-SHA; aldrig force-push denne lokale historik.
 
-## Implementeret i denne iteration
+## Verificeret publiceret checkpoint
 
-- A1/R01/R02: én serialiseret lokal transaktionsgrænse med isolerede kladder, immutable læsesnapshots, eksplicit save, revision og rollback-only ved fejl i en deltransaktion. Diskfejl giver ikke fantomdata eller en permanent ødelagt kø.
-- Private indstillinger og offentlig state har en privat, hashbundet write-ahead-journal. Afbrudte par kan genoptages; uventede nyere bytes må ikke overskrives. Dette er **gendannelige filpubliceringer, ikke en atomisk to-fil-transaktion**.
-- A2/A3/R05/R13: durable action intents/outcomes, samtidighedssikker dedup, bounded chat/job/integrations-/opskriftskøer, annullering af ventende arbejde, bundne skillversioner/parametre/budgetter og konservativ restart. Ukendt ekstern effekt gentages ikke.
-- J6/R06: projektoperationer, komplette kildehashes, testgrundlag, package approvals og rollback-manifester er bundet før handling. Beskadigede backups, ændrede manifester, ufuldstændige tests og fremmede mapper afvises.
-- B3/B5: ægte lokal multilingual-E5-encoder, fast modelrevision/filhashes, isoleret CPU-worker, inkrementelt indeks, timeout/annullering og lexical fallback. Intet automatisk download eller eksternt persondataindeks. Første rigtige hybridmåling **fejlede: 62/80 (77,5 %)**; næste faktiske CI på uændret fixture målte **75/80 (93,75 %)**. Ny kode skal genmåles. Lexical token-cache ændrer ikke scoring eller aktiv-kilde-filtrering.
-- C3/C4: selektiv genplanlægning med bevarede gyldige valg, låse, transitiv afhængighed, usikkerhed og buffere; 38 forskellige scenarier. Plan-editorens revisioner, DST-valg, lokal kapacitetsgennemgang og opfølgning har yderligere 22 eksekverbare UI-kontrakttests.
-- D/E/K: eksplicitte gæster, ferie/fravær, voksen-/børnefaktorer og alderens kontroldato; revisioner, reelle no-ops, rå ufuldførte ingredienskladder og eksakt kilde/dato med returvej.
-- F/I: varigt opskriftsmateriale før udtræk, eksplicit genoptagelse, atomisk lokal kildeinvalidering, filtrering af hemmeligheder og faktisk tidsstemplet Hue/Sonos-forbindelsesstatus.
-- R12: Discord-journal med fsync/kopi-før-publicering, afgrænset indgang, generationssikker resume/dedup og eksplicit uafklaret leveringshul. 17 nye adversarielle tests; 39/39 fokuserede inklusive eksisterende regression.
-- R03/J6/H2: nye projekt- og jobeditorer med varige kladder, præcise revisioner/pakkeversioner, pauset joboprettelse og sandfærdige ukendte udfald. 17 projekt-UI-tests samt 7 job-policy- og 9 job-UI-tests.
-- J1/K2: afgrænset bootstrap, sidevis samtalehistorik og kompakt I dag med lukkede driftsdetaljer; kritiske lager-/leveringsfejl løftes frem. Dette checkpoint er ikke endnu browserverificeret.
-- L2/L3: migrationsbackup synkroniseres før live-ændring, restore og journal-recovery genkontrollerer aktuelle bytes og skema. Kodebackup, rollback og projekters gennemgåede grundlag har nye fejlinjektioner.
-- R02/R03/K5: feltvise, HMAC-bundne settings-grundlag kontrolleres inde i den serialiserede opdatering. Almindelige, Discord- og proaktive indstillinger deler kladde-/konfliktregler; hemmeligheder gemmes ikke i browserlageret. Chat, organizer, legacy noter og claim-editor bevarer tekst, fokus, revision og ukendte udfald.
-- B1/B2: eksplicitte korrektionsforslag, gennemgået kilde/gyldighed, separat bekræftelse mod gammel og ny revision og bevaret claim-historik. Ugyldige fakta fjernes straks fra retrieval. Legacy-noters fulde versionshistorik er næste selvstændige slice, ikke erklæret færdig.
-- D4/E1: lokal, tidsstemplet read-only kalendercache ved siden af eksplicit husstand; registrerede prisobservationer med udløb, ukendte beløb og prisændringsstale. Backend understøtter revisionsbundet planlagt restemad, aldrig forbrug, køb eller lager. Den nye restemadseditor afventer næste slice.
-- I4/H2: friske installationer starter uden proaktive aktiviteter; nye implicit oprettede job er pauseret og skal aktiveres eksplicit. Eksisterende registrerede v4-indstillinger bevares under migration. Syntetiske childprocesser har fælles miljø-whitelist uden værtscredentials.
+[CI42016975993](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42016975993), mergecommit212712a8e142dd7b2255783022f3e45f9821ccfe og samme app-træ:
 
-## Faktisk evidens og åbne gates
+- **674/674 Node22.23.4**, 0 fejl/skip,24.012,411746 ms. Rent separat lokalt worktree674/674 Node24.22.1,12.906,056449 ms.
+- Ægte lokal model **75/80 =93,75 % hybrid-kilde@5** mod uændret90 %-mål.80 relevante+16 sikkerhedsspørgsmål,0 ugyldige kildelækager, korrektion/glemning/timeoutfallback bestået. Fuld rapport: evidence/2f94679d-semantic-evaluation.json. Fem misses er bevaret.
+- Faktisk dependency-audit **0 fund**, præcist inventar i evidence/2f94679d-dependency-audit.json. Målrettet sharp0.35.5, uændret HF3.8.1/model. Gennemgået lockSHA256 **2d53dd39d9f29bf50d65d5310bbd34670fee3b454dc52cac88bb181c424057ab** er tilføjet til næste kandidat med npm ci.
+- Browserjobbet fejlede ved kendt tom claim-kildereference. Runtimecheckpointet indeholdt ikke UI-rettelsen; resten af browsermatrixen kørte ikke. Det er ikke bevis for nyere UI.
+- Performancejob bestod; seneste gennemgåede før/efter-tal er særskilt bundet til tidligere appc1f92729 i verification.md. Ingen tal tilskrives en anden revision.
 
-- **Nyeste CI42015140734 på6892cf3d:668/668 Node22.23.4**, 0 fejl/skip,23,809 s; samme app lokalt668/668 Node24.22.1,12,954 s. Performancejob bestået og rå before/after-rapporter committet. Browser fejlede ved tom valgfri claim-kilde; ægte modelkørsel aborterede native med exit134; dependencygate afviste høje sharp-afhængigheder. **Samlet CI er fejlet.** `verification.md` og `dependency-review.md` beskriver fund, eksakt binding og rettelser under afprøvning. Gamle semantic/browsertal må ikke tilskrives den nye kode.
-- Runtime/recovery-slice: særskilt childproces i stedet for delt native workertråd; fatal childexit/signal/timeout/lexicalfallback testet. Målrettet sharp0.35.5 override fastholder samme model/HF3.8.1 og kræver ny faktisk audit/genuine test + reviewet lock og npm ci. Dette er fejlisolation, ikke OS-sandbox.
-- På **`b04bcb30`**: lokal fuld suite **501/501**, 0 fejl/skip, Node **24.22.1**, 12,252 s. [CI 42007968167](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42007968167) bekræftede **501/501 på Node 22.23.4** (15,666 s), mergecommit `810a353d49454151f03f0db6b35bb9acf929293d` med identisk app-subtree `3832f400`.
-- Samme CI: vector-only og faktisk hybrid **75/80 (93,75 %), PASS** mod uændret 90 %-mål; lexical43/80. 16 sikkerhedsspørgsmål, ingen ugyldige kildeudslip, korrektion/glemning/fallback bestået. Kandidatbundet konsolrapport: `evidence/semantic-b04bcb30.json` (opsummering og fem fejl, ikke det fulde 96-spørgsmålsartifact). Den tidligere fejlede måling er bevaret separat.
-- Samme CI: Chromium desktop stoppede ved tastaturforløbet i historikken. Browserens reelt scrollbare historikregion var et ekstra fokusstop før composer. Testen kontrollerer nu både det gyldige mellemstop og efterfølgende composer; fokusassertions er bevaret. Andre tre browsertilfælde **kørte ikke**. Samlet CI er ikke grøn.
-- Installationen rapporterede to højt klassificerede dependency-advarsler. Næste checkpoint har en hård audit-gate, præcis dependency-inventarliste og artifact af genereret lockfile. Advisory-ID'er skal afklares, lockfilen reviewes/committes og installationen skiftes til `npm ci` før RC. Ingen blind opgradering eller ignorering.
-- Næste browsermatrix kræver fortsat Chromium/WebKit 1390×950 og 390×844, nu også Plan, pauserede jobs, projektkladder, historik, husstand/opskrift og udvalgt beregnet kontrast/tastatur/reflow. CSS-reflow er **ikke fysisk zoom**. Lokale kontrakttests/syntaks er ikke en browseraccept.
-- Sidst fuldt browserverificerede ældre app: `fa4d0e952ccc29e19937211b530b60d89f756755`, subtree `42d30beb971929aad964609f46ebc7f1e47e8061`; [CI 41986430567](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/41986430567), 243 Node 22-tests og 4/4 browserflows. **Dette er ikke bevis for den nye kode.**
-- Fysisk iPhone/desktop, faktisk mikrofon, manuel tilgængelighed og administratorkontrolleret restore er **afventer manuel verifikation**. Ingen af disse er erstattet med emulering.
-- Parret lokal performance på baseline og **b04bcb30** er udført med identisk syntetisk fixture: bootstrap7.123 B mod fuld state165.621 B; nyere varige writes og lexical retrieval var langsommere. Dette er før den nye token-cache. Næste CI måler begge revisioner med samme benchmark og adskiller kø, syntetisk ekstern ventetid, lokal p95 og RSS. Ingen livepriser eller modelomkostninger påstås målt.
-- Næste arbejdsiteration (ikke del af runtime-checkpoint): E1-editor og præcise meal-/shoppingkilder, H1 komplette1.1.0-procedurer med uændrede1.0.0, legacy notehistorik/arkiv, claimkilderettelse, generation-aware reads, subprocess/npm/dockerkontrakt. Flere af disse har fokuserede grønne tests, men er endnu ikke samlet kandidatbundet. Nye reproduktioner G3 alias-diæt og G1 manuelt ændret behovsmængde rettes med fælles ingredienskrav og eksplicitte overrides. Ingen af fundene er dokumentation for en brugerhændelse.
-- M0 er etableret; M1–M5 har væsentlig implementering/test men åbne acceptpunkter. **M6 er ikke accepteret; M7 er ikke godkendt.**
+## Næste samlede indhold – endnu ikke endeligt kandidatbundet
 
-## Næste konkrete handling
+Eksisterende implementering omfatter fælles serialiseret durable state, privat/public recoveryjournal, actionjournal, bounded queues, eksplicit jobpolitik, deterministic planning, personlige claims, lokal semantik/fallback, husstand/opskrifter/stock/Nemlig, danske editorer, source-/draftkontrakter og schema-/rollbackværn. Kravmatricen indeholder alle56 A–L-krav og13 R-fund.
 
-1. Commit det låste Git-index; test hele committet i separat worktree. Publicér kun den hashkontrollerede udviklingskandidat uden merge/tag og genkør Node 22, begge browsermotorer og genuine semantic-job. Bevar fejlresultater; ret årsager uden at svække assertions eller spørgefixture.
-2. Fortsæt uafhængige resterende P0/P1-slices ovenfor. Igangværende ikke-committede ændringer tilhører næste iteration og er ikke dækket af den publicerede kandidats tests.
-3. Opdatér kravmatrix, verificering, migration/recovery, performance og releaseforslag til den faktiske endelige revision.
-4. Indhent kun manglende fysiske/administrative kontroller, når uafhængigt implementeringsarbejde er afsluttet. Merge, stabilt `v5.0.0`-tag/release og installation er tre særskilte M7-beslutninger.
+Den aktuelle arbejdsændring samler:
 
-Ingen produktion, persondata, virkelige kurveskrivninger, nye reelle gentagne job eller udvidede kontorettigheder er brugt.
+- G1/G3: absolutte manuelle indkøbsmængder/udeladelser bevares med oprindeligt behov, lagerfradrag, kilde/revision og nyt review ved ændret grundlag. Aliasbaseret ingrediensspecifik kostregel deles af pris, liste, varematch og retained proposal. Modelviews viser samme aktuelle review; et blokeret behov kaldes ikke klar.
+- E1/R11: struktureret planlagt restemad med originalvalg/låse/unlink; ingen antagelse om madlavning/forbrug/lager. Eksakte måltidsdatoer og produktobservationers indkøbslinjer kan åbnes uden nyt produktvalg.
+- B1/B2: legacy-notehistorik på samme note, lazy læsning, arkivvisning og retvisende manglende gammel historik. Historik indgår ikke som aktuelt faktum. Claims beholder separate korrektionsforslag/bekræftelser.
+- B1/B4/C5: faktisk modelkontekst bevarer kategori, gyldighed og kilde; en bekræftet plan er ikke udført. Hele kildesætninger bevares inden for kontekstgrænsen. Opfølgninger bruger samme strenge kalender-/tidszonevalidator som personlig planlægning; 30. februar rulles ikke lydløst til marts, og et ugyldigt næste tjek ændrer ikke observationshistorikken.
+- B3/H3/I1: alle tilladte 250 personlige opgaver kan findes, og bevarede ældre poster over optagelsesgrænsen slettes ikke. Skiftet monitorgrundlag er ukendt, ikke uændret. Nemlig-status afspejler faktisk kontrollerede læse-/skriveobservationer med tidsstempel; konfiguration eller polling alene beviser ikke forbindelse.
+- F2: `get_recipe_instructions` henter eksplicit gennemgåede trin fra den præcise opskriftsrevision i web-, Discord- og talekontrakten. Manglende trin opfindes ikke; rå import og medie-/loginmetadata indgår ikke. Syntetiske kanaltests er ikke fysisk mikrofontest.
+- H1/H2: fire komplette immutable1.1.0-procedurer; alle1.0.0-bytes/jobhashes er uændrede. Nye skabeloner er pauserede og bruger gennemgåede versioner/standardbudgetter; ingen eksisterende job opgraderes eller aktiveres stiltiende.
+- R06/J6/I5: npm kræver offentlig, fuldstændig reviewet lockv3, exact pakkesæt/kildehash, tom config og scripts-off staging. Før-publicering-fejl er blocked; mulig delvis publicering er unknown. Tidligere node_modules bevares. Syntakskontrol/diagnostik har filtreret miljø; Docker-tests bindes til verificeret lokalt endpoint uden nye rettigheder.
+- A1/R04: separat updaterjournal er serialiseret og durable. En fejlet godkendelse forsvinder med det afviste draft og kan ikke gemmes senere. Ukendt publicering spærrer writes; afbrudt staging genkøres ikke automatisk. Checkout afviser symlinks, ignoreret og ikke-sporet input. HTTP og knapper binder staging/godkendelse til faktisk vist version/SHA, og mistet svar giver ikke blind gentagelse.
+- K/R03: claim-kildekontrakt rettet; generation-aware source reads, lazy notehistorik, projekt dependencyReview og udvidede E1/G1 browserforløb. Scriptet sigter mod60 screenshots i4 profiler, men dette er ikke udført browserbevis.
+- B3/I5: præcis faktisk auditeret optionalruntime-lock er inkluderet; installationen bruger npm ci. Modellen er i særskilt childproces uden arvede credentials/preloads. Det er crashisolation, ikke OS-sandbox eller hård native-RAM-grænse.
+
+Fokuserede tests er dokumenteret i kravmatrix/verification. De overlapper og må ikke summeres til en opdigtet samlet suite. Alle kodeændringer skal fryses, testes fra rent commit og genkøres i CI.
+
+## Åbne gates og næste handling
+
+1. Alle delspor er frosset. Updaterens 172 relevante tests, 106 context/planning/retrieval-tests, 131 I dag-/kildetests samt senest 30 updater-UI/durability/readmodel-tests er grønne på deres angivne arbejdsindhold; de overlapper og er ikke en samlet kandidat. Den præcise organizer-kildekoordinator er desuden reproduceret rød, rettet og verificeret i en 70-test UI-/kildekørsel. Commit og kør nu hele npm test i separat rent worktree. Registrér app-træ/resultat.
+2. Genkontrollér main, baseline-tag og remote udviklings-HEAD. Publicér kun identisk tree til eksisterende draft PR uden merge/tag. Kør Node22, Chromium/WebKit desktop1390×950 og mobil390×844, ægte model/audit og parret performance.
+3. Bevar fejlede tests; ret årsag, ikke assertions eller fast datasæt. Download/hashverificér aktuelle artifacts og opdatér alle kravstatusser og release-/recoverydokumenter.
+4. Fysisk iPhone/desktop, faktisk zoom/mikrofon, manuel tilgængelighed og administratorens isolerede restore-/runtimekontrol er **afventer manuel verifikation**. Intet er erstattet med emulering eller generelle “ingen issues”.
+5. M0 er etableret; M1–M5 er implementeret/testet i dele, men samlet accept afventer ovenstående gates. **M6 ikke accepteret. M7 ikke godkendt.** Alle P0/P1-kriterier lukkes før et konkret mergeforslag.
+
+Ingen produktion, private data/secrets, virkelige kurveskrivninger, nye reelle gentagne job eller udvidede kontorettigheder er brugt.

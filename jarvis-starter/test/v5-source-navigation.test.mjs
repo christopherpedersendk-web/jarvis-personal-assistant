@@ -17,6 +17,7 @@ function fixture(initialSource = null) {
   const events = new Map();
   const pending = [];
   const renders = [];
+  const reads = [];
   const dateInput = { value: '' };
   const status = { textContent: '', classList: { toggle() {} } };
   const root = { querySelector: () => status };
@@ -41,12 +42,32 @@ function fixture(initialSource = null) {
     CSS: { escape: value => value }, setTimeout: action => { action(); },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
     refreshMeals: () => new Promise(resolve => pending.push(resolve)),
+    refreshShoppingDrafts: () => new Promise(resolve => pending.push(resolve)),
+    refreshNemlig: () => { reads.push('/api/nemlig/status'); return new Promise(resolve => pending.push(resolve)); },
     showHousehold: () => { renders.push(dateInput.value); makeTarget(`[data-household-date="${dateInput.value}"]`); },
     mealData: { household: { configured: true, adults: 2, children: [] } }, selectTab() {},
   });
   vm.runInContext(source.slice(0, bootEnd) + '\nglobalThis.openSource = focusRecordedSource;', context);
-  return { open: context.openSource, pending, route, renders, selected, targets, makeTarget, document, status, dateInput };
+  return { open: context.openSource, pending, route, renders, reads, selected, targets, makeTarget, document, status, dateInput, window };
 }
+
+test('R11 unknown basket outcome source opens exactly its local proposal, never refreshing or writing the basket', async () => {
+  const f = fixture('nemlig-proposal:chosen');
+  const other = f.makeTarget('[data-record-key="nemlig-proposal:other"]');
+  const exact = f.makeTarget('[data-record-key="nemlig-proposal:chosen"]');
+  const opening = f.open('nemlig-proposal:chosen'); f.pending.shift()(); await opening;
+  assert.equal(exact.scrolled, 1); assert.equal(other.scrolled, 0);
+  assert.deepEqual(f.reads, ['/api/nemlig/status']); assert.equal(f.dateInput.value, '');
+});
+
+test('R11 missing or malformed basket proposal source never silently substitutes another proposal', async () => {
+  const f = fixture('nemlig-proposal:missing');
+  const other = f.makeTarget('[data-record-key="nemlig-proposal:other"]');
+  const opening = f.open('nemlig-proposal:missing'); f.pending.shift()(); await opening;
+  assert.match(f.status.textContent, /kan ikke åbnes/); assert.equal(other.scrolled, 0);
+  f.route('nemlig-proposal:other:extra'); await f.open('nemlig-proposal:other:extra');
+  assert.equal(other.scrolled, 0); assert.deepEqual(f.reads, ['/api/nemlig/status']);
+});
 
 test('R11 exact household date renders after its awaited refresh without a synthetic button click', async () => {
   const f = fixture('household:2026-12-20');
@@ -102,12 +123,95 @@ test('R11 note source awaits actual memory reconciliation and cannot select a st
   assert.deepEqual([...f.selected], ['[data-memory-id="chosen"]']);
 });
 
+test('R11/E1 a dated meal source opens that exact date, not the first day or parent plan', async () => {
+  const f = fixture('meal-plan:chosen:2026-12-21');
+  const parent = f.makeTarget('[data-record-key="plan:chosen"]');
+  const other = f.makeTarget('[data-record-key="plan:chosen"] [data-meal-date="2026-12-20"]');
+  const correct = f.makeTarget('[data-record-key="plan:chosen"] [data-meal-date="2026-12-21"]');
+  const opening = f.open('meal-plan:chosen:2026-12-21');
+  assert.deepEqual([...f.selected], []); f.pending.shift()(); await opening;
+  assert.equal(parent.scrolled, 0); assert.equal(other.scrolled, 0); assert.equal(correct.scrolled, 1);
+});
+
+test('R11/E1 an invalid meal date is rejected before any refresh or guessed source', async () => {
+  const f = fixture('meal-plan:chosen:2026-02-30');
+  await f.open('meal-plan:chosen:2026-02-30');
+  assert.equal(f.pending.length, 0); assert.deepEqual([...f.selected], []);
+  assert.match(f.status.textContent, /ugyldig dato/);
+});
+
+test('R11/G3 a price observation awaits the exact shopping draft line without changing a product', async () => {
+  const f = fixture('shopping-draft:chosen:line-two');
+  const wrong = f.makeTarget('[data-record-key="shopping-draft:chosen"] [data-shopping-line-id="line-one"]');
+  const correct = f.makeTarget('[data-record-key="shopping-draft:chosen"] [data-shopping-line-id="line-two"]');
+  const opening = f.open('shopping-draft:chosen:line-two');
+  assert.deepEqual([...f.selected], []); f.pending.shift()(); await opening;
+  assert.equal(wrong.scrolled, 0); assert.equal(correct.scrolled, 1);
+  assert.deepEqual(f.renders, [], 'price source navigation does not rebuild attendance or meals');
+});
+
+test('R11 a missing price source line cannot fall back to a different product or draft', async () => {
+  const f = fixture('shopping-draft:chosen:missing');
+  const wrong = f.makeTarget('[data-record-key="shopping-draft:chosen"] [data-shopping-line-id="first"]');
+  const opening = f.open('shopping-draft:chosen:missing'); f.pending.shift()(); await opening;
+  assert.equal(wrong.scrolled, 0); assert.deepEqual([...f.selected], []);
+  assert.match(f.status.textContent, /kan ikke åbnes/);
+});
+
+test('R11 memory source tells the shared editor the exact ID, including read-only archived history', async () => {
+  const f = fixture('memory:archived-exact'); let received;
+  f.document.addEventListener('jarvis:memories-changed', event => {
+    received = event.detail.sourceId; f.makeTarget('[data-memory-id="archived-exact"]');
+    event.detail.waitUntil(Promise.resolve());
+  });
+  await f.open('memory:archived-exact'); assert.equal(received, 'memory:archived-exact');
+  assert.deepEqual([...f.selected], ['[data-memory-id="archived-exact"]']);
+});
+
 test('R11 claim source exposes its exact ID so hidden planning domains need not be fetched', async () => {
   const f = fixture('claim:exact'); let received;
   f.document.addEventListener('jarvis:v5-sources-changed', event => { received = event.detail.sourceId;
     f.makeTarget('[data-claim-id="exact"]'); event.detail.waitUntil(Promise.resolve()); });
   await f.open('claim:exact'); assert.equal(received, 'claim:exact');
   assert.deepEqual([...f.selected], ['[data-claim-id="exact"]']);
+});
+
+const calendarSource = (date = '2026-11-05', event = 'event:exact') =>
+  `google-calendar:primary:${date}:${encodeURIComponent(event)}:${encodeURIComponent('2026-11-05T12:00:00.000Z')}`;
+
+test('R11 exact calendar navigation binds calendar, event, date and cache version without a provider read', async () => {
+  const id = calendarSource(), f = fixture(id); let received, ready;
+  f.window.openRecordedCalendarSource = (key, { isCurrent }) => {
+    received = key; assert.equal(isCurrent(), true);
+    return new Promise(resolve => { ready = resolve; });
+  };
+  const wrong = f.makeTarget(`[data-calendar-source-id="${calendarSource('2026-11-05', 'other')}"]`);
+  const right = f.makeTarget(`[data-calendar-source-id="${id}"]`);
+  const pending = f.open(id); assert.equal(received, id); assert.equal(right.scrolled, 0);
+  ready(true); await pending; assert.equal(right.scrolled, 1); assert.equal(wrong.scrolled, 0);
+  assert.equal(f.pending.length, 0, 'does not refresh meals, calendar upstream or retailer data');
+});
+
+test('R11 missing calendar version cannot select a retained stale DOM card', async () => {
+  const id = calendarSource(), f = fixture(id); f.window.openRecordedCalendarSource = async () => false;
+  const stale = f.makeTarget(`[data-calendar-source-id="${id}"]`); await f.open(id);
+  assert.equal(stale.scrolled, 0); assert.match(f.status.textContent, /ikke længere.*cache/);
+});
+
+test('R11 malformed calendar sources are rejected before even a local read', async () => {
+  for (const id of [calendarSource('2026-02-30'), 'google-calendar:primary:2026-11-05:missing-version',
+    'google-calendar:%invalid:2026-11-05:event:2026-11-05T12%3A00%3A00Z', calendarSource('2026-11-05', '')]) {
+    const f = fixture(id); let calls = 0; f.window.openRecordedCalendarSource = async () => { calls++; return true; };
+    await f.open(id); assert.equal(calls, 0); assert.equal(f.selected.size, 0); assert.match(f.status.textContent, /Kalenderkilden mangler/);
+  }
+});
+
+test('R11 navigation away cancels the pending calendar source guard and highlight', async () => {
+  const id = calendarSource(), f = fixture(id); let ready, guard;
+  f.window.openRecordedCalendarSource = (key, { isCurrent }) => { guard = isCurrent; return new Promise(resolve => { ready = resolve; }); };
+  const pending = f.open(id); f.route(null); f.document.dispatchEvent({ type: 'jarvis:source-route', detail: { id: null } });
+  assert.equal(guard(), false); f.makeTarget(`[data-calendar-source-id="${id}"]`); ready(true); await pending;
+  assert.equal(f.selected.size, 0);
 });
 
 test('R11 copied source URL is preserved by application initialization', async () => {

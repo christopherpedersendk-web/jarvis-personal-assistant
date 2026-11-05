@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { createJobTransitions } from './job-state-transition.mjs';
-import { foodWords, ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
+import { foodWords, ingredientIdentity, ingredientMatchesAvoid, ingredientConstraints } from './food-identity.mjs';
 
 const normal = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase('da-DK');
 const idOf = product => String(product?.Id ?? '');
@@ -62,17 +62,10 @@ function includesAvoid(text, term) {
 
 function constraintsFor(meals, state, plan, ingredient) {
   const profile = typeof meals.profile === 'function' ? meals.profile() : state.mealProfile || {};
-  let diet = ['vegan', 'vegetarian'].includes(profile.diet) ? profile.diet : 'omnivore';
-  for (const dish of plan.dishes || []) {
-    if (dish.skip || !(dish.ingredients || []).some(item => normal(item.name) === normal(ingredient))) continue;
-    if (dish.theme === 'vegan' || dish.diet === 'vegan') diet = 'vegan';
-    else if (diet !== 'vegan' && (dish.theme === 'vegetarian' || dish.diet === 'vegetarian')) diet = 'vegetarian';
-  }
-  return { diet, avoid: [...new Set((Array.isArray(profile.avoid) ? profile.avoid : [])
-    .filter(item => typeof item === 'string').slice(0, 20).map(item => normal(item).slice(0, 80)).filter(Boolean))].sort() };
+  return ingredientConstraints(profile, plan.dishes, ingredient);
 }
 
-export function productConstraints(product, constraints = {}) {
+export function productConflicts(product, constraints = {}) {
   const diet = constraints.diet || 'omnivore';
   const avoid = Array.isArray(constraints.avoid) ? constraints.avoid : [];
   const texts = evidence(product).filter(([key]) => key !== 'Unit');
@@ -88,7 +81,12 @@ export function productConstraints(product, constraints = {}) {
       if (words.some(word => group.term.test(word))) conflict.push(`${diet}: ${group.names[0]}`);
     }
   }
-  return { conflicts: [...new Set(conflict)], requiresReview: diet !== 'omnivore' || avoid.length > 0,
+  return [...new Set(conflict)];
+}
+
+export function productConstraints(product, constraints = {}) {
+  const diet = constraints.diet || 'omnivore', avoid = Array.isArray(constraints.avoid) ? constraints.avoid : [];
+  return { conflicts: productConflicts(product, constraints), requiresReview: diet !== 'omnivore' || avoid.length > 0,
     evidenceFingerprint: hashList(evidence(product)), constraintsFingerprint: hashList({ diet, avoid }) };
 }
 
@@ -158,10 +156,26 @@ export class ShoppingPlanner {
   current(draft) {
     const plan = this.meals.getPlan(draft.planId);
     if (plan.status !== 'shopping_ready' || plan.revision !== draft.planRevision ||
-        plan.householdStale || plan.profileStale || plan.recipeStale || hashList(plan.shoppingList) !== draft.listFingerprint) {
+        plan.householdStale || plan.profileStale || plan.recipeStale || plan.shoppingNeedsReview || hashList(plan.shoppingList) !== draft.listFingerprint) {
       throw new Error('Madplanen eller indkøbslisten er ændret. Opret et nyt indkøbsforslag.');
     }
     this.meals.assertRecipeSources?.(plan.dishes || []);
+    this.meals.assertShoppingReviewed?.(plan);
+    return plan;
+  }
+
+  // Recheck retained proposals under the current shared rules, without an
+  // external read or write. A previously permissive match is not new approval.
+  assertReviewedConstraints(draft) {
+    const plan = this.current(draft);
+    for (const item of draft.items || []) {
+      if (!item.productId || !(item.quantity > 0)) continue;
+      const product = (item.candidates || []).find(candidate => idOf(candidate) === item.productId);
+      const assessment = productConstraints(product, constraintsFor(this.meals, this.state, plan, item.ingredient));
+      if (!product || !available(product) || item.needsReview || assessment.conflicts.length ||
+          assessment.requiresReview && !reviewed(item, assessment))
+        throw new Error('Vareforslaget kræver ny gennemgang efter aktuelle kost- og ingrediensregler. Ingen kurvændring.');
+    }
     return plan;
   }
 

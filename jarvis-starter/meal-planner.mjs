@@ -1,7 +1,9 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { ingredientIdentity, ingredientMatchesAvoid } from './food-identity.mjs';
+import { canonicalIngredientAmount, ingredientAmountKey, ingredientConstraints } from './food-identity.mjs';
 import { observedMealPrices, estimateMealRequirements, marginalMealEstimate } from './meal-price-observations.mjs';
+import { shoppingOverrides, projectShoppingChoices, editShoppingChoices } from './meal-shopping-choices.mjs';
+import { productConflicts } from './shopping-planner.mjs';
 
 // Illustrative recipes, never retailer prices or claims about allergen safety.
 const RECIPES = Object.freeze([
@@ -48,12 +50,10 @@ function validateIngredients(value, { allowZero = false, max = 60 } = {}) {
 function round(value) { return Math.round((value + Number.EPSILON) * 1000) / 1000; }
 
 function canonicalAmount(item) {
-  const conversions = { kg: ['g', 1000], l: ['ml', 1000], dl: ['ml', 100], cl: ['ml', 10] };
-  const [unit, factor] = conversions[item.unit] || [item.unit, 1];
-  return { name: normalize(item.name), quantity: round(item.quantity * factor), unit };
+  return canonicalIngredientAmount(item);
 }
 
-function ingredientKey(item) { const converted = canonicalAmount(item); return `${ingredientIdentity(converted.name)}|${converted.unit}`; }
+function ingredientKey(item) { return ingredientAmountKey(item); }
 
 function sameIngredients(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
@@ -254,7 +254,7 @@ function addDays(day, days) {
   return next.toISOString().slice(0, 10);
 }
 
-function ingredientsFor(dishes, profile) {
+function ingredientsFor(dishes, profile, { includeSatisfied = false } = {}) {
   const combined = new Map();
   for (const dish of dishes.filter(x => !x.skip)) for (const source of dish.ingredients) {
     const ingredient = canonicalAmount(source);
@@ -273,7 +273,7 @@ function ingredientsFor(dishes, profile) {
       found.pantryUsed = round(found.pantryUsed + used);
     }
   }
-  return [...combined.values()].filter(x => x.quantity > 0).sort((a, b) => a.name.localeCompare(b.name, 'da') || a.unit.localeCompare(b.unit));
+  return [...combined.values()].filter(x => includeSatisfied || x.quantity > 0).sort((a, b) => a.name.localeCompare(b.name, 'da') || a.unit.localeCompare(b.unit));
 }
 
 function effectiveDiet(profile, theme) {
@@ -282,23 +282,16 @@ function effectiveDiet(profile, theme) {
   return 'omnivore';
 }
 
-function ingredientConflicts(ingredients, diet) {
-  if (diet === 'omnivore') return false;
-  // This conservative check catches obvious mislabelling, not hidden allergens.
-  // Product labels and the user's own review remain necessary.
-  const meat = /(?:^|[^\p{L}])(?:kylling\p{L}*|oksekød|svinekød|bacon|skinke|pølse\p{L}*|laks|tun|torsk|rejer|hakket kød|chicken|beef|pork)(?:$|[^\p{L}])/iu;
-  const animal = /(?:^|[^\p{L}])(?:æg\p{L}*|egg\p{L}*|smør|ost|parmesan|mozzarella|fløde|yoghurt|yogurt|honning|komælk|sødmælk|letmælk|skummetmælk|mælk)(?:$|[^\p{L}])/iu;
-  return ingredients.some(item => {
-    const name = normalize(item.name).replace(/\b(?:vegansk|vegetabilsk|plantebaseret)\s+(?:ost|smør|fløde|yoghurt|kylling|kød)\b/gu, 'plantealternativ');
-    return meat.test(name) || diet === 'vegan' && animal.test(name);
-  });
+function ingredientConflicts(ingredients, diet, avoid = []) {
+  // One conservative text rule set for recipe ingredients, list edits and
+  // retailer products. This is not a food-safety/allergen guarantee.
+  return ingredients.some(item => productConflicts({ Name: item.name }, { diet, avoid }).length > 0);
 }
 
 function compatible(recipe, profile, theme) {
   const diet = effectiveDiet(profile, theme);
   const allowed = diet === 'omnivore' || recipe.diet === 'vegan' || diet === 'vegetarian' && recipe.diet === 'vegetarian';
-  return allowed && !ingredientConflicts(recipe.ingredients, diet) &&
-    !recipe.ingredients.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)));
+  return allowed && !ingredientConflicts(recipe.ingredients, effectiveDiet({ diet }, recipe.diet), profile.avoid);
 }
 
 function assertCompatible(dish, profile) {
@@ -331,10 +324,7 @@ function planServings(dishes) {
 }
 
 function pricingConstraints(dishes, profile) {
-  const diets = dishes.filter(dish => !dish.skip).map(dish => effectiveDiet(profile,
-    dish.theme === 'vegan' || dish.diet === 'vegan' ? 'vegan' : dish.theme === 'vegetarian' || dish.diet === 'vegetarian' ? 'vegetarian' : 'everyday'));
-  return { diet: diets.includes('vegan') ? 'vegan' : diets.includes('vegetarian') ? 'vegetarian' : profile.diet,
-    avoid: profile.avoid };
+  return requirement => ingredientConstraints(profile, dishes, requirement);
 }
 
 function scoreObservedPrices(rows, budgetPerDinner) {
@@ -458,14 +448,37 @@ export class MealPlanner {
     return this.state.mealPlans.slice(0, 12).map(plan => {
       const priceEstimate = this.estimatePlanPrices(plan, quotes);
       const pricingStale = Boolean(plan.priceEstimate && plan.priceEstimate.basisFingerprint !== priceEstimate.basisFingerprint);
-      return { ...clone(plan), priceEstimate, priceStatus: priceEstimate.status, pricingStale,
-        needsReview: plan.needsReview || pricingStale };
+      const { shoppingReview, shoppingNeedsReview } = this.shoppingProjection(plan);
+      return { ...clone(plan), shoppingReview, shoppingNeedsReview, priceEstimate, priceStatus: priceEstimate.status, pricingStale,
+        needsReview: plan.needsReview || pricingStale || shoppingNeedsReview };
     });
   }
   household() { return clone(this.state.mealHousehold); }
 
   priceContext(planId = null) {
     return { profile: this.profile(), pantry: this.pantryAvailableFor(planId), quotes: observedMealPrices(this.state, this.now()) };
+  }
+
+  shoppingRequirements(plan) {
+    return ingredientsFor(plan.dishes, { ...this.profile(), pantry: this.pantryAvailableFor(plan.id) }, { includeSatisfied: true });
+  }
+
+  shoppingChoiceConflicts(item, constraints) {
+    return ingredientConflicts([item], constraints.diet, constraints.avoid);
+  }
+
+  shoppingProjection(plan) {
+    return projectShoppingChoices(plan, this.shoppingRequirements(plan), this.profile(), this.shoppingChoiceConflicts);
+  }
+
+  preserveShoppingChoices(plan) {
+    if (!Array.isArray(plan.manualShoppingOverrides))
+      plan.manualShoppingOverrides = shoppingOverrides(plan, this.shoppingRequirements(plan), this.profile());
+  }
+
+  assertShoppingReviewed(plan) {
+    if (plan.shoppingNeedsReview || this.shoppingProjection(plan).shoppingNeedsReview)
+      throw new Error('Indkøbslistens manuelle valg kræver gennemgang mod det aktuelle behov. Ingen kurvændring.');
   }
 
   estimatePlanPrices(plan, quotes = observedMealPrices(this.state, this.now())) {
@@ -475,14 +488,12 @@ export class MealPlanner {
       note: 'Madplanens grundlag er ændret. Gennemgå planen før et aktuelt prisoverslag beregnes.' };
     const profile = this.profile();
     const reviewedList = plan.status === 'shopping_ready' && plan.shoppingRevision === plan.revision;
-    const requirements = reviewedList ? clone(plan.shoppingList) : ingredientsFor(plan.dishes, { ...profile, pantry: this.pantryAvailableFor(plan.id) });
-    if (!reviewedList) {
-      const present = new Set(requirements.map(ingredientKey));
-      for (const extra of plan.manualShoppingExtras || []) if (!present.has(ingredientKey(extra))) requirements.push(canonicalAmount(extra));
-    }
+    const projection = this.shoppingProjection(plan), requiresShoppingReview = Boolean(plan.shoppingNeedsReview || projection.shoppingNeedsReview);
+    const requirements = reviewedList ? clone(plan.shoppingList) : projection.shoppingList;
     const estimate = estimateMealRequirements(requirements, quotes, pricingConstraints(plan.dishes, profile));
     const budget = plan.budgetTargetDkk ?? null;
-    return { ...estimate, scope: reviewedList ? 'reviewed-local-shopping-list' : 'planned-ingredients-and-manual-extras',
+    return { ...estimate, scope: reviewedList ? requiresShoppingReview ? 'saved-local-shopping-list-awaiting-review' : 'reviewed-local-shopping-list' : 'planned-ingredients-and-manual-extras',
+      requiresShoppingReview,
       budgetTargetDkk: budget, budgetStatus: budget === null ? 'not-set' : estimate.knownProductsDkk > budget ? 'over'
         : estimate.estimatedProductsDkk === null ? 'unknown' : 'within' };
   }
@@ -568,6 +579,7 @@ export class MealPlanner {
   invalidatePlans(reason, { dates = null, household = false, profile = false } = {}) {
     for (const plan of this.state.mealPlans) {
       if (dates && !plan.dishes.some(dish => dates.includes(dish.date))) continue;
+      this.preserveShoppingChoices(plan);
       plan.revision++; plan.status = 'draft'; plan.needsReview = true;
       plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
       plan.householdStale ||= household; plan.profileStale ||= profile;
@@ -579,6 +591,7 @@ export class MealPlanner {
     let changed = false;
     for (const plan of this.state.mealPlans) {
       if (!plan.dishes.some(dish => dish.sourceRefs?.some(source => source.kind === 'recipe' && source.id === id))) continue;
+      this.preserveShoppingChoices(plan);
       plan.revision++; plan.status = 'draft'; plan.needsReview = true; plan.recipeStale = true;
       plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
       plan.staleReason = 'En gemt opskrift er ændret eller fjernet. Vælg en aktuel ret og gennemgå madplanen.';
@@ -736,7 +749,7 @@ export class MealPlanner {
       priceStatus: 'unknown-until-retailer-lookup', calendarAware: busy.size > 0, dishes,
       needsReview: true, householdStale: false, profileStale: false, recipeStale: false, staleReason: null,
       shoppingList: [], shoppingGeneratedAt: null, shoppingRevision: null,
-      manualShoppingExtras: [],
+      manualShoppingExtras: [], manualShoppingOverrides: [], shoppingNeedsReview: false,
     };
     this.recordPlanPrices(plan);
     this.state.mealPlans.unshift(plan);
@@ -848,6 +861,7 @@ export class MealPlanner {
     });
     const withLeftovers = plan.plannedLeftovers?.length ? applyPlannedLeftovers(plan, dishes, plan.plannedLeftovers, profile) : dishes;
     this.assertRecipeSources(withLeftovers);
+    this.preserveShoppingChoices(plan);
     plan.dishes = withLeftovers; plan.servings = planServings(withLeftovers); plan.revision++;
     plan.status = 'draft'; plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
     plan.needsReview = true; plan.householdStale = false; plan.profileStale = false; plan.recipeStale = false; plan.staleReason = null;
@@ -863,34 +877,27 @@ export class MealPlanner {
     if (plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Planens grundlag er ændret. Gennemgå og gem madplanen før indkøbslisten oprettes.');
     this.assertRecipeSources(plan.dishes);
     for (const dish of plan.dishes) assertCompatible(dish, this.profile());
-    const requirements = ingredientsFor(plan.dishes, { ...this.profile(), pantry: this.pantryAvailableFor(id) });
-    const keys = new Set(requirements.map(ingredientKey));
-    const extras = (plan.manualShoppingExtras || []).filter(extra => !keys.has(ingredientKey(extra)));
-    const profile = this.profile();
-    if (ingredientConflicts(extras, profile.diet) ||
-      extras.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)))) {
-      throw new Error('Manuelle ekstravarer er i konflikt med de aktuelle kostvalg. Ret indkøbslisten først.');
-    }
-    plan.shoppingList = [...requirements, ...clone(extras)].sort((a, b) => a.name.localeCompare(b.name, 'da'));
-    plan.revision++; plan.shoppingRevision = plan.revision; plan.status = 'shopping_ready'; plan.needsReview = false;
+    const projected = this.shoppingProjection(plan);
+    Object.assign(plan, projected);
+    plan.revision++; plan.shoppingRevision = plan.revision; plan.status = 'shopping_ready'; plan.needsReview = plan.shoppingNeedsReview;
     plan.shoppingGeneratedAt = this.now().toISOString(); plan.updatedAt = this.now().toISOString(); plan.staleReason = null;
     this.recordPlanPrices(plan);
     await this.save();
     return plan;
   }
 
-  async editShoppingList(id, { expectedRevision, items } = {}) {
+  async editShoppingList(id, { expectedRevision, items, useComputed = [] } = {}) {
     const plan = this.getPlan(id);
     checkRevision(plan, expectedRevision);
     if (plan.status !== 'shopping_ready' || !plan.shoppingGeneratedAt || plan.householdStale || plan.profileStale || plan.recipeStale) throw new Error('Opret en aktuel indkøbsliste fra den gennemgåede madplan først.');
-    const checked = validateIngredients(items);
+    const checked = validateIngredients(items, { allowZero: true });
     const keys = checked.map(ingredientKey);
     if (new Set(keys).size !== keys.length) throw new Error('Samme vare og enhed må kun stå én gang på indkøbslisten.');
-    const profile = this.profile();
-    if (ingredientConflicts(checked, profile.diet) || checked.some(item => profile.avoid.some(term => ingredientMatchesAvoid(item.name, term)))) throw new Error('Indkøbslisten er i konflikt med dine madpræferencer.');
-    const requiredKeys = new Set(ingredientsFor(plan.dishes, { ...profile, pantry: this.pantryAvailableFor(id) }).map(ingredientKey));
-    plan.manualShoppingExtras = checked.filter(item => !requiredKeys.has(ingredientKey(item))).map(canonicalAmount);
-    plan.shoppingList = checked.map(item => ({ ...canonicalAmount(item), manuallyEdited: true }));
+    if (!Array.isArray(useComputed) || useComputed.length > 120) throw new Error('Ugyldigt valg af beregnede mængder.');
+    const resets = validateIngredients(useComputed.map(item => ({ ...item, quantity: 0 })), { allowZero: true, max: 120 });
+    const projected = editShoppingChoices(plan, this.shoppingRequirements(plan), this.profile(), checked,
+      { useComputed: resets, revision: plan.revision + 1, at: this.now().toISOString(), conflicts: this.shoppingChoiceConflicts });
+    Object.assign(plan, projected); plan.needsReview = plan.shoppingNeedsReview;
     plan.revision++; plan.shoppingRevision = plan.revision; plan.updatedAt = this.now().toISOString();
     this.recordPlanPrices(plan);
     await this.save();
@@ -914,6 +921,7 @@ export class MealPlanner {
     let restoredRecipeStale = false;
     try { this.assertRecipeSources(dishes); }
     catch (error) { if (checked.length) throw error; restoredRecipeStale = true; }
+    this.preserveShoppingChoices(plan);
     plan.dishes = dishes; plan.plannedLeftovers = checked; plan.servings = planServings(dishes);
     plan.revision++; plan.status = 'draft'; plan.needsReview = true;
     plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;
@@ -957,6 +965,7 @@ export class MealPlanner {
       selectedDishes.push(dish); return dish;
     });
     this.assertRecipeSources(dishes);
+    this.preserveShoppingChoices(plan);
     plan.dishes = dishes; plan.servings = planServings(dishes); plan.revision++;
     plan.status = 'draft'; plan.needsReview = true; plan.shoppingList = []; plan.shoppingGeneratedAt = null;
     plan.shoppingRevision = null; plan.updatedAt = this.now().toISOString();
@@ -991,6 +1000,7 @@ export class MealPlanner {
     const movedSecond = move(first, second);
     assertCompatible(movedFirst, this.profile()); assertCompatible(movedSecond, this.profile());
     this.assertRecipeSources([movedFirst, movedSecond]);
+    this.preserveShoppingChoices(plan);
     plan.dishes = plan.dishes.map(dish => dish.date === firstDate ? movedFirst : dish.date === secondDate ? movedSecond : dish);
     plan.servings = planServings(plan.dishes); plan.revision++; plan.status = 'draft'; plan.needsReview = true;
     plan.shoppingList = []; plan.shoppingGeneratedAt = null; plan.shoppingRevision = null;

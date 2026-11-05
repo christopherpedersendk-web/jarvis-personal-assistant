@@ -681,7 +681,10 @@ function mealSyncCards(root, records, prefix, render, emptyText) {
     // A background refresh must not replace the input currently holding focus,
     // even before its first change event. Buttons are intentionally excluded so
     // a successful save can replace the completed editor with fresh server data.
-    const focusedEditor = card?.contains(document.activeElement) &&
+    // Clearing a draft is an explicit successful acknowledgement or discard;
+    // it removes this signature so the requested refresh can also replace the
+    // previously focused editor. Ordinary polls never remove the signature.
+    const focusedEditor = card && mealServerSignatures.has(card) && card.contains(document.activeElement) &&
       document.activeElement?.matches('input, textarea, select, [contenteditable="true"]');
     const signature = JSON.stringify(record);
     if (!card || (!mealDirty.has(key) && !focusedEditor && mealServerSignatures.get(card) !== signature)) {
@@ -874,8 +877,136 @@ function mealRecipeChoices(dish) {
   return options;
 }
 
+function mealRecordSourceLink(sourceId, label) {
+  const link = mealNode('a', label);
+  link.href = '?view=meals&source=' + encodeURIComponent(sourceId);
+  link.addEventListener('click', event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button > 0) return;
+    event.preventDefault(); mealPersistDrafts();
+    selectTab('meals', { sourceId });
+    document.dispatchEvent(new CustomEvent('jarvis:source-route', { detail: { id: sourceId } }));
+  });
+  return link;
+}
+
+function mealPriceSummary(plan) {
+  const section = mealNode('section', '', 'meal-price-summary');
+  const estimate = plan.priceEstimate;
+  const money = value => typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' }) : 'ukendt';
+  section.append(mealNode('h4', 'Lokalt prisoverslag for ugeplanens listevalg'));
+  if (!estimate || estimate.status === 'stale-basis') {
+    section.append(mealNode('p', 'Samlet pris er ukendt. Gennemgå planens aktuelle grundlag, før et nyt overslag bruges.', 'muted small-text'));
+    return section;
+  }
+  if (plan.pricingStale) section.append(mealNode('p',
+    'Prisgrundlaget er ændret eller forældet siden planen blev gemt. Se det aktuelle lokale overslag nedenfor; retter og varevalg er ikke ændret automatisk.', 'meal-warning'));
+  if (estimate.requiresShoppingReview) section.append(mealNode('p',
+    'Overslaget følger dine bevarede listevalg, men deres beregningsgrundlag skal gennemgås før varesøgning eller et nyt kurvforslag.', 'meal-warning'));
+  const total = estimate.estimatedProductsDkk;
+  section.append(mealNode('p', total == null
+    ? 'Samlet pris: ukendt · ' + ((estimate.lines || []).length ? 'kendt del af overslaget: ' + money(estimate.knownProductsDkk) : 'ingen dokumenterede priser dækker behovene.')
+    : 'Observeret skøn for ekstra ingredienspakker: ' + money(total), 'small-text'));
+  if (estimate.status === 'no-extra-ingredients') section.append(mealNode('p',
+    'Der er ingen positive mængder i det lokale prisgrundlag. Det kan skyldes registreret lager eller eksplicitte udeladelser; ikke bevis på lager, den rigtige kurvs værdi eller gennemførte køb.', 'muted micro'));
+  if (estimate.budgetStatus === 'over') section.append(mealNode('p',
+    'Den kendte del er allerede over budgetmålet på ' + money(estimate.budgetTargetDkk) + '.', 'meal-warning'));
+  else if (estimate.budgetStatus === 'unknown') section.append(mealNode('p',
+    'Budgetstatus er ukendt, fordi priser eller grundlag mangler. Ukendte varer er ikke gratis.', 'muted micro'));
+  else if (estimate.budgetStatus === 'within') section.append(mealNode('p',
+    'Det observerede lokale overslag er inden for budgetmålet på ' + money(estimate.budgetTargetDkk) + ' — ikke en fremtidig prisgaranti.', 'muted micro'));
+  section.append(mealNode('p', 'Kun prisobservationer højst ' + (estimate.maxObservationAgeHours || 24) +
+    ' timer gamle bruges. Dokumenterede priseksempler sammenlignes; dine varevalg er ikke ændret. Overslaget erstatter ikke det gennemgåede kurvforslags pris.', 'muted micro'));
+  const unknown = (estimate.unknownIngredients || []).map(item => item.name).filter(Boolean);
+  if (unknown.length) section.append(mealNode('p', 'Pris mangler: ' + unknown.join(', ') + '.', 'meal-warning'));
+  if ((estimate.lines || []).length) {
+    const details = mealNode('details', '', 'meal-details meal-price-sources');
+    details.append(mealNode('summary', 'Se dokumenterede priser, pakninger og kilder'));
+    const list = mealNode('ul');
+    for (const line of estimate.lines) {
+      const row = mealNode('li');
+      row.append(mealNode('p', line.name + ': behov ' + line.quantity + ' ' + line.unit + ' · ' + line.packages +
+        ' pakning(er) à ' + line.packageQuantity + ' ' + line.unit + ' til ' + money(line.unitPriceDkk) +
+        ' · skøn ' + money(line.estimatedProductsDkk) + ' · pakkeoverskud ' + line.surplusQuantity + ' ' + line.unit + ' (ikke registreret lager).', 'small-text'));
+      if (line.requiresProductReview) row.append(mealNode('p', 'Vareoplysninger og kosthensyn kræver din gennemgang.', 'meal-warning'));
+      const source = line.source;
+      if (source?.id && source.lineId) row.append(mealRecordSourceLink('shopping-draft:' + source.id + ':' + source.lineId,
+        'Åbn kildelinjen til prisobservationen: vare ' + source.productId + ' · forslag version ' + source.revision + ' · ' + source.observedAt));
+      list.append(row);
+    }
+    details.append(list); section.append(details);
+  }
+  section.append(mealNode('p', estimate.note || 'Ikke levering, pant, poser, hel kurv eller prisgaranti.', 'muted micro'));
+  return section;
+}
+
+function mealLeftoversEditor(plan, onChange = () => {}) {
+  const element = mealNode('details', '', 'meal-details meal-leftovers-editor');
+  element.append(mealNode('summary', 'Planlæg rester mellem ugens dage'));
+  element.append(mealNode('p',
+    'Vælg en tidligere tilberedningsdag og hele måldagens portioner. Der planlægges ekstra ingredienser på kildedagen, ikke et nyt lager. Dette er ikke bevis på tilberedning, holdbarhed eller indtag. Ingen kæder af rester.', 'muted micro'));
+  element.append(mealNode('p',
+    'Din oprindelige ret på måldagen bevares som et lokalt øjebliksbillede og gendannes, hvis fordelingen fjernes og gemmes. Retter og portioner på de forbundne dage ændres først efter eksplicit fjernelse af fordelingen.', 'muted micro'));
+  const stale = Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
+  if (stale) element.append(mealNode('p', 'Grundlaget er ændret. Fjern de gemte fordelinger eksplicit, gennemgå planen, og opret derefter eventuelle nye fordelinger.', 'meal-warning'));
+  const fields = mealNode('fieldset', '', 'meal-leftovers-fields meal-structured-group');
+  fields.append(mealNode('legend', 'Restefordelinger'));
+  const rows = mealNode('div', '', 'meal-structured-rows'), controls = [];
+  const dates = (plan.dishes || []).map(dish => [dish.date, mealDayLabel(dish.date) + (dish.skip ? ' (sprunget over)' : '')]);
+  const add = mealNode('button', 'Tilføj planlagte rester', 'secondary'); add.type = 'button';
+  const choices = [['', 'Vælg dag'], ...dates];
+  const updateAdd = () => { add.disabled = stale || controls.length >= 6 || dates.length < 2; };
+  function appendRow(value = {}) {
+    if (controls.length >= 6) return;
+      const row = mealNode('div', '', 'meal-leftovers-row meal-rhythm-day-fields');
+    const fromDate = mealSelect(choices, value.fromDate || ''), toDate = mealSelect(choices, value.toDate || '');
+    const servings = mealInput(value.servings ?? '', 'number', { min: 0.001, max: 72, step: 'any' });
+    const minutes = mealInput(value.minutes ?? '', 'number', { min: 1, max: 720, step: 1 });
+    for (const [name, field] of Object.entries({ fromDate, toDate, servings, minutes })) {
+      field.dataset.leftoverField = name; field.disabled = stale; field.addEventListener('input', onChange);
+    }
+    const remove = mealNode('button', 'Fjern fordeling', 'secondary'); remove.type = 'button';
+    const entry = { row, fromDate, toDate, servings, minutes };
+    remove.addEventListener('click', () => { if (remove.disabled) return; controls.splice(controls.indexOf(entry), 1); row.remove(); updateAdd(); onChange(); });
+    row.append(mealField('Tilberedningsdag', fromDate), mealField('Dag med planlagte rester', toDate),
+      mealField('Hele måldagens portioner', servings), mealField('Tid på måldagen (minutter, dit skøn)', minutes), remove);
+    rows.append(row); controls.push(entry); updateAdd();
+  }
+  add.addEventListener('click', () => {
+    if (add.disabled) return;
+    const source = (plan.dishes || []).find(dish => !dish.skip);
+    const target = (plan.dishes || []).find(dish => !dish.skip && dish.date > source?.date &&
+      !controls.some(row => row.toDate.value === dish.date));
+    appendRow({ fromDate: source?.date || '', toDate: target?.date || '', servings: target?.servings ?? '', minutes: '' });
+    element.open = true; controls.at(-1)?.minutes.focus(); onChange();
+  });
+  function set(values = []) {
+    rows.replaceChildren(); controls.length = 0;
+    for (const row of values) appendRow(row);
+    updateAdd();
+  }
+  fields.append(rows, add); element.append(fields); set(plan.plannedLeftovers || []);
+  element.open = Boolean(plan.plannedLeftovers?.length);
+  return { element, fields, count: () => controls.length,
+    snapshot: () => ({ open: element.open, rows: controls.map(({ fromDate, toDate, servings, minutes }) =>
+      ({ fromDate: fromDate.value, toDate: toDate.value, servings: servings.value, minutes: minutes.value })) }),
+    restore(value = {}) { set(mealRawRows(value.rows, 6).map(row => ({ fromDate: mealRawText(row.fromDate, 10), toDate: mealRawText(row.toDate, 10),
+      servings: mealRawText(row.servings, 20), minutes: mealRawText(row.minutes, 20) }))); element.open = value.open === true || controls.length > 0; },
+    read() {
+      return controls.map(({ fromDate, toDate, servings, minutes }) => {
+        const count = Number(servings.value), time = Number(minutes.value);
+        if (!fromDate.value || !toDate.value || fromDate.value >= toDate.value || !servings.value.trim() || !Number.isFinite(count) || count <= 0 || count > 72 ||
+          !minutes.value.trim() || !Number.isInteger(time) || time < 1 || time > 720)
+          throw new Error('Udfyld en tidligere kildedag, en senere måldag, positive portioner og dit eget tidsestimat på 1–720 minutter.');
+        return { fromDate: fromDate.value, toDate: toDate.value, servings: count, minutes: time };
+      });
+    },
+  };
+}
+
 function mealDishEditor(dish, markDirty) {
   const fieldset = document.createElement('fieldset'); fieldset.className = 'meal-day-editor';
+  fieldset.dataset.mealDate = dish.date;
   fieldset.append(mealNode('legend', mealDayLabel(dish.date)));
   const household = dish.adults == null ? 'Antal voksne/børn er ikke bekræftet.'
     : mealPortionsText(dish.adults, dish.children, dish.adultPortion ?? 1, dish.guests);
@@ -909,6 +1040,13 @@ function mealDishEditor(dish, markDirty) {
   fieldset.append(details);
   const reasons = Array.isArray(dish.reasons) ? dish.reasons : [];
   if (reasons.length) fieldset.append(mealNode('p', reasons.join(' · '), 'muted micro'));
+  if (dish.leftoverFromDate || dish.leftoverTargets?.length) {
+    fieldset.append(mealNode('p', dish.leftoverNote || 'Denne dag indgår i planlagte rester.', 'muted small-text'),
+      mealNode('p', 'Fjern den berørte restefordeling og gem, før ret, portioner eller ingredienser ændres. Låsevalget kan stadig ændres.', 'muted micro'));
+    // A link binds both food snapshots. Changing a visible source's portion
+    // field must not silently under- or over-allocate its planned target meal.
+    for (const field of fieldset.querySelectorAll('input, select, textarea, button')) if (field !== locked.control) field.disabled = true;
+  }
   function updateIngredientPreview() {
     const count = Number(servings.value);
     if (!previewValid || !servings.value || !Number.isFinite(count) || count <= 0) return;
@@ -962,36 +1100,44 @@ function mealDishEditor(dish, markDirty) {
 }
 
 function showMealPlans(plans) {
-  mealSyncCards(mealEl('meal-plans'), (plans || []).slice(0, 5), 'plan', (plan, key) => {
+  const source = new URL(window.location.href).searchParams.get('source');
+  const selected = source?.startsWith('meal-plan:') ? (plans || []).find(plan => source.split(':')[1] === plan.id) : null;
+  const visible = selected ? [selected, ...(plans || []).filter(plan => plan !== selected)].slice(0, 5) : (plans || []).slice(0, 5);
+  mealSyncCards(mealEl('meal-plans'), visible, 'plan', (plan, key) => {
     const card = mealNode('article', '', 'meal-card meal-plan-card');
     const ready = plan.status === 'shopping_ready';
     card.append(mealNode('h3', plan.startDate + ' · ' + plan.days + ' dage'),
-      mealNode('span', ready ? 'Indkøbsliste klar' : 'Madplansforslag', 'meal-status'));
+      mealNode('span', ready ? plan.shoppingNeedsReview ? 'Indkøbsliste kræver gennemgang' : 'Indkøbsliste klar' : 'Madplansforslag', 'meal-status'));
     card.append(mealNode('p', 'Version ' + (plan.revision || 1) + ' · ' + (ready
       ? 'Listen er beregnet fra den gemte plan. Retter du planen, skal listen laves igen.'
       : 'Ret forslaget, gem dine ændringer, og opret derefter indkøbslisten.'), 'muted small-text'));
     if (plan.calendarAware) card.append(mealNode('p', 'Kalenderen påvirker forslag til tilberedningstid — ikke hvem der er hjemme.', 'muted micro'));
     if (plan.householdStale || plan.profileStale || plan.recipeStale) card.append(mealNode('p',
       plan.staleReason || 'Grundlaget er ændret. Opdatér husstand eller gennemgå og gem planen igen før indkøb.', 'meal-warning'));
-    let dishDirty = false; let listDirty = false;
+    let dishDirty = false; let listDirty = false; let leftoversDirty = false;
     const status = mealNode('p', '', 'muted micro'); status.dataset.editStatus = '';
     const actions = mealNode('div', '', 'meal-actions');
-    let savePlan, buildList, findProducts, saveList, regenerate, swap;
+    let savePlan, buildList, findProducts, saveList, regenerate, swap, saveLeftovers;
+    const resetShoppingChoices = [];
     const listFields = document.createElement('fieldset'); listFields.className = 'meal-list-editor';
     const shoppingEditor = mealIngredientEditor(plan.shoppingList || [], () => {
       listDirty = true; mealDirty.add(key);
       status.textContent = 'Listerettelser er ikke gemt. Gem eller genindlæs før du ændrer madplanen.';
       flags();
-    });
+    }, { allowZero: true });
     function flags() {
-      savePlan.disabled = (!dishDirty && !plan.profileStale && !plan.recipeStale) || listDirty || Boolean(plan.householdStale);
-      buildList.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
-      findProducts.disabled = !ready || !(plan.shoppingList || []).length || dishDirty || listDirty;
-      if (saveList) saveList.disabled = !listDirty || dishDirty;
-      listFields.disabled = dishDirty;
-      for (const editor of editors) editor.element.disabled = listDirty;
-      if (regenerate) regenerate.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
-      if (swap) swap.disabled = dishDirty || listDirty || Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
+      const basisStale = Boolean(plan.householdStale || plan.profileStale || plan.recipeStale);
+      savePlan.disabled = (!dishDirty && !plan.profileStale && !plan.recipeStale) || listDirty || leftoversDirty || Boolean(plan.householdStale);
+      buildList.disabled = dishDirty || listDirty || leftoversDirty || basisStale;
+      findProducts.disabled = !ready || plan.shoppingNeedsReview || !(plan.shoppingList || []).length || dishDirty || listDirty || leftoversDirty;
+      if (saveList) saveList.disabled = !(listDirty || plan.shoppingNeedsReview) || dishDirty || leftoversDirty;
+      for (const button of resetShoppingChoices) button.disabled = dishDirty || listDirty || leftoversDirty;
+      listFields.disabled = dishDirty || leftoversDirty;
+      for (const editor of editors) editor.element.disabled = listDirty || leftoversDirty;
+      if (regenerate) regenerate.disabled = dishDirty || listDirty || leftoversDirty || basisStale;
+      if (swap) swap.disabled = dishDirty || listDirty || leftoversDirty || basisStale;
+      if (saveLeftovers) saveLeftovers.disabled = !leftoversDirty || dishDirty || listDirty || basisStale && leftovers.count() > 0;
+      leftovers.fields.disabled = dishDirty || listDirty;
     }
     function dirtyDishes() {
       dishDirty = true; mealDirty.add(key);
@@ -999,8 +1145,13 @@ function showMealPlans(plans) {
       flags();
     }
     const editors = (plan.dishes || []).map(dish => mealDishEditor(dish, dirtyDishes));
+    const leftovers = mealLeftoversEditor(plan, () => {
+      leftoversDirty = true; mealDirty.add(key); status.textContent = 'Restefordelingen er ikke gemt. Gennemgå dage, portioner og tid, og gem før andre planændringer.'; flags();
+    });
     const dayGrid = mealNode('div', '', 'meal-dishes');
     dayGrid.append(...editors.map(editor => editor.element)); card.append(dayGrid);
+    for (const [index, dish] of (plan.dishes || []).entries()) if (dish.leftoverFromDate) editors[index].element.append(
+      mealRecordSourceLink('meal-plan:' + plan.id + ':' + dish.leftoverFromDate, 'Åbn den præcise tilberedningsdag ' + dish.leftoverFromDate));
     savePlan = mealAction('Gem ændringer i madplanen', async () => {
       await mealApi('/api/meals/plans/' + plan.id, 'PUT', { expectedRevision: plan.revision || 1, dishes: editors.map(editor => editor.collect()) });
       mealClearDraft(key); await refreshMeals(); toast('Madplanen er gemt. Indkøbslisten skal beregnes fra den nye version.');
@@ -1012,7 +1163,7 @@ function showMealPlans(plans) {
     regenerate = mealAction('Foreslå nye retter til ulåste dage', async () => {
       if (mealDirty.has(key)) throw new Error('Gem eller kassér dine lokale ændringer før nye retter foreslås.');
       await mealApi('/api/meals/plans/' + plan.id + '/regenerate', 'POST', { expectedRevision: plan.revision || 1 });
-      await refreshMeals(); toast('Ulåste dage er opdateret. Låste retter og manuelle ekstravarer er bevaret.');
+      await refreshMeals(); toast('Ulåste forslag er opdateret. Låste og manuelt valgte retter, restefordelinger og manuelle ekstravarer er bevaret.');
     }, status);
     findProducts = mealAction('Find varer på Nemlig', async () => {
       status.textContent = 'Finder konkrete varer og pakningsantal. Din Nemlig-kurv ændres ikke …';
@@ -1042,28 +1193,77 @@ function showMealPlans(plans) {
     actions.append(mealAction('Genindlæs / kassér lokale rettelser', async () => {
       mealClearDraft(key); await refreshMeals();
     }, status));
-    card.append(actions, swapDetails);
+    saveLeftovers = mealAction('Gem planlagte rester', async () => {
+      const generation = mealSessionGeneration;
+      await mealApi('/api/meals/plans/' + plan.id + '/leftovers', 'POST', { expectedRevision: plan.revision || 1, links: leftovers.read() });
+      if (!mealSessionCurrent(generation)) return;
+      mealClearDraft(key); saveLeftovers.dataset.keepDisabled = 'true'; saveLeftovers.disabled = true;
+      status.textContent = 'Restefordelingen er gemt. Indkøbslisten skal beregnes fra den nye version.';
+      try { await refreshMeals(); if (mealSessionCurrent(generation)) toast('Restefordelingen er gemt. Ingen tilberedning, forbrug, lager eller Nemlig-kurv er registreret.'); }
+      catch (error) { if (mealSessionCurrent(generation)) status.textContent = 'Restefordelingen er gemt, men visningen kunne ikke opdateres: ' + error.message + ' Hent den aktuelle plan før næste ændring.'; }
+    }, status, true);
+    leftovers.element.append(saveLeftovers);
+    card.append(actions, swapDetails, leftovers.element, mealPriceSummary(plan));
     if (ready) {
       const list = mealNode('ul', '', 'meal-shopping-list');
       for (const item of plan.shoppingList || []) list.append(mealNode('li', item.name + ' · ' + item.quantity + ' ' + item.unit));
       card.append(mealNode('h4', 'Indkøbsliste — oplyst lager er fratrukket'));
-      if (!(plan.shoppingList || []).length) card.append(mealNode('p', 'Ingen manglende ingredienser i den beregnede liste.', 'muted'));
+      if (!(plan.shoppingList || []).length) card.append(mealNode('p', plan.shoppingReview?.rows?.some(row => row.excluded)
+        ? 'Ingen valgte varer. Du har udeladt varer; det er ikke dokumentation for, at ingredienserne er på lager.'
+        : 'Ingen manglende ingredienser i den beregnede liste.', 'muted'));
       card.append(list);
+      const review = mealNode('section', '', 'meal-shopping-review');
+      review.append(mealNode('h4', 'Beregnet behov og dine listevalg'));
+      if (plan.shoppingNeedsReview) review.append(mealNode('p', 'Grundlaget for gemte valg er ændret eller ukendt. Gennemgå mængderne nedenfor, ret listen eller gem de viste valg igen. Varesøgning venter på gennemgangen.', 'meal-warning'));
+      for (const row of plan.shoppingReview?.rows || []) {
+        const choice = mealNode('div', '', 'meal-shopping-choice'); choice.dataset.shoppingChoice = row.name + '|' + row.unit;
+        choice.append(mealNode('p', row.name + ' · dit valg: ' + row.selectedQuantity + ' ' + row.unit +
+          ' · beregnet at tilføje: ' + row.computedQuantity + ' ' + row.unit, 'small-text'),
+        mealNode('p', 'Planens ingrediensbehov: ' + row.requiredQuantity + ' ' + row.unit + ' · bekræftet lager anvendt: ' + row.pantryUsed + ' ' + row.unit +
+          (row.excluded ? ' · eksplicit udeladt' : '') + (row.removedFromPlan ? ' · ikke længere et opskriftsbehov' : ''), 'muted micro'),
+        mealNode('p', row.reason || 'Dit manuelle valg er bevaret.', row.needsReview ? 'meal-warning' : 'muted micro'));
+        if (row.source) choice.append(mealNode('p', 'Listevalg registreret ved planrevision ' + (row.source.revision ?? 'ukendt') +
+          (row.source.at ? ' · ' + row.source.at : ' · tidspunkt ukendt') + '. Oprindeligt beregnet behov: ' +
+          (row.previousBasis ? row.previousBasis.quantity + ' ' + row.unit : 'ukendt') + '.', 'muted micro'));
+        for (const basis of row.currentBasis?.sources || []) if (basis.date) choice.append(
+          mealRecordSourceLink('meal-plan:' + plan.id + ':' + basis.date, 'Åbn behovets måltid den ' + basis.date));
+        const reset = mealAction('Brug beregnet mængde for ' + row.name + ' (' + row.unit + ')', async () => {
+          if (mealDirty.has(key)) throw new Error('Gem eller kassér lokale rettelser, før et gemt listevalg nulstilles.');
+          await publishShoppingList(plan.shoppingList || [], [{ name: row.name, unit: row.unit }], reset);
+        }, status);
+        reset.dataset.shoppingReset = row.name + '|' + row.unit;
+        resetShoppingChoices.push(reset); choice.append(reset); review.append(choice);
+      }
+      if (!(plan.shoppingReview?.rows || []).length) review.append(mealNode('p', 'Der er ingen gemte manuelle mængdevalg. Uændrede beregnede varer tilpasses ved næste genberegning.', 'muted micro'));
+      review.append(mealNode('p', 'Nul eller Fjern gemmer en eksplicit udeladelse. Manuelle mængder bevares ved genberegning; køb, forbrug og lager registreres ikke.', 'muted micro'));
+      card.append(review);
       const edit = document.createElement('details'); edit.className = 'meal-details';
+      edit.open = Boolean(plan.shoppingNeedsReview);
       edit.append(mealNode('summary', 'Ret selve indkøbslisten'));
       listFields.append(mealStructuredGroup('Varer og antal', shoppingEditor));
+      async function publishShoppingList(items, useComputed, initiator) {
+        const generation = mealSessionGeneration;
+        await mealApi('/api/meals/plans/' + plan.id + '/shopping-list', 'PUT', {
+          expectedRevision: plan.revision || 1, items, ...(useComputed.length ? { useComputed } : {}) });
+        if (!mealSessionCurrent(generation)) return;
+        mealClearDraft(key); initiator.dataset.keepDisabled = 'true'; initiator.disabled = true;
+        status.textContent = 'Listen og din gennemgang er gemt. Ingen Nemlig-kurv er ændret.';
+        try { await refreshMeals(); if (mealSessionCurrent(generation)) toast('Listevalgene er gemt. Tidligere vare- og kurvforslag skal laves igen.'); }
+        catch (error) { if (mealSessionCurrent(generation)) status.textContent = 'Listen er gemt, men visningen kunne ikke opdateres: ' + error.message + ' Genindlæs den aktuelle plan før næste ændring.'; }
+      }
       saveList = mealAction('Gem rettelser til listen', async () => {
-        await mealApi('/api/meals/plans/' + plan.id + '/shopping-list', 'PUT', { expectedRevision: plan.revision || 1, items: shoppingEditor.read() });
-        mealClearDraft(key); await refreshMeals(); toast('Listen er rettet. Tidligere kurvforslag fra listen skal laves igen.');
+        await publishShoppingList(shoppingEditor.read(), [], saveList);
       }, status);
       listFields.append(saveList); edit.append(listFields); card.append(edit, findProducts);
     }
     card.append(mealNode('p', 'Budgetmål: ' + (plan.budgetTargetDkk ?? 'ikke fastsat') + ' kr. · Ikke en prisgaranti.', 'muted micro'), status);
     mealRegisterDraft(key, plan, () => ({ dishes: editors.map(editor => editor.snapshot()),
-      shoppingList: shoppingEditor.snapshot(), dishDirty, listDirty }), fields => {
+      shoppingList: shoppingEditor.snapshot(), leftovers: leftovers.snapshot(), dishDirty, listDirty, leftoversDirty }), fields => {
       const byDate = new Map(mealRawRows(fields.dishes, 7).map(dish => [dish.date, dish]));
       for (const [index, dish] of (plan.dishes || []).entries()) if (byDate.has(dish.date)) editors[index].restore(byDate.get(dish.date));
       shoppingEditor.restore(fields.shoppingList); dishDirty = fields.dishDirty === true; listDirty = fields.listDirty === true;
+      if (fields.leftovers) leftovers.restore(fields.leftovers);
+      leftoversDirty = fields.leftoversDirty === true;
       for (const details of card.querySelectorAll('details')) if (listDirty && details.contains(shoppingEditor.element)) details.open = true;
     }, status);
     flags(); return card;
@@ -1207,7 +1407,10 @@ async function refreshShoppingDrafts() {
   const generation = mealSessionGeneration;
   const { drafts = [] } = await mealApi('/api/shopping-drafts');
   if (!mealSessionCurrent(generation)) return;
-  mealSyncCards(mealEl('meal-shopping-drafts'), drafts.slice(0, 8), 'shopping-draft', (draft, key) => {
+  const source = new URL(window.location.href).searchParams.get('source');
+  const selected = source?.startsWith('shopping-draft:') ? drafts.find(draft => source.split(':')[1] === draft.id) : null;
+  const visible = selected ? [selected, ...drafts.filter(draft => draft !== selected)].slice(0, 8) : drafts.slice(0, 8);
+  mealSyncCards(mealEl('meal-shopping-drafts'), visible, 'shopping-draft', (draft, key) => {
     const card = mealNode('article', '', 'meal-card');
     const editable = draft.status === 'draft';
     card.append(mealNode('h4', 'Vareforslag fra madplanen'), mealNode('span', editable ? 'Gennemgå produkt og antal' : ({ proposed: 'Kurvforslag oprettet', invalidated: 'Grundlaget er ændret', stale: 'Grundlaget er ændret' }[draft.status] || draft.status), 'meal-status'));
@@ -1222,6 +1425,7 @@ async function refreshShoppingDrafts() {
     let saveButton, proposeButton;
     const fields = (draft.items || []).map(item => {
       const row = mealNode('div', '', 'meal-shopping-match');
+      row.dataset.shoppingLineId = item.lineId;
       row.append(mealNode('strong', item.ingredient + ' · ' + item.neededQuantity + ' ' + item.unit));
       const options = [['', 'Ingen vare valgt']];
       for (const candidate of item.candidates || []) options.push([String(candidate.Id), String(candidate.Name || candidate.Id)
@@ -1238,6 +1442,10 @@ async function refreshShoppingDrafts() {
         evidence.replaceChildren();
         const selected = (item.candidates || []).find(candidate => String(candidate.Id) === product.value);
         if (!selected) return evidence.append(mealNode('p', 'Vælg en vare for at se tilgængelige oplysninger.', 'muted micro'));
+        const observation = item.productObservations?.[String(selected.Id)];
+        evidence.append(mealNode('p', observation?.observedAt
+          ? 'Denne vares oplysninger blev observeret: ' + observation.observedAt + '. Et andet produkts opdatering fornyer ikke denne observation.'
+          : 'Der er ingen separat tidsstemplet prisobservation for denne vare. En gammel kladde er ikke bevis på en aktuel pris.', 'muted micro'));
         for (const [property, label] of [['Brand', 'Mærke'], ['Unit', 'Pakning'], ['Ingredients', 'Ingredienser'], ['Allergens', 'Allergener'], ['Description', 'Beskrivelse']]) {
           const value = mealProductText(selected[property]);
           if (value) evidence.append(mealNode('p', label + ': ' + value, 'muted micro'));
@@ -1246,6 +1454,22 @@ async function refreshShoppingDrafts() {
           'Ingrediens- eller allergenoplysninger mangler i de viste data. Fravær af oplysninger er ikke en sikkerhedsgaranti; kontrollér varens mærkning hos Nemlig.', 'meal-warning'));
       }
       showProductEvidence(); product.addEventListener('change', showProductEvidence); row.append(details);
+      const recorded = (item.candidates || []).filter(candidate => item.productObservations?.[String(candidate.Id)]).slice(0, 10);
+      if (recorded.length) {
+        const observations = mealNode('details', '', 'meal-details meal-product-details meal-product-observations');
+        observations.append(mealNode('summary', 'Se gemte prisobservationer for denne kildelinje'),
+          mealNode('p', 'Læsning af disse observationer ændrer ikke dit valgte produkt. En observation er ikke en garanti for den aktuelle pris eller tilgængelighed.', 'muted micro'));
+        for (const candidate of recorded) {
+          const observation = item.productObservations[String(candidate.Id)];
+          const price = candidate.Price ?? candidate.ItemPrice;
+          observations.append(mealNode('p', 'Vare ' + candidate.Id + ' · ' + (candidate.Name || 'Ukendt navn') +
+            ' · ' + mealProductText(candidate.Unit || 'Ukendt pakning') + ' · oplyst pris ' +
+            (typeof price === 'number' && Number.isFinite(price) ? price.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' }) : 'ukendt') +
+            ' · observeret ' + observation.observedAt + ' · ' + (!observation.availabilityKnown ? 'tilgængelighed ukendt'
+              : observation.available ? 'var tilgængelig' : 'var ikke tilgængelig'), 'muted micro'));
+        }
+        row.append(observations);
+      }
       if (item.reason) row.append(mealNode('p', item.reason, 'muted micro'));
       if (item.needsReview) row.append(mealNode('p', 'Gennemgå match, pakningsstørrelse, kostønsker og antal. Gem varevalgene for at bekræfte din gennemgang.', 'meal-warning'));
       for (const field of [product, quantity]) field.addEventListener('input', () => {
@@ -1414,11 +1638,24 @@ function showNemligProposals(proposals) {
 
 async function refreshNemlig() {
   const generation = mealSessionGeneration;
-  const status = await mealApi('/api/nemlig/status');
+  let status;
+  try { status = await mealApi('/api/nemlig/status'); }
+  catch (error) {
+    if (mealSessionCurrent(generation)) mealEl('meal-nemlig-status').textContent =
+      'Den gemte Nemlig-status kunne ikke hentes fra JARVIS. Aktuel forbindelse er ukendt; dette er ikke en overførselskvittering.';
+    throw error;
+  }
   if (!mealSessionCurrent(generation)) return;
-  mealEl('meal-nemlig-status').textContent = status.configured
-    ? 'MCP tilgængelig. Forslag er lokale. Kun Overfør til Nemlig ændrer kurven; ingen bestillinger eller betalinger.'
-    : 'MCP er ikke tilsluttet. Madplaner og opskrifter fungerer lokalt; Nemlig kræver særskilt opsætning.';
+  const labels = { not_configured: 'Nemlig er ikke konfigureret. Madplaner og opskrifter fungerer lokalt.',
+    not_verified: 'Nemlig er konfigureret, men forbindelsen er ikke verificeret.',
+    connected: 'Forbindelsen til Nemlig blev bekræftet ved seneste forespørgsel.',
+    stale: 'Seneste bekræftelse af Nemlig-forbindelsen er forældet; aktuel forbindelse er ukendt.',
+    expired_login: 'Nemlig-login eller tilladelse er udløbet. Kontrollér opsætningen manuelt.',
+    unavailable: 'Nemlig er utilgængelig efter seneste forespørgsel; ingen aktuel forbindelse er bekræftet.' };
+  const timestamp = status.lastCheckedAt && Number.isFinite(Date.parse(status.lastCheckedAt))
+    ? ' Senest kontrolleret: ' + new Date(status.lastCheckedAt).toLocaleString('da-DK') + '.' : ' Kontroltidspunkt: ukendt.';
+  mealEl('meal-nemlig-status').textContent = (labels[status.connectionState] || labels[status.configured ? 'not_verified' : 'not_configured'])
+    + timestamp + ' Forslag er lokale. Kun Overfør til Nemlig ændrer kurven; ingen bestillinger eller betalinger. Forbindelsesstatus er ikke en overførselskvittering.';
   for (const button of [mealEl('meal-nemlig-search-form').querySelector('button'), mealEl('meal-nemlig-propose'), mealEl('meal-nemlig-view-basket')]) button.disabled = !status.configured;
   showNemligProposals(status.proposals || []);
 }
@@ -1580,17 +1817,20 @@ mealEl('meal-nemlig-search-form').addEventListener('submit', async event => {
   event.preventDefault();
   try { const { products } = await mealApi('/api/nemlig/search', 'POST', { query: mealEl('meal-nemlig-search').value }); showNemligProducts(products); }
   catch (error) { toast(error.message); }
+  finally { await refreshNemlig().catch(() => {}); } // Local observation only, never a new retailer probe.
 });
 mealEl('meal-nemlig-propose').addEventListener('click', async () => {
   if (!mealSelection.size) return toast('Vælg først mindst én vare.');
   try {
     await mealApi('/api/nemlig/proposals', 'POST', { items: [...mealSelection.values()].map(item => ({ productId: item.productId, quantity: item.quantity })) });
-    mealSelection.clear(); showNemligSelection(); await refreshNemlig(); toast('Kurvforslag gemt. Nemlig-kurven er ikke ændret.');
+    mealSelection.clear(); showNemligSelection(); toast('Kurvforslag gemt. Nemlig-kurven er ikke ændret.');
   } catch (error) { toast(error.message); }
+  finally { await refreshNemlig().catch(() => {}); }
 });
 mealEl('meal-nemlig-view-basket').addEventListener('click', async () => {
   try { const { basket } = await mealApi('/api/nemlig/basket'); showBasket(basket); }
   catch (error) { toast(error.message); }
+  finally { await refreshNemlig().catch(() => {}); }
 });
 
 function mealRegisterRecipeCaptureDraft() {

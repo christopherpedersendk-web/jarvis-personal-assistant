@@ -18,6 +18,8 @@ export function observedMealPrices(state, now = new Date(), maxAgeMs = MEAL_PRIC
       const timestamp = Date.parse(observation.observedAt), prior = latest.get(id);
       const product = (line.candidates || []).find(candidate => String(candidate.Id) === id);
       const record = { observation, timestamp, product, ingredient: line.ingredient,
+        reviewedProductFingerprint: line.productId === id ? line.reviewedProductFingerprint : null,
+        reviewedConstraintsFingerprint: line.productId === id ? line.reviewedConstraintsFingerprint : null,
         source: { kind: 'shopping-draft', id: draft.id, revision: draft.revision, lineId: line.lineId,
           productId: id, observedAt: observation.observedAt } };
       if (!prior || timestamp > prior.timestamp) latest.set(id, record);
@@ -29,17 +31,23 @@ export function observedMealPrices(state, now = new Date(), maxAgeMs = MEAL_PRIC
     }
   }
   const quotes = new Map();
-  for (const { observation, timestamp, product, ingredient, source, ambiguous } of latest.values()) {
+  for (const { observation, timestamp, product, ingredient, source, ambiguous,
+    reviewedProductFingerprint, reviewedConstraintsFingerprint } of latest.values()) {
     if (ambiguous || timestamp > now.getTime() || now.getTime() - timestamp > maxAgeMs ||
         observation.available !== true || observation.availabilityKnown !== true || !product ||
-        productConstraints(product).evidenceFingerprint !== observation.evidenceFingerprint ||
-        ingredientIdentity(ingredient) !== ingredientIdentity(product.Name)) continue;
+        productConstraints(product).evidenceFingerprint !== observation.evidenceFingerprint) continue;
+    const exactIdentity = ingredientIdentity(ingredient) === ingredientIdentity(product.Name);
+    // A branded name only becomes a usable ingredient mapping through the
+    // current explicitly reviewed line, never via fuzzy text or model inference.
+    if (!exactIdentity && (reviewedProductFingerprint !== observation.evidenceFingerprint ||
+        typeof reviewedConstraintsFingerprint !== 'string')) continue;
     const pack = productPackage(product), price = product.Price ?? product.ItemPrice;
     if (!pack || typeof price !== 'number' || !Number.isFinite(price) || price < 0 ||
         product.Currency && product.Currency !== 'DKK') continue;
     const key = identity({ name: ingredient, unit: pack.unit });
     if (!quotes.has(key)) quotes.set(key, []);
-    quotes.get(key).push({ product, package: pack, priceDkk: price, observation, source });
+    quotes.get(key).push({ product, package: pack, priceDkk: price, observation, source,
+      mapping: exactIdentity ? 'exact-identity' : 'reviewed-line', reviewedConstraintsFingerprint });
   }
   return quotes;
 }
@@ -50,8 +58,9 @@ export function estimateMealRequirements(requirements, quotes, constraints = {})
   for (const requirement of requirements) {
     if (!(requirement.quantity > 0)) continue;
     const candidates = (quotes.get(identity(requirement)) || []).flatMap(quote => {
-      const assessment = productConstraints(quote.product, constraints);
-      if (assessment.conflicts.length) return [];
+      const assessment = productConstraints(quote.product, typeof constraints === 'function' ? constraints(requirement) : constraints);
+      if (assessment.conflicts.length || quote.mapping === 'reviewed-line' &&
+          quote.reviewedConstraintsFingerprint !== assessment.constraintsFingerprint) return [];
       const packages = Math.ceil(requirement.quantity / quote.package.quantity);
       return [{ quote, packages, costDkk: money(packages * quote.priceDkk), requiresProductReview: assessment.requiresReview }];
     }).sort((a, b) => a.costDkk - b.costDkk ||

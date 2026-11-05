@@ -1,6 +1,9 @@
 // Versioned background-job policy. This editor only saves paused jobs; starting
 // the reviewed revision is a separate, visible owner action on its job card.
 const JarvisJobs = (() => {
+  // This release's reviewed default, never an unbound "latest" alias. The
+  // registry contract test keeps the bundled default and new templates aligned.
+  const currentSkillVersion = '1.1.0';
   const defaults = Object.freeze({ 'task-category': 'research', 'task-title': '', 'task-prompt': '',
     'task-skill': '', 'task-parameters': '{}', 'task-when': 'now', 'task-run-at': '', 'task-repeat': '0',
     'task-daily-time': '07:30', 'task-time-zone': 'Europe/Copenhagen', 'task-budget-runs': '10',
@@ -56,7 +59,7 @@ const JarvisJobs = (() => {
       deliveryPolicy: { channel: 'inbox', quietStart: value['task-quiet-start'], quietEnd: value['task-quiet-end'], deduplicate: value['task-deduplicate'] === 'true' } };
     if (value['task-skill']) {
       const match = /^([a-z][a-z0-9-]{1,79})@([0-9]+\.[0-9]+\.[0-9]+)$/.exec(value['task-skill']);
-      if (!match) throw new Error('Proceduren skal have et præcist skill-ID og versionsnummer.');
+      if (!match) throw new Error('Proceduren skal have et præcist procedure-ID og versionsnummer.');
       [, result.skillId, result.skillVersion] = match;
     }
     if (!daily && value['task-when'] === 'later') {
@@ -175,11 +178,16 @@ const JarvisJobs = (() => {
           const result = await api('/api/skills');
           if (requestedOwner !== getToken() || request !== catalogEpoch) return;
           skills = result.skills || [];
-          for (const skill of skills) ensureOption(fields['task-skill'], `${skill.name}@${skill.version}`, `${skill.name} · version ${skill.version}`);
+          for (const skill of skills) {
+            const label = `${skill.name} · version ${skill.version}${skill.current === true ? ' (aktuel)' : skill.current === false ? ' (historisk)' : ''}`;
+            ensureOption(fields['task-skill'], `${skill.name}@${skill.version}`, label);
+            const option = [...fields['task-skill'].options].find(item => item.value === `${skill.name}@${skill.version}`);
+            if (option) option.textContent = label;
+          }
           catalogLoaded = true;
-          byId('task-skill-status').textContent = 'Versionen vælges præcist og opgraderes ikke automatisk. Kilde og indholdshash vises på det gemte job.';
+          byId('task-skill-status').textContent = 'Aktuelle og historiske versioner vises særskilt. En valgt version eller gemt job opgraderes aldrig automatisk. Kilde og indholdshash vises på jobbet.';
         } catch (error) { if (requestedOwner === getToken() && request === catalogEpoch)
-          byId('task-skill-status').textContent = `Skill-kataloget er utilgængeligt: ${error.message}. En allerede valgt version bevares.`; }
+          byId('task-skill-status').textContent = `Procedurekataloget er utilgængeligt: ${error.message}. En allerede valgt version bevares.`; }
       })().finally(() => { if (request === catalogEpoch) catalogPromise = null; });
       return catalogPromise;
     }
@@ -267,7 +275,7 @@ const JarvisJobs = (() => {
         link.addEventListener('click', event => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
           event.preventDefault(); navigateSkill(source); });
         policy.append(link, node('p', `Indholdshash: ${task.skillContentHash || 'Ikke dokumenteret; ny gennemgang kræves før versionsbundet ændring.'}`, 'micro'));
-      } else policy.append(node('p', 'Ingen særskilt skill-version; den viste jobinstruktion er grundlaget.', 'small-text'));
+      } else policy.append(node('p', 'Ingen særskilt procedureversion; den viste jobinstruktion er grundlaget.', 'small-text'));
       card.append(policy);
       for (const [index, run] of (task.runs || []).slice(0, 3).entries()) {
         const detail = node('details', undefined, 'task-result'); detail.dataset.jobSection = `run:${run.id || index}`;
@@ -341,8 +349,13 @@ const JarvisJobs = (() => {
       } else { storage.removeItem(key); fill(defaults); stateMessage(); }
     } catch { storageReady = false; fill(defaults); stateMessage(); }
     return Object.freeze({ render, save, edit, loadSkills, changed,
-      template(values) { if (dirty && !confirm('Erstat den uafsluttede jobkladde med denne skabelon?')) return false;
-        reset(); fill({ ...defaults, ...values }); changed(); void loadSkills(); return true; } });
+      template(values, { skillId } = {}) { if (dirty && !confirm('Erstat den uafsluttede jobkladde med denne skabelon?')) return false;
+        const skill = skillId && skills.find(item => item.name === skillId && item.current === true);
+        const version = skill?.version || currentSkillVersion;
+        const selected = skillId ? { 'task-skill': `${skillId}@${version}`,
+          'task-budget-runs': String(skill?.budgetDefaults?.maxRunsPerDay ?? 1),
+          'task-budget-tokens': String(skill?.budgetDefaults?.maxOutputTokens ?? (skillId === 'personal-follow-up' ? 2500 : 3500)) } : {};
+        reset(); fill({ ...defaults, ...selected, ...values }); changed(); void loadSkills(); return true; } });
   }
-  return Object.freeze({ defaults, parameters, payload, valuesFromTask, policyLines, statusLabel, sensitive, attach });
+  return Object.freeze({ currentSkillVersion, defaults, parameters, payload, valuesFromTask, policyLines, statusLabel, sensitive, attach });
 })();

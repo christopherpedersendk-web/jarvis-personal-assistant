@@ -1,35 +1,40 @@
-# JARVIS v5.0.0 – kandidat til gennemgang
+# JARVIS v5.0.0 – udviklingskandidat til gennemgang
 
-**Status: udviklingskandidat. Ikke flettet, udgivet eller installeret.**
+**Ikke accepteret som endelig release, ikke flettet, ikke udgivet og ikke installeret.** Alle P0/P1 skal lukkes og verificeres før release. Se progress.md for præcis senest testet revision; nye arbejdsændringer arver ikke historiske testresultater.
 
-## Det nye
+## Funktioner og forbedringer
 
-- **I dag, Plan, Mad og indkøb, Min viden, Hjem, Projekter og Indstillinger** med sidepanel på computer og fem punkter på mobil. Eksisterende chat og mikrofon er bevaret.
-- **Personlige opgaver** er adskilt fra kalenderaftaler og automatiske baggrundsjob. Varighed, frister, afhængigheder, tilladte tidsrum og låste valg kan gemmes med revision. Kapacitetsforslag opretter ikke kalenderaftaler og antager aldrig, at ukendt kalender betyder ledig tid.
-- **Personlige oplysninger** har kilder, forslag, egen bekræftelse, gyldighed, rettelser og konflikter. Ubekræftede, forældede eller modstridende oplysninger bruges ikke som sikre fakta. Der findes lokal tekstsøgning med kildehenvisninger.
-- **Én indgang i “Min viden”** til at oprette en fri hukommelsesnote eller en struktureret oplysning, som kræver senere bekræftelse. Ugemte oprettelseskladder bevares inden for browserfanen. De ældre og nye dataposter bevares hver for sig med deres kildehistorik; en fælles backend-migrering er ikke udført.
-- **Opfølgningssager og tilbagevendende kontrol** med næste tjek, stopbetingelse, tydelige observationer, afgrænsede genforsøg og synlig fejlstatus.
-- **Husstand og aftensmad** med flerugers rytme, dato-undtagelser, justerbare børneportioner, gennemgåede opskrifter, bekræftet lager, reservationer, låsbare madplaner, retbytte og bevarede manuelle tilføjelser.
-- **Nemlig** kræver fortsat det faktiske ejerklik på *Overfør til Nemlig*. Klikforløbet bruger nu en tidsbegrænset engangsintention knyttet til det præcise forslag og revisionen. Kun tilføjelse til eksisterende kurv er mulig; ingen bestilling eller betaling.
-- **Mere driftssikkerhed** med serialiserede private indstillinger, atomisk JSON-publicering, bevaring af handlingers udfald, begrænset kø og genoptagelig Discord-forbindelse. Seneste udviklingsændring beskytter desuden almindelige liste-, hukommelses- og opgaveredigeringer mod synlige, ugyldige ændringer efter kendte diskfejl; hvis en skrivning kan være publiceret uden bekræftet diskvarighed, viser JARVIS ukendt lagerstatus og stopper yderligere gemninger.
-- **Google Kalender** er fortsat kun læsning, med valgt kalender-ID, registreret dækningsperiode og ærlig status ved udløbet login.
+- Dansk **I dag · Plan · Mad og indkøb · Min viden · Hjem · Projekter · Indstillinger**. Desktopsidebar og mobil I dag/Plan/Mad/Viden/Mere med reelle URL'er og tilbage/frem. I dag prioriterer chat, mikrofon og få relevante forhold; historik og normale driftsdetaljer er samlet under en lukket fold. Kritiske driftsproblemer er stadig synlige.
+- Personlig hukommelse adskiller forslag, bekræftet, midlertidig, konflikt, planlagt/udført, historisk og ugyldig viden. Direkte dato-/statusopslag kombineres med lokal tekstsøgning og valgfri ægte semantik. Kilder og korrektioner bevares, og ugyldige fakta fjernes straks fra aktuel retrieval.
+- Én synlig hukommelsesindgang understøtter både eksisterende noter og strukturerede oplysninger. Legacy-noter får faktisk revisionshistorik på samme post; strukturerede oplysninger bruger særskilte korrektionsforslag med eksplicit bekræftelse. Ældre historik opfindes ikke. Arkivvisning er read-only og er ikke aktuelle personlige fakta.
+- Generel planlægning virker uden mad/indkøb. Personlige opgaver, kalenderaftaler og automatiske jobs har forskellige modeller. Varighed/usikkerhed, frist, tidsvinduer, afhængigheder, buffere og låse valideres deterministisk; manglende kapacitet står som ukendt. Selektiv genplanlægning bevarer upåvirkede manuelle valg og forklarer umulige planer.
+- Vedvarende opfølgningssager, strukturerede observationer og eksplicit retry/pause-/missed-run-politik. Fire versionerede procedurer1.1.0 indeholder formål, input/output, kilder, værktøjsgrænser og budget. Gamle1.0.0-filer og jobbindinger er bevaret; nye jobskabeloner gemmes pauserede.
+- Husstand med eksplicit standard, gentagen rytme, datoundtagelser, gæster, ferie/fravær, alder/kontroldato og portionsfaktorer. Read-only kalendercache vises med dækning og alder uden at gætte fremmøde.
+- Varig opskriftsindbakke med originalmateriale, kilder, revision, ingrediens-/enhedsgennemgang og fejl/genoptagelse. Importer ændrer ikke brugerens fakta eller tilladelser.
+- Redigerbar aftensmadsuge, låse, byt/flyt, egne retter, spring over og regenerering. Prisoverslag bruger kun faktisk gemte, friske kompatible prisobservationer; ukendte beløb vises som ukendte. Planlagt restemad bevarer kilde/mål/originalvalg og regner ingredienser én gang.
+- Manuelle indkøbsmængder og nul-/udeladelsesvalg overlever genberegning. Ændret behov/lager/kostgrundlag bevarer valget men kræver synlig gennemgang. Valgt, nyt beregnet og tidligere grundlag vises; en eksplicit revisionsbundet handling kan vende tilbage til den beregnede mængde.
+- Fælles ingrediens- og kostregler i måltider, priser og varematch. “ris” matcher ikke “frisk basilikum”; aliases deler relevante kostkrav, og et label kan ikke tilsidesætte ingredienskonflikter. Ingen opfundne stykvægte eller sammenblanding af rå/kogt/drænet vægt.
+- Nemlig kræver det faktiske ejerklik på **Overfør til Nemlig**, bundet til det gennemgåede forslag/revision. Klikket er tilstrækkeligt; ingen ekstra frase. Kun add-only med bevarede andre kurvelinjer. Delvise/ukendte udfald bliver ikke blindt gentaget.
+- Serialiseret revision-aware lagring, atomic publication af enkelte filer, recoverable private/public-journal og durable actionudfald uafhængigt af slutmodelsvar. Kendt fejl giver ikke falsk succes; ukendt publicering spærrer videre writes. Køer er afgrænsede, og ventende arbejde kan annulleres.
+- Kladdetekst, fokus, kilde og captured revision bevares gennem polling/navigation/import/reload. Gem/fejl/konflikt/stale/ukendt er vedvarende tilstande, ikke kortvarige toastbeskeder.
+- Projektændringer/tests/pakker/recovery er bundet til præcise revisioner og komplette kildehashes. Npm kræver reviewet offentlig lockv3, exact pakkesæt, isoleret config, scripts-off staging og bevaret tidligere node_modules. Denne snævrere installationskontrakt og manuelt recoverybehov står i subprocess-safety.md.
+- Discord overvåger ACK og server-heartbeats, reconnect/resume og varig dedup. Integrationsstatus adskiller konfigureret, verificeret, forældet, udløbet login og utilgængelig.
+- Opdateringsjournalen beskytter også godkendelser mod diskfejl, samtidighed og afbrudt staging. Det faktisk viste tag/SHA bindes til handlingen; skjulte ignorerede testfiler, symlinks og ændret checkoutgrundlag kan ikke tælle som testet Git-indhold. Ukendt udfald låser nye handlinger og kræver kontrol.
+- I dags tre lokale kort forbinder aktuelle personlige opgaver/opfølgninger, eksplicit husstand/måltider og tidsstemplet kalendercache. Præcise kalenderkilder åbner kun samme gemte observation; gammel eller ufuldstændig dækning er ikke fri tid. Historiske monitorændringer erstatter ikke et nyere ukendt resultat.
+- Gennemgåede opskrifters præcise trin kan hentes i de fælles web-/Discord-/talekontrakter. Manglende eller uafklaret materiale opfindes ikke. Hukommelsens kategori og gyldighed følger den faktiske modelkontekst, så en bekræftet plan ikke bliver til en udført handling.
 
-## Uændrede grænser
+## Evidens og begrænsninger
 
-- Ingen nye reelle tilbagevendende job eller eksterne processer er aktiveret.
-- Ingen nye eksterne tjenester må indeksere personlige oplysninger uden et særskilt tilvalg.
-- Ingen kurvskrivning foregår ved planlægning, opdatering, vareopslag eller polling.
-- Kurvoverførsel beviser hverken køb, levering eller, at varerne findes i hjemmet.
-- Et lokalt revisionscheck kan ikke sikre en atomisk transaktion mod ændringer direkte på Nemlig.
-- Kalendertekst bruges ikke som bevis for, hvem der spiser hjemme.
-- Eksisterende Hue, Sonos og øvrige Home-funktioner bevares; udvidet OAuth/Home-bro, kalender- og kontaktoprettelse er fortsat udsat.
+Senest publicerede runtimecheckpoint2f94679d/appb519b67f bestod **674/674 Node22-tests**, faktisk lokal hybrid **75/80 =93,75 %** på80 relevante+16 sikkerhedsspørgsmål og dependency-audit med0 fund. De samme fem søgemisses er bevaret; top-5-kildegenfinding er ikke garanti for alle genererede svar. Fuld rå evidence og præcise hashes står i verification.md og dependency-review.md.
 
-## Det, der **ikke** er færdigt
+Den samlede efterfølgende UI-/historik-/G1/G3-/procedure-/pakkeslice kræver sin egen fulde test og fire browserforløb. Et historisk grønt browserresultat er ikke accept af den aktuelle kandidat. Fysisk iPhone/desktop, faktisk zoom/mikrofon og administratorens isolerede restore-/runtimegennemgang er fortsat åbne.
 
-- En rigtig lokal dansk semantisk embeddingmodel mangler. De 80 syntetiske danske søgeprøver gav **80/80 korrekt kilde i top fem**, men målingen dækker kun det lokale leksikale indeks og er ikke dokumentation for semantiske omskrivninger.
-- Chromium og WebKit er gennemført på begge krævede skærmstørrelser i syntetisk CI, **grønt på commit `fa4d0e95` (run `41986430567`) med 243/243 Node-tests, samlet hukommelsesoprettelse og præcis kildenavigation**. **Fysiske enheder og udvidet tilgængelighedskontrol mangler fortsat.**
-- Fysisk iPhone og computer, tastatur, fokus, zoom, kontrast, kilderuter og komplet mad/Nemlig-gennemgang kræver manuel kontrol.
-- Den synlige hukommelsesoprettelse er samlet ét sted, men de historiske og nye hukommelsesmodeller har fortsat særskilte backendkontrakter. Komplet migration, formredigering ved navigation/import og dele af indstillinger/hjem-status kræver fortsat gennemgang. Den nye UI kræver en ny browser-CI-kørsel.
-- Baggrundsjob, projekt-/filsystemændringer og indstillinger fordelt på flere filer bruger endnu ikke alle den samme fulde persistensgrænse. For store P0/P1-acceptkrav i `requirements-matrix.md` står derfor fortsat som *delvist* eller *afventer*. Den nye M1-forbedring afventer ny, præcis CI-evidens før endelig kandidatstatus.
+Lokal semantik er valgfri og kræver et eksplicit valg af installation/konfiguration; uden den bruges lexical fallback. Native model-RAM ligger ud over JS-heapgrænsen. JSON forudsætter én appskriver, og flerfils-/pakkepublicering er recoverable, ikke samlet atomisk. Arkivering fjerner aktuelle retrievalkilder, ikke nødvendigvis private backups. Se migration-and-rollback.md før enhver data-/kodegendannelse.
 
-Se `verification.md`, `requirements-matrix.md` og `migration-and-rollback.md` før en releasebeslutning.
+## Uændrede produktgrænser
+
+Ingen nye reelle jobs, eksterne persondataindeks, produktionstilslutninger eller kontorettigheder er aktiveret. Planlægning, redigering, polling og vareopslag giver nul kurveskrivninger. Modeller, Discord, tale og skills/jobs kan ikke simulere ejerklikket. Ordre, checkout og betaling findes ikke.
+
+Google Kalender forbliver read-only; kalendertekst beviser ikke husstandsfremmøde. Planlagt mad, overførsel til kurv og planlagte rester beviser ikke forbrug, køb, levering eller lager. Lokal revision er ikke en atomisk transaktion hos Nemlig.
+
+Eksisterende Home-funktioner bevares. Fuld Sonos OAuth, batteri-Nest-events, Home bridge, Google Tasks/kalenderwrites og browserbooking er separat P2. Ingen v4.9.2/v4.10/v4.11-mellemrelease eller ændring af historiske tags er foretaget.

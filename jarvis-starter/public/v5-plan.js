@@ -347,7 +347,7 @@ const JarvisClaims = (() => {
         const from = instant(validFrom), until = instant(expiresAt);
         if (from && until && from >= until) throw new Error('Gyldig til skal være efter gyldig fra.');
         const fields = values(), captured = snapshot(), capturedEpoch = epoch;
-        const payload = { value: fields.value, category: fields.category, sourceId: fields.sourceId.trim() || null, validFrom: from, expiresAt: until };
+        const payload = { value: fields.value, category: fields.category, sourceId: fields.sourceId.trim(), validFrom: from, expiresAt: until };
         const editing = edit?.mode === 'edit';
         if (editing) payload.expectedRevision = edit.revision;
         else { payload.subject = fields.subject; if (edit) { payload.correctsId = edit.id; payload.correctsRevision = edit.revision; } }

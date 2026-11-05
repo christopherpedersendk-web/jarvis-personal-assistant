@@ -98,3 +98,19 @@ test('I5 optional runtime pins the targeted sharp fix and does not change the mo
   assert.equal(manifest.overrides.sharp, '0.35.5');
   assert.equal(manifest.private, true);
 });
+
+test('I5 optional runtime commits the audited exact public integrity lock and CI consumes it without re-resolution', async () => {
+  const lock = JSON.parse(await readFile(new URL('../local-semantic-runtime/package-lock.json', import.meta.url)));
+  assert.equal(lock.lockfileVersion, 3);
+  assert.equal(lock.packages['node_modules/sharp'].version, '0.35.5');
+  assert.equal(lock.packages['node_modules/@huggingface/transformers'].version, '3.8.1');
+  assert.equal(lock.packages['node_modules/onnxruntime-node'].version, '1.21.0');
+  for (const [path, item] of Object.entries(lock.packages)) if (path) {
+    assert.match(item.resolved, /^https:\/\/registry\.npmjs\.org\//);
+    assert.match(item.integrity, /^sha512-[A-Za-z0-9+/]+={0,2}$/);
+    assert.equal(item.link, undefined);
+  }
+  const workflow = await readFile(new URL('../../.github/workflows/v48-visual.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /run: npm ci --prefix local-semantic-runtime/);
+  assert.doesNotMatch(workflow, /run: npm install --prefix local-semantic-runtime/);
+});

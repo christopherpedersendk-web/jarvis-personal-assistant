@@ -302,7 +302,10 @@ protectLocalMutations(meals, Object.fromEntries([
   'setInventory', 'invalidateRecipe', 'setProfile', 'resetProfile', 'setHousehold', 'setDay', 'removeDay',
   'createPlan', 'updatePlan', 'buildShoppingList', 'editShoppingList', 'regenerateUnlocked', 'swapDishes', 'setPlannedLeftovers',
 ].map(method => [method, ['mealProfile', 'mealHousehold', 'mealInventory', 'mealPlans', 'shoppingDrafts', 'nemligProposals']])));
-const nemlig = new NemligShopping({ state, save, transact: mutateV5, validateSourcePlan: plan => meals.assertRecipeSources(plan.dishes) });
+const nemlig = new NemligShopping({ state, save, transact: mutateV5,
+  validateSourcePlan: plan => { meals.assertRecipeSources(plan.dishes); meals.assertShoppingReviewed(plan); },
+  validateSourceDraft: draft => shopping.assertReviewedConstraints(draft),
+});
 // One-use intention minted within the owner's reviewed transfer-button handler.
 // It is tied to the current proposal revision, expires, and never authorizes a
 // checkout. An HTTP server cannot establish physical presence cryptographically;
@@ -489,7 +492,8 @@ async function generateProjectFiles({ project, request }) {
         'Du er JARVIS, en erfaren kodeagent, der bygger små, vedligeholdelige projekter i en dedikeret mappe.',
         'Returnér kun filer der skal oprettes/ændres. Maks. 12 filer pr. iteration, maks. 45.000 tegn pr. fil.',
         'Brug relative stier uden .. eller punktmapper. Byg helst uden dependencies (ren HTML/CSS/JS eller Python).',
-        'Foreslå eventuelle npm-pakker i packages; installer dem IKKE. Kun almindelige npm-pakkenavne, ikke URL, Git eller filstier.',
+        'Foreslå eventuelle npm-pakker i packages som præcist pakkenavn@x.y.z; installer dem IKKE. Ingen latest, ranges, URL, Git eller filstier.',
+        'Installation kræver særskilt godkendelse af manifest og en gennemgået offentlig package-lock.json v3 med præcise versioner og integritet. Opfind aldrig integritetshashes eller påstå at en ulåst pakke er godkendt.',
         'Skriv en kort dansk forklaring. Ingen adgang til hemmeligheder, serverkode eller maskinens øvrige filer.',
         'Hvis projektet allerede har filer, bevar eksisterende funktionalitet og returnér kun filer der skal ændres.',
       ].join('\n'),
@@ -951,7 +955,9 @@ async function route(req, res) {
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/dashboard') return json(res, 200, {
-      ...buildCommandCenter({ state, organizer }), agenda: proactive.preview(), recentDigests: proactive.history().slice(0, 4) });
+      ...buildCommandCenter({ state, organizer, calendarSnapshot: googleCalendar.cached(),
+        validateMealSources: dishes => meals.assertRecipeSources(dishes) }),
+      agenda: proactive.preview(), recentDigests: proactive.history().slice(0, 4) });
     if (req.method === 'POST' && path === '/api/knowledge/search') {
       try { return json(res, 200, await knowledge.retrieve((await bodyJson(req)).query, { limit: 12 })); }
       catch (error) { return json(res, 400, { error: error.message }); }
@@ -1072,7 +1078,7 @@ async function route(req, res) {
       discordSnapshot: discord.snapshot(), googleCalendarStatus: googleCalendar.status(),
       huePaired: Boolean(hueConfig.applicationKey && hueConfig.certificateFingerprint), sonosConfigured: Boolean(homeConfig.sonosToken),
       hueStatus: hue.status(hueConfig), sonosStatus: smartHome.snapshot(homeConfig).sonos,
-      googleCalendarConnected: googleCalendar.status().connected, googleCalendarConfigured: googleCalendar.configured(), nemligConfigured: nemlig.enabled() }) });
+      googleCalendarConnected: googleCalendar.status().connected, googleCalendarConfigured: googleCalendar.configured(), nemligStatus: nemlig.status() }) });
     if (req.method === 'GET' && path === '/api/proactive') return json(res, 200,
       { settings: { ...proactive.settings(), basis: settingsReview.basis('proactive', proactive.settings()) },
         agenda: proactive.preview(), history: proactive.history() });
@@ -1091,12 +1097,16 @@ async function route(req, res) {
     if (req.method === 'POST' && path === '/api/updates/action') {
       try {
         const input = await bodyJson(req);
+        if (['stage', 'approve'].includes(input.action) &&
+            (typeof input.version !== 'string' || !/^v\d+\.\d+\.\d+$/.test(input.version) ||
+             typeof input.expectedSha !== 'string' || !/^[0-9a-f]{40}$/.test(input.expectedSha)))
+          return json(res, 409, { error: 'Genindlæs og gennemgå den præcise version og commit før handlingen.', code: 'UPDATE_REVIEW_REQUIRED' });
         const result = input.action === 'check' ? await updates.check()
-          : input.action === 'stage' ? await updates.stage()
-            : input.action === 'approve' ? await updates.approve(input.version) : null;
+          : input.action === 'stage' ? await updates.stage(input.version, input.expectedSha)
+            : input.action === 'approve' ? await updates.approve(input.version, input.expectedSha) : null;
         if (!result) return json(res, 400, { error: 'Ukendt opdateringshandling.' });
         return json(res, 200, result);
-      } catch (error) { return json(res, 409, { error: error.message }); }
+      } catch (error) { return json(res, error.status || 409, { error: error.message, code: error.code }); }
     }
     if (req.method === 'GET' && path === '/api/organizer') return json(res, 200, { collections: organizer.list() });
     if (req.method === 'POST' && path === '/api/organizer/search') {
@@ -1220,7 +1230,17 @@ async function route(req, res) {
         return json(res, 200, { playbook });
       } catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
-    if (req.method === 'GET' && path === '/api/memories') return json(res, 200, { memories: secretary.listMemories({ includeProposed: true }) });
+    if (req.method === 'GET' && path === '/api/memories') {
+      const includeArchived = new URL(req.url, 'http://localhost').searchParams.get('includeArchived');
+      if (includeArchived !== null && !['yes', 'no'].includes(includeArchived))
+        return json(res, 400, { error: 'Arkivvalg skal være yes eller no.' });
+      return json(res, 200, { memories: secretary.listMemories({ includeProposed: true, includeArchived: includeArchived === 'yes' }) });
+    }
+    const memoryHistory = path.match(/^\/api\/memories\/([0-9a-f-]{36})\/history$/);
+    if (req.method === 'GET' && memoryHistory) {
+      try { return json(res, 200, secretary.memoryHistory(memoryHistory[1])); }
+      catch (error) { return json(res, error.status || 404, { error: error.message, code: error.code }); }
+    }
     if (req.method === 'POST' && path === '/api/memories') {
       try { const input = await bodyJson(req); return json(res, 201, { memory: await secretary.remember(input.text, input.projectId || null,
         { category: input.category, expiresAt: input.expiresAt, source: { kind: 'user', channel: 'manual' } }) }); }
@@ -1299,9 +1319,9 @@ async function route(req, res) {
     if (req.method === 'POST' && projectInstall) {
       try {
         const input = await bodyJson(req);
-        return json(res, 200, { project: await projectAgent.install(projectInstall[1], input.packages, input.expectedRevision) });
+        return json(res, 200, { project: await projectAgent.install(projectInstall[1], input.packages, input.expectedRevision, input.expectedContentHash) });
       }
-      catch (error) { return json(res, 400, { error: error.message }); }
+      catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code, dependencyReview: error.dependencyReview }); }
     }
     const projectRollback = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/rollback$/);
     if (req.method === 'POST' && projectRollback) {

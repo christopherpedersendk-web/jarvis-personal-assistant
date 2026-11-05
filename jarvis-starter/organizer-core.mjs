@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildTodayOverview, latestMonitorObservations } from './planning-advisor.mjs';
 
 const TYPES = new Set(['list', 'dates', 'gifts', 'shopping', 'notes']);
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
@@ -169,13 +170,12 @@ export class OrganizerCore {
   }
 }
 
-export function buildCommandCenter({ state, organizer, now = new Date() }) {
+export function buildCommandCenter({ state, organizer, now = new Date(), calendarSnapshot = null, validateMealSources } = {}) {
   const tasks = (state.tasks || []).filter(x => !x.archived);
   const mostRecent = (filter) => tasks.filter(filter).flatMap(task => (task.runs || []).map(run => ({ ...run, taskId: task.id, taskTitle: task.title, category: task.category })))
     .filter(r => r.status === 'completed').sort((a, b) => b.at.localeCompare(a.at))[0] || null;
   const briefing = mostRecent(x => x.category === 'briefing');
-  const monitor = tasks.filter(x => x.category === 'monitor').flatMap(task => (task.runs || []).filter(run => run.status === 'completed' && /^CHANGE\b/i.test(run.result || ''))
-    .map(run => ({ ...run, taskId: task.id, taskTitle: task.title }))).sort((a,b)=>b.at.localeCompare(a.at))[0] || null;
+  const monitor = latestMonitorObservations(tasks, now)[0] || null;
   const upcoming = organizer.upcoming(30).slice(0, 8);
   const awaiting = (state.approvals || []).filter(x => x.status === 'pending').slice(0, 6);
   const unseen = (state.inbox || []).filter(x => !x.read).slice(0, 6);
@@ -189,9 +189,10 @@ export function buildCommandCenter({ state, organizer, now = new Date() }) {
   }
   if (failed.length) suggestions.push({ title: `${failed.length} opgave(r) kræver fejlgennemgang`, detail: failed.map(x=>x.title).join(', ').slice(0,180), source: { kind: 'tasks', ids: failed.map(x=>x.id) }, tab: 'tasks' });
   if (awaiting.length) suggestions.push({ title: `${awaiting.length} handling(er) afventer godkendelse`, detail: awaiting.map(x=>x.title).join(', ').slice(0,180), source: { kind: 'approvals', ids: awaiting.map(x=>x.id) }, tab: 'secretary' });
-  if (monitor) suggestions.push({ title: `Seneste registrerede ændring: ${monitor.taskTitle}`, detail: `Fra overvågning kørt ${monitor.at}. Verificér resultatet før beslutning.`,
-    source: { kind: 'task_run', taskId: monitor.taskId, at: monitor.at }, tab: 'tasks' });
+  if (monitor) suggestions.push({ title: `${monitor.status === 'unknown' ? 'Ukendt overvågningsudfald' : 'Seneste registrerede ændring'}: ${monitor.taskTitle}`,
+    detail: `${monitor.at ? `Fra kørsel ${monitor.at}. ` : 'Kørselstidspunkt ukendt. '}${monitor.note}`, source: monitor.source, tab: 'plan' });
   return { generatedAt: now.toISOString(), briefing: briefing && { taskTitle: briefing.taskTitle, at: briefing.at, result: briefing.result.slice(0, 7000), taskId: briefing.taskId },
-    monitor: monitor && { taskTitle: monitor.taskTitle, at: monitor.at, result: monitor.result.slice(0, 1800), taskId: monitor.taskId },
-    upcoming, awaiting, unseen, next, suggestions, projects: (state.projects || []).slice(0, 4).map(({ id,title,revision,lastTest,updatedAt }) => ({ id,title,revision,lastTest,updatedAt })) };
+    monitor, todayOverview: buildTodayOverview({ state, now, calendarSnapshot, validateMealSources }),
+    upcoming, awaiting, unseen, next, suggestions, projects: (state.projects || []).filter(project => !project.archived).slice(0, 4)
+      .map(({ id,title,revision,lastTest,updatedAt }) => ({ id,title,revision,lastTest,updatedAt })) };
 }

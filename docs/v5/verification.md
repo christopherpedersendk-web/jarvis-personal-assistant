@@ -2,7 +2,20 @@
 
 ## Aktuel gate – 5. november 2026
 
-**Nyeste publicerede checkpoint: `6892cf3dcbbd9dd3bf98a2286c7970017572bab9`**, lokal `badd3f96f188a0c13f34e7ffaee3075fc7121e7a`, app-træ `c1f9272923d57bc1083ea646e1c67f98b6a0d121`. [CI42015140734](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42015140734), mergecommit `878e65725553bfb9561efc00c8a49c69ac9a7a19`: **668/668 Node22.23.4**, 0 fejl/skip,23.808,732475 ms. Samme app lokalt:668/668 Node24.22.1,12.953,709123 ms.
+**Seneste publicerede runtimecheckpoint: `2f94679d0e5d800fb3623134e7368bb69c77f178`**, lokal `70eaf81ba64b20613b7cd073c265cced5418c3fa`, root-træ `b153cf9dde2c51ffc6e3be7fdcf66db541bb7189`, app-træ `b519b67f04ccbdf90a7d8971ac28934f689876eb`. [CI42016975993](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42016975993) testede mergecommit `212712a8e142dd7b2255783022f3e45f9821ccfe` med identisk app-træ.
+
+- `npm test`: **674/674 Node22.23.4**, 0 fejl/skip,24.012,411746 ms. Separat rent lokalt worktree:674/674 Node24.22.1,12.906,056449 ms.
+- Faktisk modeljob127209827650 **bestod**: hybrid75/80=93,75 %, vector75/80, lexical43/80;80 relevante+16 sikkerhedsspørgsmål, uændret datasetSHA `2ba997172ac18f3fe3e0633f4c820b0f5c268ce1c611cfe12c5030d59ced7895`. Nul ugyldige kildelækager; korrektion, glemning, provider- og timeoutfallback bestod. Fuld96-caserapport i `evidence/2f94679d-semantic-evaluation.json`; de samme fem misses Q04/Q34/Q65/Q66/Q68 er bevaret.
+- Auditjobbet **bestod med0 fund** og fuld inventarliste: `evidence/2f94679d-dependency-audit.json`. Artifact13409856667 ZIP SHA256 `3eaf2c28ade6bef1bcf325c38509195c738cfbf4602aaa76c95ef461e3789a10` verificeret. Gennemgået lockSHA256 `2d53dd39d9f29bf50d65d5310bbd34670fee3b454dc52cac88bb181c424057ab` indgår i næste kandidat med `npm ci`.
+- Kold load2178,832 ms, første indeks739,970 ms, varm retrievalp95 **44,288 ms**, event-loop-p9520,627 ms. Kold standardfrist gav lexicalfallback1535,236 ms; efterfølgendehybrid816,768 ms. Parentpeak95.199.232 B, childpeak674.295.808 B; sum769.495.040 B er ikke et samtidigt peak.122 lokale requests/253 tekster,121 fuldført/1 annulleret; ingen ekstern persondatabehandling.
+- Performancejob127209827200 bestod; disse rå rapporter er endnu ikke hentet/gennemgået og er ikke her brugt som talbevis. Den parrede gennemgåede måling nedenfor gælder den tidligere præcise app.
+- Browserjob127209827571 **fejlede igen ved den kendte tomme claim-kilde**. Runtimecheckpointet indeholdt bevidst ikke UI-rettelsen; det er ikke et nyt fund eller et bevis på den ufrosne rettelse. Fire nye browserforløb er påkrævet på den samlede kandidat.
+
+**M6 er ikke accepteret.** Næste kandidat samler UI-/historik-/procedure-/kost-/indkøbs-/pakkereviewrettelser med den præcise runtime-lock. Dens lokale tests, faktiske fire browserforløb, model/audit og performance skal bindes til det nye app-træ. Fysisk iPhone/desktop/zoom/mikrofon og administratorens isolerede restore er fortsat afventer.
+
+## Tidligere gate – 6892cf3d (bevaret fejlresultat)
+
+Checkpoint: `6892cf3dcbbd9dd3bf98a2286c7970017572bab9`, lokal `badd3f96f188a0c13f34e7ffaee3075fc7121e7a`, app-træ `c1f9272923d57bc1083ea646e1c67f98b6a0d121`. [CI42015140734](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42015140734), mergecommit `878e65725553bfb9561efc00c8a49c69ac9a7a19`: **668/668 Node22.23.4**, 0 fejl/skip,23.808,732475 ms. Samme app lokalt:668/668 Node24.22.1,12.953,709123 ms.
 
 **Samlet CI fejlede; M6 er ikke accepteret:**
 

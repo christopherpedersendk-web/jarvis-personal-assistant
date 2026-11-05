@@ -8,7 +8,7 @@ CI42015140734 testede remote `6892cf3dcbbd9dd3bf98a2286c7970017572bab9`, mergeco
 - Rå rapport og det faktisk installerede træ er bevaret i `evidence/dependency-audit-6892cf3d.json`. LockfileSHA var `b0131e9c27262f9aaadddd68f74a2ee5eacd9e2234cf923a22b9402a345d093f`. Artifact13408074628 ZIP SHA256: `4e3d62817cf95c4f33cd06a4bd11c9d10a1b67fa76834d4f3890ce8e058b6f46`.
 - Gate fejlede korrekt. Intet fund er undertrykt, og `npm audit fix --force` er ikke kørt.
 
-## Målrettet rettelse under afprøvning
+## Målrettet rettelse og faktisk ny CI
 
 Den eksisterende tekstencoder fastholdes på Transformers.js3.8.1 og samme multilingual-E5-modelrevision, filhashes, pooling og prefix. Den valgfrie runtimes manifest har en eksplicit `sharp: 0.35.5` override. Det begrænser ændringen til den berørte afhængighed i stedet for den major-opgradering, auditværktøjet foreslog.
 
@@ -16,12 +16,14 @@ Vedligeholderens [librsvg-advisory](https://github.com/lovell/sharp/security/adv
 
 Dette er en ændring uden for den oprindelige transitive versionsrange, så kompatibilitet **skal måles**, ikke antages. JARVIS' encoder tager kun afgrænsede tekststrenge; det er ikke en generel billedparser. At billedinput ikke tilbydes, bruges dog ikke til at ignorere installerede høje sårbarheder.
 
-Før RC:
+[CI42016975993](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42016975993), remote `2f94679d0e5d800fb3623134e7368bb69c77f178`, mergecommit `212712a8e142dd7b2255783022f3e45f9821ccfe`, app-træ `b519b67f04ccbdf90a7d8971ac28934f689876eb` gennemførte den faktiske rettede runtime på Node22.23.4/npm10.9.9:
 
-1. Installer kun i den isolerede CI, gem den præcise nye lockfil og inventarliste, og kræv audit uden høje/kritiske fund.
-2. Gennemgå lockfilens versions-, integrity- og offentlige registryreferencer. Commit den og brug `npm ci`, ikke fortsat flydende resolution.
-3. Gentag den uændrede ægte modelmåling med80 relevante og16 sikkerhedsspørgsmål, ≥90 % hybrid-kilde@5, korrektion, invalid-fact-udelukkelse og timeoutfallback.
-4. Bind endelig rapport, manifest, lockfil og app-træ. Ingen automatisk runtime- eller modelinstallation i produktion.
+- Ægte lokal hybrid: **75/80 =93,75 %**, samme uændrede datasæt og model. Alle16 sikkerhedsspørgsmål, korrektion, glemning og timeoutfallback bestod; nul ugyldige kildelækager. Fuld rapport med96 cases: `evidence/2f94679d-semantic-evaluation.json`.
+- Faktisk audit: **0 fund** i alle npm-kategorier; exit0 og komplet installeret inventarliste i `evidence/2f94679d-dependency-audit.json`. Nul auditfund er ikke en garanti for fravær af alle sårbarheder.
+- ManifestSHA256 `a9fb4f4c9dd5c29ade576bc9c3d6d71f1f1deb92bc23c593dc36b72a9f11db73`; lockSHA256 `2d53dd39d9f29bf50d65d5310bbd34670fee3b454dc52cac88bb181c424057ab`. Artifact13409856667 download/ZIP verificeret mod SHA256 `3eaf2c28ade6bef1bcf325c38509195c738cfbf4602aaa76c95ef461e3789a10`.
+- Alle80 låste pakkeentries er gennemgået for version, offentlig `registry.npmjs.org`-tarball og SHA-512-integritet; ingen links/private kilder. Den uændrede lockfil er nu inkluderet i næste kandidat, og CI bruger **`npm ci --prefix local-semantic-runtime`**. Den næste samlede kandidat skal selv genkøre install/audit/modelporten; dette resultat må ikke tilskrives senere ændringer.
+
+Ingen automatisk runtime- eller modelinstallation i produktion. Reelt persondataindeks, eksterne processorer, modeldownload og administratorens driftsændringer er separate eksplicitte valg.
 
 ## Native fejl og procesgrænse
 
@@ -31,4 +33,6 @@ Node-workertråde deler proces med deres vært. Derfor flyttes encoderen til en 
 
 Dette er **fejlisolation, ikke en OS-sandbox**. Fjernmodeller/cache/download er deaktiveret i runtimekonfigurationen, og encoderens fetch/WebSocket er spærret. Ingen ændring i konto-, Docker- eller sudo-rettigheder. Native allokeringer er ikke hårdt RAM-begrænset af Nodes512 MiB JS-heapgrænse. CI rapporterer derfor både hovedproces-RSS og modelprocessens særskilte RSS; summen af samplede peaks er ikke et samtidigt peak eller en produktionsgaranti. Administratoren skal separat vurdere service-memorygrænser og core-dump-politik før en produktionstilslutning.
 
-Transport/fault-tests bruger eksplicit syntetiske vektorer og rigtige childprocesser med exit134, fatal signal, timeout, credentialfravær og senere recovery. De må aldrig tælles som den ægte modeltest. Native kompatibilitet og rettet dependencylock afventer ny CI.
+Transport/fault-tests bruger eksplicit syntetiske vektorer og rigtige childprocesser med exit134, fatal signal, timeout, credentialfravær og senere recovery. De må aldrig tælles som den ægte modeltest. Den rettede native runtime gennemførte den særskilte ægte CI ovenfor, men det beviser ikke den præcise årsag til det historiske native crash.
+
+Den nye måling registrerede parentpeak95.199.232 B og særskilt childpeak674.295.808 B; sum af samplede peaks769.495.040 B, ikke samtidigt peak. Varm retrievalp95 var44,288 ms; standard1500 ms-koldfristen gav lexical fallback efter1535,236 ms og senere varm hybrid. Disse syntetiske tal og native RAM-forbehold skal med i administratorens isolerede kapacitetskontrol.

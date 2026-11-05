@@ -91,9 +91,16 @@ test('E1 explicit skipped days and locked target choices cannot be replaced by a
 
 test('E1 the source ingredient content must satisfy a stricter target diet even if the source recipe claims vegan', async () => {
   const f = await fixture(2);
-  await f.planner.updatePlan(f.plan.id, edits(f, 0, { title: 'Kylling mærket forkert', diet: 'vegan',
-    ingredients: [{ name: 'kyllingebryst', quantity: 350, unit: 'g' }] }));
+  const original = structuredClone(f.plan);
+  await assert.rejects(f.planner.updatePlan(f.plan.id, edits(f, 0, { title: 'Kylling mærket forkert', diet: 'vegan',
+    ingredients: [{ name: 'kyllingebryst', quantity: 350, unit: 'g' }] })), /kostvalg/);
+  assert.deepEqual(f.plan, original, 'the shared label/ingredient rule now rejects the bad new edit even before linking');
   await f.planner.updatePlan(f.plan.id, edits(f, 1, { theme: 'vegan' }));
+  // Retain the original link-time regression for a synthetic old saved record
+  // that predates the stricter input check; no real user incident is implied.
+  Object.assign(f.plan.dishes[0], { title: 'Kylling mærket forkert', diet: 'vegan',
+    ingredients: [{ name: 'kyllingebryst', quantity: 350, unit: 'g' }],
+    ingredientBasis: [{ name: 'kyllingebryst', quantity: 350, unit: 'g' }] });
   const before = structuredClone(f.plan); await assert.rejects(apply(f, [link(f)]), /kostvalg/); assert.deepEqual(f.plan, before);
 });
 

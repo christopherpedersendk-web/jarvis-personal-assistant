@@ -17,7 +17,7 @@ test('H2 exact skill details expose the entire matching procedure without versio
   assert.equal(detail.body, first.body); assert.notEqual(detail.body, second.body);
   assert.equal(detail.sourceId, 'skill:synthetic-procedure:1.0.0');
   assert.equal(detail.permissions, 'existing-authorized-tools-only');
-  assert.equal(detail.contentHash, registry.catalog()[0].contentHash);
+  assert.equal(detail.contentHash, registry.catalog().find(skill => skill.version === first.version).contentHash);
   assert.throws(() => registry.detail(first.name, '9.0.0'), { status: 404, code: 'SKILL_NOT_FOUND' });
   for (const [id, version] of [['../synthetic-procedure', '1.0.0'], [first.name, 'latest'], [first.name, null],
     [first.name, '1.0.0/../../'], [first.name, '1'.repeat(33) + '.0.0']])
