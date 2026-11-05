@@ -67,10 +67,37 @@ async function fixture(t, { legacy = null } = {}) {
     assert.equal(response.status, expected, `${method} ${path}: ${raw} / ${logs.join('').slice(-3000)}`);
     return { raw, data: JSON.parse(raw) };
   }
+  async function asset(path) {
+    const response = await fetch(base + path, { signal: AbortSignal.timeout(4000) });
+    return { status: response.status, type: response.headers.get('content-type'), body: await response.text() };
+  }
   t.after(async () => { await stop(); await rm(dir, { recursive: true, force: true }); });
   await start();
-  return { dir, start, stop, api };
+  return { dir, start, stop, api, asset };
 }
+
+test('v5 HTTP: every v5 browser entrypoint is served with its real CSS/JS type', { timeout: 15_000 }, async t => {
+  const f = await fixture(t);
+  const page = await f.asset('/');
+  assert.equal(page.status, 200);
+  const linkedAssets = [...page.body.matchAll(/(?:src|href)="(\/[^" ]+\.(?:css|js))"/g)].map(match => match[1]);
+  assert.ok(linkedAssets.length >= 20, 'all of the new and preserved frontend modules should be linked');
+  for (const path of linkedAssets) {
+    const response = await f.asset(path);
+    assert.equal(response.status, 200, `${path} linked by index.html must be served`);
+    assert.match(response.type, path.endsWith('.css') ? /text\/css/ : /text\/javascript/);
+  }
+  for (const [path, type, marker] of [
+    ['/v5.css', 'text/css', '#tab-home .chat-panel'],
+    ['/v5-plan.js', 'text/javascript', 'personal-task-form'],
+  ]) {
+    assert.match(page.body, new RegExp(path.replace('.', '\\.')));
+    const response = await f.asset(path);
+    assert.equal(response.status, 200, `${path} must not be a silent 404`);
+    assert.match(response.type, new RegExp(type));
+    assert.ok(response.body.includes(marker), `${path} is missing the expected v5 behavior`);
+  }
+});
 
 test('v5 HTTP: independent personal knowledge, tasks and cases survive restart with revision controls', { timeout: 30_000 }, async t => {
   const f = await fixture(t, { legacy: { preferences: 'syntetisk', extraLegacy: { manual: true } } });

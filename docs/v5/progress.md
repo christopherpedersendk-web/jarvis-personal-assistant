@@ -1,6 +1,6 @@
 # JARVIS v5 resumable progress
 
-Latest tested local candidate: 2026-11-04, package `5.0.0`, data schema `1`, **239/239 Node tests passed**. The published follow-up `ceeb038` passed **239/239** independently in GitHub Actions on Node 22, but the browser caught a **real desktop first-screen layout failure**. A CSS/browser-test correction is locally staged for a new candidate and requires CI verification. No M7 action has been taken.
+Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. The published `f85f475e` passed **239/239** Node tests in GitHub Actions but still failed first-screen browser smoke. Saved CI screenshot established that the server's explicit static-file allowlist omitted `/v5.css` and `/v5-plan.js`; these HTTP routes and a comprehensive linked-asset smoke test are now fixed locally. **Browser recheck required.** No M7 action has been taken.
 
 ## Provenance
 
@@ -14,7 +14,8 @@ Latest tested local candidate: 2026-11-04, package `5.0.0`, data schema `1`, **2
 - Exact matching local/GitHub tree SHA: `9c92c5e7ca4f1fde5a4775a1140e50e22252c184` (61 modified/new paths, all blob hashes compared; no forced update).
 - Published `ceeb038` **application subtree content hash** (`jarvis-starter`): `faea6a8a95f5f5cdfb733afc21c29c2d06a38ae2` (locally and remotely equal). New layout iteration will have a different subtree hash, to be recorded before publication.
 - Current locally tested layout iteration **application subtree hash**: `43032f4584414cfdb15d72dbb228336f6a62efe4` (to compare with the remotely published Git tree).
-- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. GitHub Actions `41937431111` verified all 239 Node tests and installed both browser engines, then failed UI smoke on the desktop composer being below the first screen. Browser acceptance remains open.
+- Current locally tested **static-route fix application subtree hash**: `2768d78f1ee08fcf8fb4b0d7fd79fcdffe9cf7c2` (240/240 tests; verify identical remote subtree after publication).
+- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41938011226` verified 239 Node tests, installed both engines, and failed initial desktop UI check; screenshot artifact `13373919053` proves v5 CSS wasn't loaded (static HTTP 404). Browser acceptance remains open until a new candidate run.
 - Published `ceeb038` includes session-scoped draft recovery; fail-closed calendar coverage and persisted OAuth token rotations; independent `/ready` storage write-probe; and schema compatibility checks from release manifest through staging/deployment. A separate layout correction now awaits CI.
 
 ## Status
@@ -24,7 +25,7 @@ Latest tested local candidate: 2026-11-04, package `5.0.0`, data schema `1`, **2
 - **M2**: JSON schema 1, immutable backup, atomic/fsync publish, readiness write-probe, same-file mutation contract, action journal, queue and domain APIs implemented/tested synthetically. Not every legacy mutation or external wait uses the shared queue; **partial**.
 - **M3**: personal claims/search, separate persistent tasks, deterministic capacity with fail-closed actual read-only calendar coverage, follow-ups, skills versioning, Discord resilience and recurring retry/observation are integrated and Node-tested. **B3 genuine Danish semantic model missing**, independent 90% retrieval gate pending.
 - **M4**: household rhythm, recipe review/feedback, inventory reservations, editable meals, shopping proposal and one-use Nemlig owner-click intention implemented/tested synthetically. Live credential-free browser and household acceptance pending.
-- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. **CI found the composer below the 950px desktop viewport (994.58px)**. A bounded chat-history CSS correction is pending recheck; browser/manual acceptance open.
+- **M5**: seven desktop/five mobile navigation, deep-link source routing, Plan and knowledge forms, structured meal UI, statuses/drafts implemented. **CI found the composer below 950px (994.58px)** due to 404 on `v5.css` and `v5-plan.js`; static routes added plus HTTP coverage. Browser/manual acceptance open.
 - **M6**: migration/restore/rollback unit evidence, candidate package/version, before/after measurements and release documents exist. **Not accepted** until candidate SHA CI, both browser engines, physical devices, semantic and recovery gaps are resolved.
 - **M7**: separate owner approvals required.
 
@@ -33,13 +34,13 @@ Latest tested local candidate: 2026-11-04, package `5.0.0`, data schema `1`, **2
 - `cd jarvis-starter && npm test`: **239/239** in 4.69 seconds, 0 failures (latest local amendment); first published commit CI **236/236**.
 - `node --test test/v5-intelligence.test.mjs`: 45 tests; 80/80 lexical correct-source@5, 30 planning cases; this is not genuine semantic evaluation.
 - `node --test test/deploy-release.test.mjs test/v5-server.test.mjs`: 9 tests green, including restart, click-intent and version/rollback safety.
-- `node scripts/v5-visual-smoke.mjs`: local Chromium blocked by sandbox `socket() Operation not permitted`; CI installed Chromium+WebKit and revealed actual desktop-first-screen defect. CSS corrected locally, new CI pending.
+- `node scripts/v5-visual-smoke.mjs`: local Chromium blocked by sandbox `socket() Operation not permitted`; CI installed Chromium+WebKit and revealed the missing static routes through screenshot. Server allowlist corrected locally, new CI pending.
 - Synthetic perf: `/api/overview` 117 B/p95 2.50 ms vs baseline full-state 72,198 B/p95 8.64 ms. Details in `verification.md`.
 - No live credentials, production data, external basket writes, real recurring activation, release tag, merge or deployment.
 
 ## Continuation
 
-1. Publish the current CSS and browser regression patch as a descendant of `ceeb038...` using GitHub Git Data API; verify exact local/remote tree and run 239 Node tests against new SHA.
+1. Run full Node suite (expected 240) and publish the static-route regression patch as a descendant of `f85f475e` via GitHub Git Data API; compare exact trees.
 2. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) and new CI: first-screen composer must fit 1390×950 and 390×844 on both Chromium/WebKit, with saved screenshots and reload-persistence checks.
 3. Capture the last commit SHA and working-tree status, update review comments if a further patch is required. Never treat this as M7 approval.
 4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.

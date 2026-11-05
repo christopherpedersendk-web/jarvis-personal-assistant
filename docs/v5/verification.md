@@ -16,6 +16,8 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-04 | Local v5 candidate | `node scripts/v5-visual-smoke.mjs` | **BLOCKED before opening browser**: Chromium OS socket `Operation not permitted`; WebKit binary unavailable. Must run on CI runner |
 | 2026-11-04 | Published follow-up `ceeb038da64d83a765723bcf01d23964f25d0444` | GitHub Actions `41937431111` | Node 22 **239/239 passed**, Chromium and WebKit installed. Browser smoke **failed** on desktop 1390×950: message composer bottom 994.58 px, beyond 950 px viewport. Real product defect, not an environment skip. |
 | 2026-11-04 | Pending new iteration | `public/v5.css` constrained chat history scroll; `scripts/v5-visual-smoke.mjs` now captures initial-home evidence and asserts draft retention through a reload | **Not yet browser-verified**. New commit + CI required before closing K2/R03/M5. |
+| 2026-11-05 | Published `f85f475e` | GitHub Actions `41938011226`, Node 22 + Chromium smoke | **239/239 Node passed; browser failed identically (994.58px)**. Screenshot artifact `13373919053` proved the browser was rendering the *old* unstyled hero. Root cause: server static-file allowlist did not serve `v5.css` or `v5-plan.js` (HTTP 404), so neither layout nor Plan handlers loaded. |
+| 2026-11-05 | Next local iteration | `node --test test/v5-server.test.mjs`; `npm test` | **4/4 focused and 240/240 full suite passed**, Node ~4.90 s; new test fetches **every** `index.html` linked stylesheet/script over HTTP, verifies MIME types, and explicitly checks `/v5.css` and `/v5-plan.js`. Browser rerun required. |
 
 ## Synthetic before/after performance
 
@@ -46,7 +48,7 @@ The first path was populated from local Git snapshot `ecc2944`, whose tree was v
 ## Required evidence still pending
 
 - R01–R13 focused Node tests and complete suite are green **locally**, but must be bound to the remote candidate SHA and CI.
-- The first remote v5 commit passed 236 Node tests in CI; follow-up `ceeb038` passed 239 Node tests in CI but **failed browser smoke** on first-screen composer visibility. The CSS correction must be verified on both browsers and sizes at a newer candidate SHA.
+- The first remote v5 commit passed 236 Node tests in CI; `ceeb038` and `f85f475e` passed 239 Node tests each but **failed browser smoke**. The latter's saved screenshot identified a server allowlist defect hiding new CSS/JS; this is now locally fixed with explicit asset smoke coverage. Must be verified on both browsers and sizes at a newer candidate SHA.
 - The 80 Danish lexical questions are synthetic and overlap on key terms. **Genuine semantic** retrieval and independent paraphrase quality ≥90% top-five remain pending; do not cite 100% lexical as semantic success.
 - 30 deterministic scheduling scenarios, DST, impossible schedules and locks passed locally; integrated live-calendar freshness and selective replan review remain pending.
 - Chromium and WebKit desktop (1390×950) and mobile (390×844) in CI; keyboard, zoom, focus, contrast, source URL and draft-preservation manual/browser checks pending.

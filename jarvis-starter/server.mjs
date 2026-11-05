@@ -1362,7 +1362,7 @@ async function route(req, res) {
   }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Metoden understøttes ikke.' });
-  const files = { '/': 'index.html', '/app.js': 'app.js', '/organizer.js': 'organizer.js', '/intelligence.js': 'intelligence.js', '/intelligence.css': 'intelligence.css', '/meals.js': 'meals.js', '/meals.css': 'meals.css', '/memory-v49.js': 'memory-v49.js', '/memory-v49.css': 'memory-v49.css', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
+  const files = { '/': 'index.html', '/app.js': 'app.js', '/v5-plan.js': 'v5-plan.js', '/v5.css': 'v5.css', '/organizer.js': 'organizer.js', '/intelligence.js': 'intelligence.js', '/intelligence.css': 'intelligence.css', '/meals.js': 'meals.js', '/meals.css': 'meals.css', '/memory-v49.js': 'memory-v49.js', '/memory-v49.css': 'memory-v49.css', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
   const file = files[path];
   if (!file) return json(res, 404, { error: 'Siden findes ikke.' });
   const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';

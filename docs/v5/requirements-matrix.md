@@ -1,6 +1,6 @@
 # JARVIS v5 requirement traceability
 
-Each row maps a clause in the owner-supplied handover to a milestone, implementation and executed check. `Testet (syntetisk)` does **not** imply manual acceptance, production safety or the release gate. The common test command below is `cd jarvis-starter && npm test` (**239/239** on the latest local candidate; the first published commit independently passed **236/236** in GitHub Actions). R01–R13 are *code findings*, not claims that the owner experienced an incident.
+Each row maps a clause in the owner-supplied handover to a milestone, implementation and executed check. `Testet (syntetisk)` does **not** imply manual acceptance, production safety or the release gate. The common test command below is `cd jarvis-starter && npm test` (**240/240 passed** on the latest local candidate with HTTP static-route coverage). R01–R13 are *code findings*, not claims that the owner experienced an incident.
 
 | ID | Priority | Milestone | Required behavior | Implementation / test evidence | Status or limitation |
 |---|---|---|---|---|---|
@@ -52,11 +52,11 @@ Each row maps a clause in the owner-supplied handover to a milestone, implementa
 | J6 | P0/P1 | M1–M2 | Project changes/tests/install approval tied to revisions | `project-agent.mjs`, `update-manager.mjs`; `v5-stability` | Testet (syntetisk) |
 | J7 | P1 | M0/M6 | Measured before/after API, retrieval, writes, memory | `scripts/v5-perf.mjs`; `verification.md` | Testet locally; queue/external waits and live model/tool costs unavailable |
 | K1 | P1 | M5 | 7 desktop + 5 mobile Danish nav items/history | `public/index.html`, `public/app.js`, `public/v5.css` | Implementeret; Chromium/WebKit pending |
-| K2 | P1 | M5 | Compact I dag with visible chat/microphone | `public/index.html`, `public/v5.css`, `scripts/v5-visual-smoke.mjs` | **CI-browser fandt fejl**: composer 994.58px mod 950px viewport; CSS-rettelse afventer nyt browserresultat og fysisk kontrol |
+| K2 | P1 | M5 | Compact I dag with visible chat/microphone | `public/index.html`, `public/v5.css`, `server.mjs` statisk allowlist, `v5-server`; browser smoke | **CI-browser fandt fejl**: browser fik 404 på `v5.css` (composer 994.58px); serverrute + CSS rettet lokalt, ny browserafprøvning pending |
 | K3 | P1 | M4/M5 | Structured meal, ingredient and household editors | `public/meals.js`, `public/meals.css` | Implementeret; browser workflow pending |
 | K4 | P1 | M5 | Exact source navigation, unified memory/integrations | `public/intelligence.js`, `public/memory-v49.js`, `public/v5-plan.js` | Delvist implementeret: two knowledge editors still require consolidation; source browser test pending |
 | K5 | P0/P1 | M1/M5 | Preserve dirty drafts, focus, revision conflicts | `public/app.js` sessionStorage recovery, `public/meals.js`; `v5-visual-smoke` | Implementeret; browser test pending due to local Chromium socket denial |
-| L1 | P0 | M6 | Regression, both engines and physical devices | Local `npm test` 239/239, CI `ceeb038` 239/239; `.github/workflows/v48-visual.yml` | **Browseraccept fejlet** på første skærm; nyt UI-fix afventer CI, real iPhone/desktop pending |
+| L1 | P0 | M6 | Regression, both engines and physical devices | Local `npm test` incl. linked-asset HTTP checks, CI `f85f475e` 239/239 Node; `.github/workflows/v48-visual.yml` | **Browseraccept fejlet** pga. statiske 404; nyt fix afventer CI, real iPhone/desktop pending |
 | L2 | P0 | M2/M6 | Independent schema and idempotent migration | `state-schema.mjs`; `v5-migration`, `v5-server` | Testet (syntetisk); schema 0→1 |
 | L3 | P0 | M6 | Restore/rollback without replacing newer data | `state-schema.mjs`, `scripts/deploy-release.mjs`; `v5-migration`, `deploy-release` | Testet synthetic; admin recovery rehearsal pending |
 | L4 | P0 | M6 | Tag/SHA/version/schema/runtime bound to candidate | `package.json` schema manifest, `update-manager.mjs`, `deploy-release.mjs`; `v5-stability`, `v5-migration`, `deploy-release` | Testet syntetisk i to led; newest remote candidate CI and M7 tag/install separate |
