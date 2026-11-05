@@ -1,6 +1,6 @@
 # JARVIS v5 resumable progress
 
-Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `9e2d909a` passed Node 22 CI and showed normal draft refresh/reload works, but still failed to flag a synthetic concurrent save. A diagnostic browser test now captures the observed server persistence and browser baseline before any further logic change. **Browser recheck required.** No M7 action has been taken.
+Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `6c41e2a8` passed Node 22 CI but its browser installation timed out at 18 minutes on slow Ubuntu apt downloads; the diagnostic browser test was **never run**. CI bootstrap now tries browser binaries without apt installation, retaining the unconditional Chromium/WebKit gate. **Browser recheck required.** No M7 action has been taken.
 
 ## Provenance
 
@@ -18,7 +18,7 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 - Current locally tested **dirty-draft baseline fix application subtree hash**: `7a9fefa79ca929302826483c7cdc76f8f035c06c` (240/240 tests; verify remote tree after publication).
 - Current locally tested **first-fetched-baseline fix application subtree hash**: `3dbe5d5b3c40626bd93e0094ccbee68d37ef7005` (240/240 tests; compare new remote tree after publication).
 - Current locally tested **CI diagnostic iteration application subtree hash**: `ac48d6a431daa86382d0abc1a41bec7d52adba54` (240/240 tests; browser before/after evidence pending).
-- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41940193356` verified 240 Node tests and proceeded through Chromium draft reload, but expected real concurrent change warning was still missing. Diagnostics and browser rerun pending.
+- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41940701409` verified 240 Node tests but cancelled before browser checks due slow OS package downloads. Diagnostics and new browser bootstrap rerun pending.
 - Published `ceeb038` includes session-scoped draft recovery; fail-closed calendar coverage and persisted OAuth token rotations; independent `/ready` storage write-probe; and schema compatibility checks from release manifest through staging/deployment. A separate layout correction now awaits CI.
 
 ## Status
@@ -38,12 +38,12 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 - `node --test test/v5-intelligence.test.mjs`: 45 tests; 80/80 lexical correct-source@5, 30 planning cases; this is not genuine semantic evaluation.
 - `node --test test/deploy-release.test.mjs test/v5-server.test.mjs`: 9 tests green, including restart, click-intent and version/rollback safety.
 - `node scripts/v5-visual-smoke.mjs`: local Chromium blocked by sandbox `socket() Operation not permitted`; CI installed Chromium+WebKit and revealed the missing static routes through screenshot. Server allowlist corrected locally, new CI pending.
-- Synthetic perf: `/api/overview` 117 B/p95 2.50 ms vs baseline full-state 72,198 B/p95 8.64 ms. Details in `verification.md`.
+- Synthetic perf rerun 2026-11-05 (current application subtree `ac48d6a4`): `/api/overview` **117 B, p95 0.91 ms** vs baseline full-state 72,198 B, p95 3.29 ms. v5 full state/search/write p95 were *slower* in this second short paired sample. Both measurements and caveats in `verification.md`.
 - No live credentials, production data, external basket writes, real recurring activation, release tag, merge or deployment.
 
 ## Continuation
 
-1. Publish the synthetic browser diagnostic (Node 240/240) as a descendant of `9e2d909a` via GitHub Git Data API, compare exact tree, then interpret the actual before/after state from CI failure or success.
+1. Publish the CI bootstrap improvement and paired benchmark notes as a descendant of `6c41e2a8` via GitHub Git Data API, compare exact tree, and rerun hard-gated Chromium/WebKit with synthetic diagnostics.
 2. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) and new CI: first-screen composer must fit 1390×950 and 390×844 on both Chromium/WebKit, with saved screenshots and reload-persistence checks.
 3. Capture the last commit SHA and working-tree status, update review comments if a further patch is required. Never treat this as M7 approval.
 4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.

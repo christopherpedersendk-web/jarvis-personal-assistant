@@ -23,6 +23,8 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-05 | Published `36ac8a7f` | GitHub Actions `41939504752` | **240/240 Node 22 passed**, initial desktop, nav, normal refresh and draft reload passed; browser then failed because first recorded server baseline was missing for a draft created before initial fetch, so synthetic concurrent change did not display conflict. |
 | 2026-11-05 | Latest local amendment (pending CI) | `public/app.js` missing-baseline initialisation; `scripts/v5-visual-smoke.mjs` explicit refresh before remote synthetic edit; `npm test` | **240/240 passed**, Node ~4.76 s. Browser check of actual concurrent modification still required. |
 | 2026-11-05 | Published `9e2d909a` | GitHub Actions `41940193356` | Node 22 **240/240 passed**; first-screen/nav/draft/reload passed in Chromium, but an actual synthetic concurrent change still did not produce a conflict message. Further instrumenting test to distinguish server persist vs browser server baseline before changing logic again; not accepted. |
+| 2026-11-05 | Published `6c41e2a8` | GitHub Actions `41940701409` | Node 22 **240/240 passed**; browser smoke **not run**. Job was cancelled at its 18-minute limit while `npx playwright install --with-deps` downloaded dozens of Ubuntu libraries from a slow Azure mirror (still retrieving package 68). Missing result is an infrastructure blocker, not a UI pass/fail. |
+| 2026-11-05 | Local CI bootstrap follow-up (not yet published) | `.github/workflows/v48-visual.yml` | Downloads Chromium and WebKit without the 100+ apt dependencies; both browser launches and all 4 viewport/device runs remain mandatory. Runner may lack system libraries; any launch failure must be reported, not skipped. |
 
 ## Synthetic before/after performance
 
@@ -40,6 +42,21 @@ Executed independently against the exact reconstructed v4.9.1 source tree and th
 | Live retailer/Discord/Google wait | not measured | not measured | Connectors intentionally disabled |
 | Model and tool usage | 0 in fixture | 0 in fixture | No paid calls; actual cost baseline unavailable |
 | Queue wait and resource pressure | not measured | synthetic queue behavior tested | No representative load/large model wait tested |
+
+### New paired rerun on 2026-11-05 – exact current app content `ac48d6a4`
+
+Re-executed the same benchmark commands, same fixture and local Node `v24.22.1` after publishing the diagnostic candidate `6c41e2a8`. Results differ from the earlier short local run: they are **not stable performance guarantees**. In this paired sample, new full-state/search/write paths are somewhat *slower*; the substantial win is the narrow overview response.
+
+| Measurement | Exact v4.9.1 tree | Current v5 app subtree `ac48d6a4` |
+|---|---:|---:|
+| Full state payload | 72,198 B | 72,368 B |
+| Full state p95 (30 HTTP requests) | 3.29 ms | 5.89 ms |
+| Overview HTTP (30 requests) | not available | **117 B; p95 0.91 ms** |
+| Knowledge retrieval p95 (30 requests) | 3.87 ms | 6.57 ms |
+| Preferences write p95 (12 requests) | 3.32 ms | 5.19 ms |
+| Idle process RSS | 66.3 MiB | 66.8 MiB |
+
+No live model calls, integration wait, real queue pressure or representative external service latency were measured in this rerun. The retrieval benchmark uses local lexical text only. Improvements cannot be inferred from one short pair of p95 samples.
 
 Commands:
 

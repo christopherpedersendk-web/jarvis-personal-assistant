@@ -28,9 +28,12 @@ jobs:
       - name: Install browser test dependency in ephemeral CI only
         working-directory: jarvis-starter
         run: npm install --no-save --no-package-lock playwright
-      - name: Install Chromium and WebKit in CI only
+      # On ubuntu-24.04 hosted runners, try existing system libraries first.
+      # --with-deps started a large apt download from a slow mirror and hit the
+      # 18-minute job limit; browser launch remains an unconditional hard gate.
+      - name: Download Chromium and WebKit in CI only
         working-directory: jarvis-starter
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install chromium webkit
       - name: Test desktop and mobile UI with synthetic data only (both engines)
         working-directory: jarvis-starter
         env:

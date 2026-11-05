@@ -13,5 +13,6 @@
 | D-009 | Decline automatic v4 code rollback after schema 1 migration | Older code could silently drop newer fields. The deployer records `rollback-blocked` for administrator review; no production change authorised |
 | D-010 | Keep Google Calendar read-only with explicit selection and source coverage | Local selected calendar ID and last successful read, no event creation or household attendance inference |
 | D-011 | Preserve current legacy editors while introducing typed claims/tasks | Avoid discarding existing manual content. This leaves K4 one-memory-editor consolidation outstanding rather than silently migrating records |
+| D-012 | CI installs Playwright browsers on disposable Ubuntu runners without automatic `--with-deps` apt provision | The 2026-11-05 `--with-deps` run spent its full 18-minute window on slow archive downloads; **actual Chromium and WebKit launches remain required**, and missing shared libraries must fail visibly rather than silently skip the browser gate |
 
 All decisions are reviewable against the tests in `verification.md`. Remote GitHub branch creation and draft PR do not authorise merge, release publication or installation.
