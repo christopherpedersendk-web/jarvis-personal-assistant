@@ -532,8 +532,11 @@ if (typeof document !== 'undefined') (() => {
         return { start, end };
       }) };
   };
-  const markTaskDirty = () => { taskDirty = true; taskEditControls(); persistDrafts(); draftStatus(); };
-  const markFollowDirty = () => { followDirty = true; followEditControls(); persistDrafts(); draftStatus(); };
+  // A blur/change event can fire between pointerdown and click on a submit
+  // button. Replacing that button's text at that point cancels click in WebKit.
+  // Update the edit controls only when dirty mode first becomes active.
+  const markTaskDirty = () => { const changed = !taskDirty; taskDirty = true; if (changed) taskEditControls(); persistDrafts(); draftStatus(); };
+  const markFollowDirty = () => { const changed = !followDirty; followDirty = true; if (changed) followEditControls(); persistDrafts(); draftStatus(); };
   const markCapacityDirty = event => {
     capacityDirty = true; capacityVersion++;
     if (!event || ![manualReview, capacityFields['capacity-buffer']].includes(event.target)) manualReview.checked = false;
@@ -627,13 +630,15 @@ if (typeof document !== 'undefined') (() => {
   }
   function taskEditControls() {
     if ((taskEdit || taskDirty) && byId('personal-task-create')) byId('personal-task-create').open = true;
-    taskSubmit.textContent = taskEdit ? 'Gem ændringer' : 'Opret personlig opgave';
+    const label = taskEdit ? 'Gem ændringer' : 'Opret personlig opgave';
+    if (taskSubmit.textContent !== label) taskSubmit.textContent = label;
     taskCancel.hidden = !taskEdit && !taskDirty; taskReload.hidden = !taskEdit;
     taskFields['personal-task-state'].disabled = !taskEdit;
   }
   function followEditControls() {
     if ((followEdit || followDirty) && byId('follow-up-create')) byId('follow-up-create').open = true;
-    followSubmit.textContent = followEdit ? 'Gem opfølgning' : 'Opret opfølgning';
+    const label = followEdit ? 'Gem opfølgning' : 'Opret opfølgning';
+    if (followSubmit.textContent !== label) followSubmit.textContent = label;
     byId('follow-up-awaiting').readOnly = Boolean(followEdit); byId('follow-up-stop').readOnly = Boolean(followEdit);
     followAdvanced.details.hidden = !followEdit; followCancel.hidden = !followEdit && !followDirty; followReload.hidden = !followEdit;
     for (const input of Object.values(followFields)) input.disabled = !followEdit;
