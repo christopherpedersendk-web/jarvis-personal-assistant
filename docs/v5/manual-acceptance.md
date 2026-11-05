@@ -22,14 +22,16 @@ Automatisk beregnet kontrast, tastaturrækkefølge og reducerede CSS-visningsbre
 
 ## Navigation, læsbarhed og kladder
 
-- [ ] Desktop: I dag · Plan · Mad og indkøb · Min viden · Hjem · Projekter · Indstillinger. Mobil: I dag · Plan · Mad · Viden · Mere, med øvrige områder under Mere.
+- [ ] Desktop og mobil: I dag · Planlægning · Hjem · Overvågninger. Søg og Indstillinger er synlige sekundære indgange. Madplan, noter/hukommelse og projekter nås via den nye navigation; gamle direkte links skal fortsat virke.
 - [ ] I dag starter kompakt med chat og få relevante overblik. “Flere detaljer og historik” er lukket som standard. Kritiske lager-/leveringsfejl er stadig synlige. Beskedfelt og mikrofon kan let nås.
 - [ ] I dags tre overblik viser aktuelle personlige opgaver/åbne opfølgninger, eksplicit husstand/planlagt aftensmad og gemte kalenderobservationer. Afsluttede/arkiverede poster genopstår ikke som dagens arbejde. Ukendt, delvis eller forældet kalenderdækning bliver ikke “ingen aftaler” eller fri kapacitet; flere måltidsplaner og ændrede portionsgrundlag forbliver synlige. En nyere ukendt overvågning må ikke skjules af en ældre ændring.
-- [ ] Brug kun tastatur: Tab/Shift+Tab, Enter og mellemrum. Kontroller synligt fokus, ingen fælder, fornuftig rækkefølge, More/menu og details. Scrollbar historik må være et særskilt tastaturstop før beskedfeltet, men fokus må ikke hoppe til uvedkommende felter.
+- [ ] Brug kun tastatur: Tab/Shift+Tab, Enter og mellemrum. Kontroller synligt fokus, ingen fælder, fornuftig rækkefølge, sidemenu/mobilnavigation og details. Scrollbar historik må være et særskilt tastaturstop før beskedfeltet, men fokus må ikke hoppe til uvedkommende felter.
 - [ ] Skriv en ufuldstændig kladde, markér tekst og vent gennem polling. Importér en uafhængig syntetisk nabo. Tekst, markering og fokus bevares. Skift side og tilbage; genindlæs fanen. Kontroller chat, note, struktureret oplysning, listepunkt, opgave, job, projekt, opskrift og familiens dagskort.
 - [ ] Åbn præcis kilde fra søgningen: note, oplysning, listepunkt, opskrift, husstandsdato, bestemt måltidsdato i en madplan, konkret indkøbslinje/prisobservation, opgave og bestemt skillversion. Brug Tilbage/Frem og kopieret direkte URL. Rigtig post/dato/linje/version markeres, returvej og kladde bevares. En måltidskilde må ikke blot åbne planens første dag; en priskilde må ikke vælge en anden vare. Utilgængelig kilde må ikke erstattes af en anden post.
 - [ ] Åbn en kalenderkilde fra I dag: kalender-ID, dato, event-ID og cacheversion skal matche præcist. Opdater syntetisk cache eller skift kalender, og prøv det gamle link: vis utilgængelig kilde, ikke en nyere observation. Der må ikke ske ny Google-læsning. Åbn et delvist/ukendt Nemlig-forslags kilde: kun den præcise lokale journalpost må markeres, uden genlæsning eller skrivning af rigtig kurv.
 - [ ] Log ud med kladder og simuleret ventende læsesvar. Privat DOM og tab-session-kladder tømmes. Forsinket svar må ikke genvise dem. Afvist browserlager og hemmelighedslignende tekst skal give tydelig advarsel; adgangsnøgler må aldrig ligge i kladdelageret.
+
+- [ ] Fjern en eksisterende opgavedeadline med **Fjern deadline**. Feltet er tomt, kladden overlever reload, og **Gem ændringer** gemmer uden deadline med den oprindelige revision. En delvist indtastet dato må fortsat ikke gemmes som gyldig.
 
 ## Personlig hukommelse og selvstændig planlægning
 
@@ -72,7 +74,7 @@ Automatisk beregnet kontrast, tastaturrækkefølge og reducerede CSS-visningsbre
 ## Fysiske enheder og administratorkontrol
 
 - [ ] **Fysisk iPhone/Safari:** udfør kerneforløb på enheden. Åbn/luk skærmtastatur, redigér strukturerede felter, markér tekst, gå tilbage/frem og kontroller scroll, nederste navigation, fokus og læsbarhed. Notér model, iOS og Safari-version.
-- [ ] **Fysisk desktop:** udfør med mus og tastatur alene. Vælg faktisk 200 % browserzoom i browsermenuen; kontroller ombrydning og adgang til knapper/felter på alle syv sider. Reduceret viewport tæller ikke. Kontroller tekst, feltrammer, fejl-/stale-tilstande og fokus mod baggrunden; dokumentér manuelle fund.
+- [ ] **Fysisk desktop:** udfør med mus og tastatur alene. Vælg faktisk 200 % browserzoom i browsermenuen; kontroller ombrydning og adgang til knapper/felter på alle fire hoveddestinationer samt Indstillinger og de underliggende editorer. Reduceret viewport tæller ikke. Kontroller tekst, feltrammer, fejl-/stale-tilstande og fokus mod baggrunden; dokumentér manuelle fund.
 - [ ] **Mikrofon:** kontroller den eksisterende affordance og stop/start. End-to-end stemmetest kræver konkret brugervalg af eksisterende behandling/tilladelse og syntetisk tale. Hvis valg eller fysisk enhed mangler, forbliver punktet pending. Ingen automation simulerer Nemlig-ejerklikket.
 - [ ] **Administrator, isoleret staging:** følg [migration-and-rollback.md](migration-and-rollback.md). Verificér backuphash, restore, afbrudt/gentaget migrering, ukendt nyere skema og blokering ved nyere brugerændringer. Gendan ikke gammel backup over nye data uden eksplicit beslutning. Ingen root-ejet produktionsservice/script ændres af denne liste.
 - [ ] Saml kandidatbundet p95/payload/retrieval/write/queue/ekstern ventetid/hukommelse/model-/toolforbrug og begrænsninger. Fysisk stikprøve erstatter ikke den dokumenterede før/efter-serie.

@@ -92,7 +92,7 @@ test('R04 updater click captures the reviewed SHA, prevents duplicate sends, and
   const pending = h.click('update-approve');
   await h.click('update-approve'); await h.click('update-check');
   assert.equal(h.mutations().length, 1); assert.equal(h.blocked(), true);
-  assert.deepEqual(h.mutations()[0].body, { action: 'approve', version: 'v5.0.0', expectedSha: sha });
+  assert.deepEqual(h.mutations()[0].body, { action: 'approve', version: 'v5.0.0', expectedSha: sha, expectedTestedAt: release.testedAt });
   assert.match(h.confirmations[0], new RegExp(sha));
   h.refreshFailure = true;
   gate.resolve(snapshot({ approved: { ...release, approvedAt: '2026-11-05T12:05:00.000Z' } })); await pending;

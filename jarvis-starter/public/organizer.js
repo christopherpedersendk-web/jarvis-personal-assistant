@@ -33,7 +33,7 @@ function commandLink(label, tab) {
 const agendaCards = new Map();
 let calendarSourceSequence = 0;
 const agendaText = (node, value) => { value = String(value || ''); if (node.textContent !== value) node.textContent = value; };
-const agendaView = view => ({ organizer: 'knowledge', tasks: 'plan', secretary: 'plan' })[view] || view || 'plan';
+const agendaView = view => view || 'plan';
 
 function agendaSource(item) {
   if (item.sourceId) return { sourceId: item.sourceId, view: agendaView(item.tab) };
@@ -104,6 +104,7 @@ function renderAgendaGroups(root, groups, prefix) {
       const footer = commandLink(group.linkLabel || 'Åbn sektionen', group.tab);
       card.append(subtitle, heading, note, empty, body, more, footer);
       card.dataset.todaySection = group.id; root.append(card);
+      if (prefix === 'primary') card.id = ({ priorities: 'today-priorities', household: 'today-meal', calendar: 'today-calendar' })[group.id] || '';
       view = { card, subtitle, heading, note, empty, body, more, moreTitle, moreBody, footer, rows: new Map(), extraRows: new Map() };
       agendaCards.set(key, view);
     }
@@ -141,18 +142,19 @@ function renderPersonalAgenda(agenda = {}, digests = [], today = null) {
   const unique = priorities.filter(item => { const key = item.id || `${JSON.stringify(item.source || {})}:${item.title}`;
     if (seen.has(key)) return false; seen.add(key); return true; });
   const calendar = today.calendar || { status: 'unknown', detail: 'Kalenderdækning er ukendt.', events: [] };
-  const calendarMetadata = calendar.fetchedAt ? `Kalender: ${calendar.calendarId}. Hentet ${calendar.fetchedAt}.`
-    + `${calendar.coverage ? ` Dækning ${calendar.coverage.start} – ${calendar.coverage.end}.` : ''}` : 'Ingen dokumenteret kalenderkopi.';
+  const calendarMetadata = calendar.fetchedAt && Number.isFinite(Date.parse(calendar.fetchedAt))
+    ? `Senest læst ${new Intl.DateTimeFormat('da-DK', { dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23', timeZone: 'Europe/Copenhagen' }).format(new Date(calendar.fetchedAt))}.`
+    : 'Ingen dokumenteret kalenderkopi.';
   renderAgendaGroups(root, [
-    { id: 'priorities', title: 'Næste skridt', subtitle: `I DAG · ${today.date}`, items: unique, tab: 'plan', linkLabel: 'Åbn Plan',
+    { id: 'priorities', title: 'Næste skridt', subtitle: `I dag · ${dateText(today.date)}`, items: unique, tab: 'plan', linkLabel: 'Se opgaver',
       note: today.priorityCount > (today.priorities || []).length ? `${today.priorityCount} lokale opmærksomhedspunkter; de første 24 vises her. Se alle opgaver og sager i Plan.` : '',
       empty: 'Ingen forfaldne eller planlagte punkter i de registrerede lokale oplysninger.' },
-    { id: 'household', title: 'Hjem og aftensmad', subtitle: 'REGISTRERET PLANLÆGNINGSGRUNDLAG',
-      items: [...(today.household ? [today.household] : []), ...(today.meals || [])], tab: 'meals', linkLabel: 'Åbn Mad og indkøb',
+    { id: 'household', title: 'Dagens madplan', subtitle: 'Husstand og aftensmad',
+      items: [...(today.household ? [today.household] : []), ...(today.meals || [])], tab: 'meals', linkLabel: 'Se madplan',
       note: today.mealCount > 1 ? `${today.mealCount} gemte planer omfatter i dag. Ingen af dem er automatisk valgt som den endelige beslutning.`
-        : !today.mealCount ? 'Ingen gemt ret for i dag. Det betyder ikke, at der ikke skal spises.' : '', empty: 'Husstand og aftensmad er endnu ikke registreret.' },
-    { id: 'calendar', title: 'Kalender i dag', subtitle: 'KUN DEN LOKALE, LÆSTE KOPI', items: calendar.events || [], tab: 'settings',
-      linkLabel: 'Åbn kalenderindstillinger', limit: 2, note: `${calendar.detail} ${calendarMetadata}`, empty: '' },
+        : !today.mealCount ? 'Ingen ret gemt til i dag.' : '', empty: 'Husstand og aftensmad er endnu ikke registreret.' },
+    { id: 'calendar', title: 'Kalender i dag', subtitle: 'Kun læsning', items: calendar.events || [], tab: 'calendar',
+      linkLabel: 'Se kalender', limit: 2, note: `${calendar.detail} ${calendarMetadata}`, empty: '' },
   ], 'primary');
   let details = document.getElementById('home-legacy-agenda');
   if (!details) {
@@ -223,7 +225,7 @@ async function openRecordedCalendarSource(sourceId, { isCurrent = () => true } =
       new Date(date + 'T12:00:00Z').toISOString().slice(0, 10) !== date) return false;
   let panel = document.getElementById('home-calendar-source');
   if (!panel) { panel = make('section', '', 'panel'); panel.id = 'home-calendar-source';
-    (document.getElementById('home-more-details') || document.getElementById('tab-home'))?.append(panel); }
+    (document.getElementById('plan-calendar') || document.getElementById('home-more-details') || document.getElementById('tab-home'))?.append(panel); }
   delete panel.dataset.calendarSourceId; panel.replaceChildren(make('h2', 'Præcis kalenderkilde'));
   const status = make('p', 'Henter kun den gemte lokale kalenderkopi …', 'muted small-text'); status.setAttribute('role', 'status'); panel.append(status);
   const details = document.getElementById('home-more-details'); if (details) details.open = true;
@@ -316,7 +318,7 @@ function renderCommandCenter(data) {
     const detail = make('details'); detail.append(make('summary', 'Se observation'), make('pre', data.monitor.result, 'command-result'));
     monitor.append(detail);
   } else monitor.append(make('p', 'Ingen aktuelle ændrede eller ukendte overvågningsudfald i dette udsnit. Se kørselshistorikken for tidligere observationer.', 'muted small-text'));
-  monitor.append(commandLink('Alle overvågninger', 'tasks')); root.append(monitor);
+  monitor.append(commandLink('Alle overvågninger', 'watches')); root.append(monitor);
 
   const tasks = commandPanel('◷ Næste opgaver');
   for (const task of data.next) tasks.append(make('p', `${task.title} · ${new Date(task.nextRunAt).toLocaleString('da-DK')}`, 'small-text'));
@@ -351,7 +353,8 @@ const organizerType = document.getElementById('collection-type');
 const organizerQuery = document.getElementById('organizer-query');
 
 function organizerVisible(view) {
-  const root = document.getElementById('tab-' + view);
+  const root = view === 'knowledge' ? (document.getElementById('plan-notes') || document.getElementById('tab-knowledge')) : document.getElementById('tab-' + view);
+  if (typeof JarvisShell === 'object') return JarvisShell.visible(root);
   return Boolean(root && !root.hidden && !root.classList.contains('hidden'));
 }
 function organizerAuthenticated() { return Boolean(localStorage.getItem('jarvisAccessToken')); }
@@ -517,15 +520,23 @@ async function refreshCommandCenter() {
   if (commandLoadInProgress || !organizerAuthenticated()) return;
   commandLoadInProgress = true;
   const session = organizerSession, owner = localStorage.getItem('jarvisAccessToken');
+  const visibleStatus = document.getElementById('today-read-status');
+  if (visibleStatus && !document.getElementById('home-intelligence').children.length) {
+    visibleStatus.classList.remove('hidden'); visibleStatus.textContent = 'Henter dagens overblik …';
+  }
   try {
     const data = await api('/api/dashboard');
-    if (session === organizerSession && owner === localStorage.getItem('jarvisAccessToken')) renderCommandCenter(data);
+    if (session === organizerSession && owner === localStorage.getItem('jarvisAccessToken')) {
+      renderCommandCenter(data);
+      if (visibleStatus) { visibleStatus.textContent = ''; visibleStatus.classList.add('hidden'); }
+    }
   } catch (error) {
     const root = document.getElementById('home-feed');
     if (root && session === organizerSession) {
       let status = root.querySelector('[data-command-read-error]');
       if (!status) { status = make('p', '', 'v5-conflict'); status.dataset.commandReadError = 'true'; root.append(status); }
       status.textContent = 'Overblikket kunne ikke opdateres: ' + error.message + '. Tidligere viste oplysninger kan være forældede.';
+      if (visibleStatus) { visibleStatus.textContent = status.textContent; visibleStatus.classList.remove('hidden'); }
     }
   } finally { commandLoadInProgress = false; }
 }

@@ -167,15 +167,17 @@ const JarvisClaims = (() => {
       const problem = conflict();
       form.setAttribute('aria-busy', String(busy));
       submit.disabled = busy || Boolean(pending) || Boolean(problem);
-      submit.textContent = edit?.mode === 'edit' ? 'Gem ændringer i forslag' : edit?.mode === 'correct' ? 'Opret rettelsesforslag' : 'Opret forslag';
+      const submitLabel = edit?.mode === 'edit' ? 'Gem ændringer i forslag' : edit?.mode === 'correct' ? 'Opret rettelsesforslag' : 'Opret forslag';
+      if (submit.textContent !== submitLabel) submit.textContent = submitLabel;
       byId('claim-subject').readOnly = Boolean(edit);
       cancel.hidden = !(dirty || edit); cancel.disabled = busy || Boolean(pending);
       reload.hidden = !edit; reload.disabled = busy || Boolean(pending);
       inspect.hidden = !pending; inspect.disabled = busy;
       resolve.hidden = !pending; resolve.disabled = busy || !readableAfterFailure;
       const base = edit ? `${edit.mode === 'correct' ? 'Retter bekræftet oplysning' : 'Redigerer forslag'} · basisrevision ${edit.revision}. ` : '';
-      draftStatus.textContent = pending ? 'Gemningens udfald er ikke afklaret. Ingen automatisk gentagelse. Hent status og gennemgå oplysningerne før du fortsætter.'
+      const statusText = pending ? 'Gemningens udfald er ikke afklaret. Ingen automatisk gentagelse. Hent status og gennemgå oplysningerne før du fortsætter.'
         : `${base}${problem || (dirty ? 'Ugemt kladde er bevaret i denne fane.' : '')}${!storageReady ? ' Browseren kan ikke gendanne denne kladde efter lukning; behold fanen åben.' : ''}`;
+      if (draftStatus.textContent !== statusText) draftStatus.textContent = statusText;
       draftStatus.classList.toggle('v5-conflict', Boolean(problem || pending));
     }
     function resetEditor() {
@@ -477,7 +479,9 @@ if (typeof document !== 'undefined') (() => {
   repeatedTime = field(zoneBox, {}, 'plan-repeated-time', 'Når et klokkeslæt forekommer to gange ved skift til vintertid', 'select');
   option(repeatedTime, 'reject', 'Spørg mig — ingen automatisk antagelse');
   option(repeatedTime, 'earlier', 'Første forekomst (sommertid)'); option(repeatedTime, 'later', 'Anden forekomst (vintertid)');
-  byId('tab-plan').insertBefore(zoneBox, byId('tab-plan').querySelector('section'));
+  const zoneDetails = node('details', 'gui-disclosure');
+  zoneDetails.append(node('summary', '', 'Avancerede tidsvalg'), zoneBox);
+  byId('tab-plan').append(zoneDetails);
 
   let taskRecords = [], followRecords = [], taskEdit = null, followEdit = null, taskEpoch = 0, followEpoch = 0;
   let taskDirty = false, followDirty = false, capacityDirty = false, storageReady = true;
@@ -530,8 +534,11 @@ if (typeof document !== 'undefined') (() => {
         return { start, end };
       }) };
   };
-  const markTaskDirty = () => { taskDirty = true; taskEditControls(); persistDrafts(); draftStatus(); };
-  const markFollowDirty = () => { followDirty = true; followEditControls(); persistDrafts(); draftStatus(); };
+  // A blur/change event can fire between pointerdown and click on a submit
+  // button. Replacing that button's text at that point cancels click in WebKit.
+  // Update the edit controls only when dirty mode first becomes active.
+  const markTaskDirty = () => { const changed = !taskDirty; taskDirty = true; if (changed) taskEditControls(); persistDrafts(); draftStatus(); };
+  const markFollowDirty = () => { const changed = !followDirty; followDirty = true; if (changed) followEditControls(); persistDrafts(); draftStatus(); };
   const markCapacityDirty = event => {
     capacityDirty = true; capacityVersion++;
     if (!event || ![manualReview, capacityFields['capacity-buffer']].includes(event.target)) manualReview.checked = false;
@@ -539,6 +546,22 @@ if (typeof document !== 'undefined') (() => {
     if (previousProposals.length) errorStatus('capacity-status', 'Rammerne er ændret. Tidligere forslag er forældede; gennemgå kapaciteten og beregn igen før gemning.');
     persistDrafts();
   };
+  // Native segmented date controls can retain partial editor state after deletion.
+  // An explicit clear action resets the whole value without accepting partial dates.
+  const clearDeadline = button('Fjern deadline', () => {
+    const deadline = byId('personal-task-deadline');
+    // Reset WebKit's segmented editor as well as its serialized value.
+    // Keep the same element, ID, labels and event listeners.
+    deadline.type = 'text';
+    deadline.value = '';
+    deadline.type = 'datetime-local';
+    delete deadline.dataset.originalInstant;
+    delete deadline.dataset.originalLocal;
+    markTaskDirty();
+  });
+  clearDeadline.id = 'personal-task-clear-deadline';
+  const deadline = byId('personal-task-deadline');
+  deadline.parentNode.insertBefore(clearDeadline, deadline.nextElementSibling);
   const allowedWindows = windowEditor(taskAdvanced.fields, 'Tilladte tidsvinduer for opgaven (tom = ingen ekstra begrænsning)', 'personal-task-status', markTaskDirty);
   const taskCancel = button('Annullér redigering', () => {
     if (taskDirty && !window.confirm('Kassér den ugemte opgavekladde?')) return;
@@ -606,10 +629,14 @@ if (typeof document !== 'undefined') (() => {
     }
   }
   function draftStatus() {
-    taskDraftStatus.textContent = [taskEdit ? `Redigerer revision ${taskEdit.revision}.` : '', taskDirty ? 'Ugemt opgavekladde bevaret.' : '', taskConflict,
+    const taskText = [taskEdit ? `Redigerer revision ${taskEdit.revision}.` : '', taskDirty ? 'Ugemt opgavekladde bevaret.' : '', taskConflict,
       (taskDirty || taskEdit) && !storageReady ? 'Browseren afviser kladdelagring; kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
-    followDraftStatus.textContent = [followEdit ? `Redigerer revision ${followEdit.revision}.` : '', followDirty ? 'Ugemt opfølgningskladde bevaret.' : '', followConflict,
+    const followText = [followEdit ? `Redigerer revision ${followEdit.revision}.` : '', followDirty ? 'Ugemt opfølgningskladde bevaret.' : '', followConflict,
       (followDirty || followEdit) && !storageReady ? 'Browseren afviser kladdelagring; kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
+    // Keep the DOM stable during a WebKit pointer gesture: the preceding input
+    // can dispatch change on blur before mouseup/click reaches the save button.
+    if (taskDraftStatus.textContent !== taskText) taskDraftStatus.textContent = taskText;
+    if (followDraftStatus.textContent !== followText) followDraftStatus.textContent = followText;
     taskDraftStatus.classList.toggle('v5-conflict', Boolean(taskConflict)); followDraftStatus.classList.toggle('v5-conflict', Boolean(followConflict));
   }
   function persistDrafts() {
@@ -624,12 +651,16 @@ if (typeof document !== 'undefined') (() => {
     } catch { storageReady = false; }
   }
   function taskEditControls() {
-    taskSubmit.textContent = taskEdit ? 'Gem ændringer' : 'Opret personlig opgave';
+    if ((taskEdit || taskDirty) && byId('personal-task-create')) byId('personal-task-create').open = true;
+    const label = taskEdit ? 'Gem ændringer' : 'Opret personlig opgave';
+    if (taskSubmit.textContent !== label) taskSubmit.textContent = label;
     taskCancel.hidden = !taskEdit && !taskDirty; taskReload.hidden = !taskEdit;
     taskFields['personal-task-state'].disabled = !taskEdit;
   }
   function followEditControls() {
-    followSubmit.textContent = followEdit ? 'Gem opfølgning' : 'Opret opfølgning';
+    if ((followEdit || followDirty) && byId('follow-up-create')) byId('follow-up-create').open = true;
+    const label = followEdit ? 'Gem opfølgning' : 'Opret opfølgning';
+    if (followSubmit.textContent !== label) followSubmit.textContent = label;
     byId('follow-up-awaiting').readOnly = Boolean(followEdit); byId('follow-up-stop').readOnly = Boolean(followEdit);
     followAdvanced.details.hidden = !followEdit; followCancel.hidden = !followEdit && !followDirty; followReload.hidden = !followEdit;
     for (const input of Object.values(followFields)) input.disabled = !followEdit;
@@ -923,7 +954,9 @@ if (typeof document !== 'undefined') (() => {
     try { sessionStorage.removeItem(draftKey); } catch { /* The signed-out page does not display saved drafts. */ }
   }
   const viewVisible = view => {
-    const root = byId(`tab-${view}`);
+    const root = view === 'knowledge' ? (byId('settings-profile') || byId('tab-knowledge'))
+      : view === 'plan' && byId('plan-personal') ? (typeof JarvisShell === 'object' && JarvisShell.visible(byId('plan-calendar')) ? byId('plan-calendar') : byId('plan-personal')) : byId(`tab-${view}`);
+    if (typeof JarvisShell === 'object') return JarvisShell.visible(root);
     return Boolean(root && !root.hidden && !root.classList.contains('hidden'));
   };
   const refresh = async ({ forceKinds = [] } = {}) => {

@@ -62,7 +62,7 @@ class Element {
   }
   get options() { return this.children.filter(child => child.tagName === 'OPTION'); }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
-  set textContent(value) { this.replaceChildren(); this._text = String(value ?? ''); }
+  set textContent(value) { this.textWrites = (this.textWrites || 0) + 1; this.replaceChildren(); this._text = String(value ?? ''); }
   append(...children) { for (const child of children) this.insertBefore(child, null); }
   insertBefore(child, next) { child.remove(); this.children.splice(next ? this.children.indexOf(next) : this.children.length, 0, child); child.parentNode = this; }
   remove() { if (!this.parentNode) return;
@@ -257,4 +257,21 @@ test('H1 loading the current catalogue never upgrades an existing 1.0.0 job poli
   await f.set('task-title', 'Kun titel ændres'); await f.save();
   const saved = f.engine.list()[0]; assert.equal(saved.skillVersion, '1.0.0'); assert.equal(saved.skillContentHash, old.skillContentHash);
   assert.deepEqual(saved.budget, old.budget); assert.equal(saved.status, 'paused');
+});
+
+
+test('unchanged blur/change preserves the job submit text node and policy preview', async () => {
+  const f = await ui();
+  await f.set('task-title', 'Pauset test'); await f.set('task-prompt', 'Kun læsning');
+  await f.set('task-budget-runs', '2');
+  const submit = f.fields.get('task-submit'), status = f.fields.get('task-draft-status');
+  const preview = f.fields.get('task-policy-preview');
+  const children = [...preview.children], writes = submit.textWrites, statusWrites = status.textWrites;
+  await f.fields.get('task-budget-runs').emit('change');
+  assert.equal(submit.textWrites, writes);
+  assert.equal(status.textWrites, statusWrites);
+  assert.deepEqual(preview.children, children);
+  await f.save();
+  assert.equal(f.engine.list()[0].status, 'paused');
+  assert.equal(f.executions(), 0);
 });

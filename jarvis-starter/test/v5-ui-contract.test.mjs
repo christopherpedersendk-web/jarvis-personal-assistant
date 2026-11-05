@@ -11,9 +11,9 @@ test('Danish v5 navigation and scripted fields are statically linked without dup
   assert.match(html, /<html lang="da">/);
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(x => x[1]);
   assert.equal(ids.length, new Set(ids).size, 'duplicate DOM IDs create ambiguous state and focus');
-  for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'settings'])
+  for (const view of ['home', 'plan', 'meals', 'knowledge', 'smart-home', 'projects', 'watches', 'settings'])
     assert.ok(ids.includes(`tab-${view}`), `missing v5 view ${view}`);
-  for (const link of ['home','plan','meals','knowledge'])
+  for (const link of ['home','plan','smart-home','watches'])
     assert.match(html, new RegExp(`class="tab-button[^"\\n]*" href="\\?view=${link}"`));
   assert.match(html, /id="more-toggle"/);
   assert.match(html, /href="\?view=settings"/);

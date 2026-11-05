@@ -4,7 +4,7 @@
 
 ## Funktioner og forbedringer
 
-- Dansk **I dag · Plan · Mad og indkøb · Min viden · Hjem · Projekter · Indstillinger**. Desktopsidebar og mobil I dag/Plan/Mad/Viden/Mere med reelle URL'er og tilbage/frem. I dag prioriterer chat, mikrofon og få relevante forhold; historik og normale driftsdetaljer er samlet under en lukket fold. Kritiske driftsproblemer er stadig synlige.
+- Dansk **I dag · Planlægning · Hjem · Overvågninger** med synlige indgange til Søg og Indstillinger. Desktopsidebar og fire mobilfaner med reelle URL'er og tilbage/frem. Madplan, noter/hukommelse og projekter er samlet i den nye navigation, og gamle direkte links bevares. I dag prioriterer chat, mikrofon og få relevante forhold; historik og normale driftsdetaljer er samlet under en lukket fold. Kritiske driftsproblemer er stadig synlige.
 - Personlig hukommelse adskiller forslag, bekræftet, midlertidig, konflikt, planlagt/udført, historisk og ugyldig viden. Direkte dato-/statusopslag kombineres med lokal tekstsøgning og valgfri ægte semantik. Kilder og korrektioner bevares, og ugyldige fakta fjernes straks fra aktuel retrieval.
 - Én synlig hukommelsesindgang understøtter både eksisterende noter og strukturerede oplysninger. Legacy-noter får faktisk revisionshistorik på samme post; strukturerede oplysninger bruger særskilte korrektionsforslag med eksplicit bekræftelse. Ældre historik opfindes ikke. Arkivvisning er read-only og er ikke aktuelle personlige fakta.
 - Generel planlægning virker uden mad/indkøb. Personlige opgaver, kalenderaftaler og automatiske jobs har forskellige modeller. Varighed/usikkerhed, frist, tidsvinduer, afhængigheder, buffere og låse valideres deterministisk; manglende kapacitet står som ukendt. Selektiv genplanlægning bevarer upåvirkede manuelle valg og forklarer umulige planer.
@@ -23,6 +23,12 @@
 - I dags tre lokale kort forbinder aktuelle personlige opgaver/opfølgninger, eksplicit husstand/måltider og tidsstemplet kalendercache. Præcise kalenderkilder åbner kun samme gemte observation; gammel eller ufuldstændig dækning er ikke fri tid. Historiske monitorændringer erstatter ikke et nyere ukendt resultat.
 - Gennemgåede opskrifters præcise trin kan hentes i de fælles web-/Discord-/talekontrakter. Manglende eller uafklaret materiale opfindes ikke. Hukommelsens kategori og gyldighed følger den faktiske modelkontekst, så en bekræftet plan ikke bliver til en udført handling.
 - Tale- og kodekontekst bevarer hele hukommelsesposter med forbehold, kilde og gyldighed; ved pladsgrænsen udelades hele poster med synlig markering. Et automatiseret jobs gennemgåede procedureversion er også den eneste procedurebody i det faktiske modelkald, uden stiltiende tilføjelse af en nyere version.
+
+## Aktuel samlet kandidat
+
+PR #8 samler V5 med GUI-redesignet. Kodekandidat `968a8dc028643f467b3af454beced449bd5803ce` har app-træ `3ca692656b835006832e7e343e820e524533510f`. Se [seneste samlede GUI-verifikation](../gui/verification.md) for de aktuelle browser-, model-, audit- og performanceresultater; ældre tal nedenfor er historik. Deadline kan fjernes eksplicit uden WebKits fastlåste segmenteditor. Job-, hukommelses- og projektknapper bevarer uændret tekst under blur/change. Job gemmes stadig pauset, og revisions-/rettighedskontrol er uændret.
+
+En konkret syntetisk restore med genstart er gennemført. Fysisk iPhone/desktop og administratorens faktiske driftsmiljø er fortsat åbne. Kandidaten er ikke frigivet eller installeret.
 
 ## Evidens og begrænsninger
 

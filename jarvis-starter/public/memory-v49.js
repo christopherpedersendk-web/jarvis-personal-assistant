@@ -525,7 +525,7 @@
     editorMode.value = 'note'; createForm.classList.remove('hidden'); claimForm.classList.add('hidden');
     try { for (const key of [noteDraftKey, editDraftKey, modeKey, archiveKey]) sessionStorage.removeItem(key); } catch { /* DOM is cleared even when storage is unavailable. */ }
   }
-  const knowledgeVisible = () => !document.getElementById('tab-knowledge')?.classList.contains('hidden');
+  const knowledgeVisible = () => typeof JarvisShell === 'object' ? JarvisShell.visible(document.getElementById('settings-profile')) : !document.getElementById('tab-knowledge')?.classList.contains('hidden');
   document.addEventListener('jarvis:refreshed', () => { if (knowledgeVisible()) return refreshMemories().catch(() => {}); });
   document.addEventListener('jarvis:view-changed', event => { if (event.detail?.view === 'knowledge') return refreshMemories().catch(() => {}); });
   document.addEventListener('jarvis:memories-changed', event => {

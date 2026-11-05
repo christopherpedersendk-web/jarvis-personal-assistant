@@ -102,7 +102,7 @@ const JarvisJobs = (() => {
       interrupted: 'Afbrudt · kræver gennemgang', archived: 'Arkiveret' })[task.status] || 'Ukendt status';
   }
 
-  function attach({ document, api, getToken, refresh, navigateSkill, confirm = message => globalThis.confirm(message), storage }) {
+  function attach({ document, api, getToken, refresh, navigateSkill, onOpen = () => {}, confirm = message => globalThis.confirm(message), storage }) {
     if (storage === undefined) { try { storage = globalThis.sessionStorage; } catch { storage = null; } }
     const byId = id => document.getElementById(id), form = byId('task-form'), fields = Object.fromEntries(Object.keys(defaults).map(id => [id, byId(id)]));
     const key = 'jarvis:v5:job-policy-draft', status = byId('task-draft-status'), submit = byId('task-submit');
@@ -112,6 +112,7 @@ const JarvisJobs = (() => {
     const node = (tag, text, className) => { const element = document.createElement(tag);
       if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; };
     const raw = () => Object.fromEntries(Object.entries(fields).map(([id, field]) => [id, field.value]));
+    let lastFieldSnapshot = JSON.stringify(raw());
     const hasSecrets = () => sensitive(JSON.stringify(raw()), owner || '');
     function persist() {
       try {
@@ -122,12 +123,14 @@ const JarvisJobs = (() => {
     }
     function stateMessage(message = '') {
       const sensitiveMessage = hasSecrets() ? 'Følsomme oplysninger gemmes ikke i browserkladden. Fjern dem før gemning.' : '';
-      status.textContent = [message || errorMessage || conflict || (dirty ? 'Ugemt kladde. Polling og navigation ændrer ikke dine felter.'
+      const statusText = [message || errorMessage || conflict || (dirty ? 'Ugemt kladde. Polling og navigation ændrer ikke dine felter.'
         : editId ? `Jobrevision ${baseRevision} er gemt pauset. Start kræver et særskilt klik på jobkortet.` : 'Nye jobs gemmes altid pausede.'),
         sensitiveMessage, !storageReady ? 'Browseren afviser kladdelagring. Kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
+      if (status.textContent !== statusText) status.textContent = statusText;
       status.classList.toggle('v5-error', Boolean(errorMessage || conflict || sensitiveMessage));
       submit.disabled = saving || Boolean(conflict || sensitiveMessage);
-      submit.textContent = saving ? 'Gemmer pauset job …' : editId ? 'Gem revideret job – fortsat pauset' : 'Gem pauset job';
+      const submitLabel = saving ? 'Gemmer pauset job …' : editId ? 'Gem revideret job – fortsat pauset' : 'Gem pauset job';
+      if (submit.textContent !== submitLabel) submit.textContent = submitLabel;
       byId('task-reload').hidden = !editId;
       byId('task-copy-draft').hidden = !editId;
     }
@@ -146,7 +149,14 @@ const JarvisJobs = (() => {
         if (draft.skillId) target.append(node('p', `Procedure: ${draft.skillId} · version ${draft.skillVersion}`, 'small-text'));
       } catch (error) { target.append(node('p', error.message, 'v5-conflict')); }
     }
-    function changed() { dirty = true; epoch++; persist(); stateMessage(); preview(); }
+    function changed(event) {
+      const next = JSON.stringify(raw());
+      // WebKit dispatches change on blur during a click. A duplicate value
+      // must not replace submit text or preview nodes before click arrives.
+      if (event && next === lastFieldSnapshot) return;
+      lastFieldSnapshot = next;
+      dirty = true; epoch++; persist(); stateMessage(); preview();
+    }
     function ensureOption(field, value, text = value) {
       if (![...field.options].some(option => option.value === value)) { const option = node('option', text); option.value = value; field.append(option); }
     }
@@ -156,18 +166,24 @@ const JarvisJobs = (() => {
         if (field.tagName === 'SELECT') ensureOption(field, value);
         field.value = value;
       }
+      lastFieldSnapshot = JSON.stringify(raw());
       preview();
     }
     function reset() {
       identity++; epoch++; editId = null; baseRevision = null; dirty = false; conflict = ''; errorMessage = '';
       fill(defaults); persist(); stateMessage();
     }
+    function show({ focus = true } = {}) {
+      onOpen({ category: fields['task-category'].value, id: editId });
+      const shell = byId('task-editor-shell');
+      if (shell) shell.open = true;
+      if (focus) { fields['task-title'].focus(); form.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
+    }
     function edit(task, { discard = false } = {}) {
       if (dirty && !discard && !confirm('Erstat den uafsluttede jobkladde med den valgte gemte revision?')) return false;
       if (!['paused', 'interrupted'].includes(task.status)) throw new Error('Pause jobbet, før du redigerer det.');
       identity++; epoch++; editId = task.id; baseRevision = task.revision || 1; dirty = false; conflict = ''; errorMessage = '';
-      fill(valuesFromTask(task)); persist(); stateMessage(); fields['task-title'].focus();
-      form.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      fill(valuesFromTask(task)); persist(); stateMessage(); show();
       return true;
     }
     async function loadSkills() {
@@ -201,7 +217,7 @@ const JarvisJobs = (() => {
             : !['paused', 'interrupted'].includes(current.status) ? 'Jobbet er ikke længere pauset. Kladden er bevaret; pause jobbet før gemning.' : '';
       }
       stateMessage();
-      if (!byId('tab-plan').classList.contains('hidden')) void loadSkills();
+      if (!byId('tab-plan').classList.contains('hidden') || byId('tab-watches') && !byId('tab-watches').classList.contains('hidden')) void loadSkills();
     }
     const post = (path, method, data) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     async function save(event) {
@@ -234,31 +250,68 @@ const JarvisJobs = (() => {
     function actionButton(card, task, action, text, after) {
       const button = node('button', text); button.type = 'button'; button.dataset.taskAction = action;
       button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        const note = card.querySelector('[data-job-action-status]'), requestedOwner = getToken();
+        if (!requestedOwner) { note.textContent = 'Log ind, før du ændrer jobbet.'; return; }
         if (['run', 'resume'].includes(action) && editId === task.id && dirty) {
-          stateMessage('Gem eller kassér dine ændringer før aktivering. Det er den gemte revision, der køres.'); return;
+          note.textContent = 'Gem eller kassér dine ændringer før aktivering. Det er den gemte revision, der køres.';
+          stateMessage(note.textContent); return;
         }
         if (['run', 'resume'].includes(action) && ['unknown', 'partially_completed'].includes(task.lastRunStatus) &&
           !confirm('Det tidligere udfald er uafklaret eller delvist. Har du gennemgået resultatet og vil nu starte den viste læsebaserede revision?')) return;
         if (action === 'archive' && !confirm(`Arkivér jobbet "${task.title}"? Historikken bevares.`)) return;
-        const note = card.querySelector('[data-job-action-status]');
-        button.disabled = true;
+        button.disabled = true; note.classList.remove('v5-error');
+        note.textContent = 'Afventer bekræftelse …';
+        let confirmed = false;
         try {
           const { task: updated } = await post(`/api/tasks/${task.id}/action`, 'POST', { action, expectedRevision: task.revision || 1 });
-          records.set(updated.id, updated);
-          if (after) after(updated);
-          note.textContent = action === 'archive' ? 'Jobbet er arkiveret; historikken er bevaret.'
+          if (requestedOwner !== getToken()) return;
+          confirmed = true; records.set(updated.id, updated);
+          const message = action === 'archive' ? 'Jobbet er arkiveret; historikken er bevaret.'
             : action === 'pause' ? 'Jobbet er pauset. En allerede igangsat ekstern handling antages ikke fortrudt.' : 'Den gennemgåede revision er aktiveret.';
+          note.textContent = message;
+          if (after) after(updated, { action, message });
           await refresh();
-        } catch (error) { note.textContent = error.message; note.classList.add('v5-error'); }
-        finally { button.disabled = false; }
+        } catch (error) { if (requestedOwner === getToken()) {
+          note.textContent = confirmed ? `Handlingen er bekræftet, men oversigten kunne ikke opdateres: ${error.message}` : error.message;
+          note.classList.add('v5-error');
+        } } finally { button.disabled = false; }
       });
       return button;
     }
-    function cardFor(record) {
+    function actionsFor(record, { compact = false, after } = {}) {
+      // Actions retain the exact displayed revision, including when the same
+      // controller supplies the dedicated monitoring view.
+      const task = JSON.parse(JSON.stringify(record));
+      const actions = node('div', undefined, compact ? 'task-actions watch-actions' : 'task-actions');
+      const note = node('p', '', 'small-text'); note.dataset.jobActionStatus = ''; note.setAttribute('role', 'status');
+      actions.append(note);
+      let extra = actions;
+      if (compact) { extra = node('details'); extra.dataset.jobSection = 'more-actions'; extra.append(node('summary', 'Flere handlinger')); }
+      if (task.status !== 'running') {
+        if (task.status !== 'queued') {
+          extra.append(actionButton(actions, task, 'run', task.responseId ? 'Genoptag eksisterende læsning' : 'Kør den viste revision nu', after));
+          if (['paused', 'interrupted', 'failed', 'completed'].includes(task.status) && (task.dailyTime || task.intervalMinutes))
+            actions.append(actionButton(actions, task, 'resume', compact ? 'Genoptag' : 'Aktivér den viste tidsplan', after));
+        }
+        if (['paused', 'interrupted'].includes(task.status)) {
+          const editButton = node('button', compact ? 'Redigér' : 'Redigér pauset job'); editButton.type = 'button'; editButton.dataset.taskAction = 'edit';
+          editButton.disabled = Boolean(task.responseId);
+          editButton.addEventListener('click', () => { try { edit(task); } catch (error) { note.textContent = error.message; } });
+          actions.append(editButton);
+        } else actions.append(actionButton(actions, task, 'pause', task.status === 'queued' ? 'Annullér ventende kørsel'
+          : compact && task.status === 'scheduled' ? 'Pause' : 'Pause før redigering', after));
+        extra.append(actionButton(actions, task, 'archive', 'Arkivér job', after));
+        if (compact) actions.append(extra);
+      } else note.textContent = 'Arbejdet er startet. En ekstern virkning kan ikke annulleres eller antages rullet tilbage.';
+      return actions;
+    }
+    function cardFor(record, { actions = true, identify = true } = {}) {
       // Every button is bound to the exact displayed snapshot, even if an
       // in-process caller later mutates the object used to render the card.
       const task = JSON.parse(JSON.stringify(record));
-      const card = node('article', undefined, 'task-card'); card.dataset.taskId = task.id; card.dataset.jobKey = task.id;
+      const card = node('article', undefined, 'task-card');
+      if (identify) { card.dataset.taskId = task.id; card.dataset.jobKey = task.id; }
       card.jobSignature = JSON.stringify(task);
       const top = node('div', undefined, 'task-top'); top.append(node('h3', task.title), node('span', statusLabel(task), `task-pill ${task.status}`));
       card.append(top, node('p', `Jobrevision ${task.revision || 1} · ${task.nextRunAt ? `Ønsket næste start: ${task.nextRunAt} (UTC)` : 'Ingen næste start fastsat'}`, 'task-schedule'), node('p', task.prompt));
@@ -285,35 +338,20 @@ const JarvisJobs = (() => {
         if (run.binding) detail.append(node('p', `Faktisk kørselsgrundlag: ${run.binding.skillId || 'jobinstruktion'}${run.binding.skillVersion ? ` v${run.binding.skillVersion}` : ''} · ${run.binding.timeZone || 'tidszone ukendt'} · ${run.binding.bindingHash || 'hash ikke tilgængelig'}`, 'micro'));
         card.append(detail);
       }
-      const actions = node('div', undefined, 'task-actions');
-      const note = node('p', '', 'small-text'); note.dataset.jobActionStatus = ''; note.setAttribute('role', 'status');
-      card.append(note);
-      if (task.status !== 'running') {
-        if (task.status !== 'queued') {
-          actions.append(actionButton(card, task, 'run', task.responseId ? 'Genoptag eksisterende læsning' : 'Kør den viste revision nu'));
-          if (['paused', 'interrupted', 'failed', 'completed'].includes(task.status) && (task.dailyTime || task.intervalMinutes))
-            actions.append(actionButton(card, task, 'resume', 'Aktivér den viste tidsplan'));
-        }
-        if (['paused', 'interrupted'].includes(task.status)) {
-          const editButton = node('button', 'Redigér pauset job'); editButton.type = 'button'; editButton.dataset.taskAction = 'edit';
-          editButton.disabled = Boolean(task.responseId);
-          editButton.addEventListener('click', () => { try { edit(task); } catch (error) { note.textContent = error.message; } });
-          actions.append(editButton);
-        } else actions.append(actionButton(card, task, 'pause', task.status === 'queued' ? 'Annullér ventende kørsel' : 'Pause før redigering'));
-        actions.append(actionButton(card, task, 'archive', 'Arkivér job'));
-      } else note.textContent = 'Arbejdet er startet. En ekstern virkning kan ikke annulleres eller antages rullet tilbage.';
-      card.append(actions); return card;
+      if (actions) card.append(actionsFor(task));
+      return card;
     }
-    function render(tasks, usage = {}) {
+    function render(tasks, usage = {}, { filter = () => true } = {}) {
       observe(tasks);
+      const visible = tasks.filter(filter), visibleIds = new Set(visible.map(task => task.id));
       byId('usage').textContent = `${usage.started || 0}/${usage.maxRunsPerDay || 10} NYE KØRSLER · UTC-DØGN`;
       const target = byId('tasks'), old = new Map([...target.children].filter(card => card.dataset.jobKey).map(card => [card.dataset.jobKey, card]));
       const stale = card => { let note = card.querySelector('[data-job-stale]');
         if (!note) { note = node('p', '', 'v5-conflict'); note.dataset.jobStale = ''; note.setAttribute('role', 'status'); card.append(note); }
         note.textContent = 'Jobbet er ændret et andet sted. Fokus og den viste revision er bevaret; genindlæs før en ændring.'; };
-      for (const [id, card] of old) if (!records.has(id)) { if (card.contains(document.activeElement)) stale(card); else card.remove(); }
+      for (const [id, card] of old) if (!visibleIds.has(id)) { if (card.contains(document.activeElement)) stale(card); else card.remove(); }
       for (const child of [...target.children]) if (!child.dataset.jobKey) child.remove();
-      for (const task of tasks) {
+      for (const task of visible) {
         const current = old.get(task.id);
         if (current?.jobSignature === JSON.stringify(task)) continue;
         if (current?.contains(document.activeElement)) { stale(current); continue; }
@@ -348,14 +386,14 @@ const JarvisJobs = (() => {
         } else { fill(defaults); stateMessage(); }
       } else { storage.removeItem(key); fill(defaults); stateMessage(); }
     } catch { storageReady = false; fill(defaults); stateMessage(); }
-    return Object.freeze({ render, save, edit, loadSkills, changed,
+    return Object.freeze({ render, save, edit, show, cardFor, actionsFor, loadSkills, changed,
       template(values, { skillId } = {}) { if (dirty && !confirm('Erstat den uafsluttede jobkladde med denne skabelon?')) return false;
         const skill = skillId && skills.find(item => item.name === skillId && item.current === true);
         const version = skill?.version || currentSkillVersion;
         const selected = skillId ? { 'task-skill': `${skillId}@${version}`,
           'task-budget-runs': String(skill?.budgetDefaults?.maxRunsPerDay ?? 1),
           'task-budget-tokens': String(skill?.budgetDefaults?.maxOutputTokens ?? (skillId === 'personal-follow-up' ? 2500 : 3500)) } : {};
-        reset(); fill({ ...defaults, ...selected, ...values }); changed(); void loadSkills(); return true; } });
+        reset(); fill({ ...defaults, ...selected, ...values }); changed(); show(); void loadSkills(); return true; } });
   }
   return Object.freeze({ currentSkillVersion, defaults, parameters, payload, valuesFromTask, policyLines, statusLabel, sensitive, attach });
 })();

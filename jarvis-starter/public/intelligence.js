@@ -13,7 +13,8 @@ function sourceRequestCurrent(sequence, sourceId) {
 }
 
 function sourceStatus(view, message) {
-  const root = document.getElementById(`tab-${view}`);
+  const route = typeof JarvisNavigation === 'object' ? JarvisNavigation.fromURL(window.location.href) : null;
+  const root = document.getElementById(`tab-${route?.view || view}`);
   if (!root) return;
   let status = root.querySelector(':scope > .source-open-status');
   if (!status) {
@@ -118,7 +119,14 @@ async function focusRecordedSource(sourceId) {
     }));
     await Promise.allSettled(pending);
   }
-  else if (kind === 'task') await refreshTasks();
+  else if (kind === 'task') {
+    await refreshTasks();
+    if (sourceRequestCurrent(sequence, sourceId) && typeof currentTaskRecords !== 'undefined' && currentTaskRecords.find(task => task.id === parts[1])?.category === 'monitor') {
+      selectTab('watches', { sourceId, replace: true, preserveDestination: true });
+      // A previous active/paused filter must not conceal an exact source link.
+      if (typeof watches !== 'undefined') watches.open(parts[1]);
+    }
+  }
   else if (kind === 'project') await refreshProjects();
 
   const selectors = {
@@ -154,6 +162,8 @@ async function focusRecordedSource(sourceId) {
     sourceStatus(view, 'Kilden kan ikke åbnes i den aktuelle oversigt. Den kan være arkiveret, slettet eller utilgængelig. Ingen ændringer er foretaget.');
     return;
   }
+  // Source links open the original editor even when creation/details are folded.
+  for (let parent = target.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
   target.classList.add('source-target');
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -165,17 +175,21 @@ document.addEventListener('jarvis:source-route', event => {
   } else {
     sourceNavigationSequence++;
     document.querySelectorAll('.source-target').forEach(node => node.classList.remove('source-target'));
-    const query = window.history?.state?.knowledgeQuery;
-    if (new URL(window.location.href).searchParams.get('view') === 'knowledge' && typeof query === 'string' && query.length <= 240) {
-      const input = document.getElementById('knowledge-query');
-      if (input) {
-        input.value = query;
-        // Returning after a source-page reload restores the original local
-        // search as well as the URL. This performs a read, never an editor save.
-        document.getElementById('knowledge-search-form')?.requestSubmit();
-      }
-    }
   }
+  restoreSearchQuery();
+});
+
+function restoreSearchQuery() {
+  const query = window.history?.state?.knowledgeQuery, url = new URL(window.location.href);
+  if ((url.searchParams.get('view') === 'knowledge' || url.searchParams.get('panel') === 'search') && typeof query === 'string' && query.length <= 240) {
+    const input = document.getElementById('knowledge-query');
+    if (input) { input.value = query; document.getElementById('knowledge-search-form')?.requestSubmit(); }
+  }
+}
+
+let initialSearchRestored = false;
+document.addEventListener('jarvis:refreshed', () => {
+  if (!initialSearchRestored) { initialSearchRestored = true; restoreSearchQuery(); }
 });
 
 document.getElementById('logout')?.addEventListener('click', () => {
@@ -191,7 +205,7 @@ if (initialSource) {
     if (opened || new URL(window.location.href).searchParams.get('source') !== initialSource) return;
     opened = true;
     const view = sourceKinds[initialSource.split(':')[0]] || 'knowledge';
-    selectTab(view, { fromHistory: true });
+    selectTab(view, { fromHistory: true, sourceId: initialSource });
     focusRecordedSource(initialSource).catch(error => sourceStatus(view, `Kilden kunne ikke åbnes: ${error.message}`));
   });
 }
@@ -212,8 +226,10 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
     { rows: [], cards: new Map(), loaded: false, loadedAt: 0, pending: null, error: '' }]));
   const details = new Map(), detailPending = new Map();
   let owner = '', generation = 0;
-  const visible = kind => !document.hidden && !byId('workspace')?.classList.contains('hidden') &&
-    !byId(kind === 'skills' ? 'tab-knowledge' : 'tab-settings').classList.contains('hidden');
+  const visible = kind => {
+    const target = byId(kind === 'skills' ? 'settings-automations' : 'settings-integrations') || byId(kind === 'skills' ? 'tab-knowledge' : 'tab-settings');
+    return !document.hidden && !byId('workspace')?.classList.contains('hidden') && (typeof JarvisShell === 'object' ? JarvisShell.visible(target) : !target?.classList.contains('hidden'));
+  };
   const status = (kind, text) => { const target = byId(`${kind}-catalog-status`); if (target) write(target, text); };
   function reset() {
     generation++; owner = ''; details.clear(); detailPending.clear();
@@ -378,19 +394,25 @@ const intelligenceCatalog = createIntelligenceCatalog({ document, api, getToken:
     focusRecordedSource(sourceId).catch(error => sourceStatus('knowledge', `Kilden kunne ikke åbnes: ${error.message}`)); } });
 async function refreshIntelligenceCatalog(options) { return intelligenceCatalog.refresh(options); }
 
+let knowledgeSearchSequence = 0;
 document.getElementById('knowledge-search-form').addEventListener('submit', async event => {
   event.preventDefault();
   const query = document.getElementById('knowledge-query').value.trim();
+  const sequence = ++knowledgeSearchSequence, owner = token;
+  const current = () => owner && owner === token && sequence === knowledgeSearchSequence;
   const status = document.getElementById('knowledge-search-status');
   const results = document.getElementById('knowledge-results');
+  history.replaceState({ ...(history.state || {}), knowledgeQuery: query }, '', window.location.href);
   status.textContent = 'Søger lokalt …';
   try {
     const data = await api('/api/knowledge/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+    if (!current()) return;
     results.replaceChildren();
     if (!data.matches.length) results.append(knowledgeElement('p', 'Ingen direkte træffere i dine gemte kilder.', 'muted small-text'));
     for (const match of data.matches) {
       const entry = knowledgeElement('article', '', 'knowledge-result');
-      entry.append(knowledgeElement('span', `${match.label} · ${match.type}${match.updatedAt ? ` · ${match.updatedAt.slice(0, 10)}` : ''}`, 'tiny-label'));
+      const typeLabel = ({ memory: 'Hukommelse', claim: 'Oplysning', organizer: 'Note eller liste', task: 'Agentopgave', 'personal-task': 'Opgave', 'follow-up': 'Opfølgning', project: 'Kodeprojekt', skill: 'Arbejdsgang', recipe: 'Opskrift', 'meal-plan': 'Madplan', household: 'Husstand' })[match.type] || 'Gemt kilde';
+      entry.append(knowledgeElement('span', `${match.label} · ${typeLabel}${Number.isFinite(Date.parse(match.updatedAt)) ? ` · ${new Intl.DateTimeFormat('da-DK', { dateStyle: 'medium', timeZone: 'Europe/Copenhagen' }).format(new Date(match.updatedAt))}` : ''}`, 'tiny-label'));
       entry.append(knowledgeElement('p', match.text));
       const button = knowledgeElement('button', 'Åbn kilde', 'secondary compact-button');
       button.type = 'button';
@@ -404,7 +426,7 @@ document.getElementById('knowledge-search-form').addEventListener('submit', asyn
       results.append(entry);
     }
     status.textContent = `${data.matches.length} træffer · lokal søgning · ingen eksterne modelkald`;
-  } catch (error) { status.textContent = error.message; }
+  } catch (error) { if (current()) status.textContent = `Søgningen mislykkedes: ${error.message}${results.children.length ? '. Tidligere viste resultater er ikke opdateret for denne søgning.' : ''}`; }
 });
 
 async function refreshProactiveSettings() {
@@ -417,5 +439,11 @@ document.addEventListener('jarvis:refreshed', () => {
   refreshIntelligenceCatalog().catch(() => {});
 });
 document.addEventListener('jarvis:view-changed', () => refreshIntelligenceCatalog().catch(() => {}));
-document.getElementById('logout').addEventListener('click', () => { sourceNavigationSequence++; intelligenceCatalog.reset(); });
+document.getElementById('logout').addEventListener('click', () => {
+  sourceNavigationSequence++; knowledgeSearchSequence++; intelligenceCatalog.reset();
+  document.getElementById('knowledge-query').value = '';
+  document.getElementById('knowledge-results').replaceChildren();
+  document.getElementById('knowledge-search-status').textContent = '';
+  history.replaceState({ ...(history.state || {}), knowledgeQuery: null }, '', window.location.href);
+});
 setInterval(() => refreshIntelligenceCatalog().catch(() => {}), 60_000);

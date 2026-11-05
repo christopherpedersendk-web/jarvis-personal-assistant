@@ -446,3 +446,24 @@ test('I/K a signed-out load does not restore another session draft or initiate r
   const h = await ui({ saved, authenticated: false });
   assert.equal(h.byId('personal-task-title').value, ''); assert.equal(saved.has('jarvis:v5:plan-drafts'), false); assert.deepEqual(h.calls, []);
 });
+
+
+test('explicit deadline removal survives reload and saves null against the original revision', async () => {
+  const state = {}, tasks = new PersonalTasks({ state });
+  const task = await tasks.create({ ...input(), deadline: '2030-11-06T08:30:00.000Z' });
+  const first = await ui({ state });
+  await first.button(first.byId('personal-task-list'), 'Redigér opgave').emit('click');
+  assert.ok(first.byId('personal-task-deadline').value);
+  await first.byId('personal-task-clear-deadline').emit('click');
+  assert.equal(first.byId('personal-task-deadline').value, '');
+  assert.equal(first.byId('personal-task-deadline').type, 'datetime-local');
+  assert.equal(first.byId('personal-task-deadline').dataset.originalInstant, undefined);
+  assert.equal(first.writes().length, 0);
+  const restored = await ui({ state, saved: first.saved });
+  assert.equal(restored.byId('personal-task-deadline').value, '');
+  await restored.byId('personal-task-form').emit('submit');
+  const write = restored.writes().find(call => call.method === 'PATCH');
+  assert.equal(write.body.expectedRevision, task.revision);
+  assert.equal(write.body.deadline, null);
+  assert.equal(restored.tasks.list()[0].deadline, null);
+});
