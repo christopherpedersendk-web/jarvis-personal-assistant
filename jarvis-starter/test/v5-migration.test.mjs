@@ -71,6 +71,29 @@ test('atomic writes publish complete data and clean failed temporary files', asy
   assert.equal(await readFile(stateFile, 'utf8'), '{"revision":1}');
 });
 
+test('atomic rename failure leaves the previous state untouched and clears its temporary snapshot', async t => {
+  const { dir, stateFile } = await fixture(t);
+  await atomicStateWrite(stateFile, '{"revision":1}');
+  const error = Object.assign(new Error('synthetic rename error'), { code: 'EIO' });
+  await assert.rejects(atomicStateWrite(stateFile, '{"revision":2}', {
+    renameFile: async () => { throw error; },
+  }), received => received === error && received.statePublished !== true);
+  assert.equal(await readFile(stateFile, 'utf8'), '{"revision":1}');
+  assert.ok(!(await readdir(dir)).some(name => name.endsWith('.tmp')));
+  await atomicStateWrite(stateFile, '{"revision":3}');
+  assert.equal(await readFile(stateFile, 'utf8'), '{"revision":3}');
+});
+
+test('failed directory durability after rename is UNKNOWN, never mistaken for an unapplied write', async t => {
+  const { stateFile } = await fixture(t);
+  await atomicStateWrite(stateFile, '{"revision":1}');
+  const error = Object.assign(new Error('synthetic directory sync error'), { code: 'EIO' });
+  await assert.rejects(atomicStateWrite(stateFile, '{"revision":2}', {
+    syncDirectory: async () => { throw error; },
+  }), received => received.code === 'STATE_DURABILITY_UNKNOWN' && received.statePublished === true && received.cause === error);
+  assert.equal(await readFile(stateFile, 'utf8'), '{"revision":2}', 'rename has already published data even if durability cannot be confirmed');
+});
+
 test('offline restore is bound to exact current hash and never silently overwrites newer edits', async t => {
   const { dir, stateFile } = await fixture(t);
   const backup = join(dir, 'safe.backup');

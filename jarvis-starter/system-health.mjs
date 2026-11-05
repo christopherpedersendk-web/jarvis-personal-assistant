@@ -33,7 +33,7 @@ async function service(name) {
   } catch { return { ActiveState: 'unknown', Result: 'unavailable' }; }
 }
 
-export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0' }) {
+export async function systemHealth({ discord, taskEngine, dataDirectory, version = '4.6.0', publicationUncertain = false }) {
   const [backup, disk, storage] = await Promise.all([
     service('jarvis-backup.service'),
     statfs(dataDirectory).catch(() => null),
@@ -41,6 +41,10 @@ export async function systemHealth({ discord, taskEngine, dataDirectory, version
   ]);
   const available = disk ? disk.bavail * disk.bsize : null;
   const total = disk ? disk.blocks * disk.bsize : null;
+  if (publicationUncertain) {
+    storage.ready = false;
+    storage.reason = 'Sidste tilstandsskrivning blev publiceret, men varigheden er ukendt. Genstart og kontrollér data.';
+  }
   const memory = process.memoryUsage();
   const uptimeSeconds = Math.round(process.uptime());
   return {

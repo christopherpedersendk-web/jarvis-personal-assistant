@@ -18,20 +18,26 @@ export function schemaVersion(state) {
 
 export const stateHash = contents => createHash('sha256').update(contents).digest('hex');
 
+async function syncParentDirectory(path) {
+  const directory = await open(dirname(path), 'r');
+  try { await directory.sync(); } finally { await directory.close(); }
+}
+
 /** Write a private JSON snapshot without publishing a partial file. */
-export async function atomicStateWrite(path, contents) {
+export async function atomicStateWrite(path, contents, { renameFile = rename, syncDirectory = syncParentDirectory } = {}) {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
   let handle;
+  let published = false;
   try {
     handle = await open(temporary, 'wx', 0o600);
     await handle.writeFile(contents, 'utf8');
     await handle.sync();
     await handle.close(); handle = null;
-    await rename(temporary, path);
-    try { const directory = await open(dirname(path), 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
-    } catch (error) {
+    await renameFile(temporary, path);
+    published = true;
+    try { await syncDirectory(path); }
+    catch (error) {
       // Some filesystems do not support fsync on directories; the file itself
       // has already been atomically published and synced.
       if (!['EINVAL', 'ENOTSUP', 'EISDIR'].includes(error.code)) throw error;
@@ -39,6 +45,14 @@ export async function atomicStateWrite(path, contents) {
   } catch (error) {
     if (handle) await handle.close().catch(() => {});
     await unlink(temporary).catch(() => {});
+    if (published) {
+      // Rename succeeded: disk now has the new JSON, but directory durability
+      // could not be confirmed. Rolling back memory would diverge from disk.
+      const uncertain = new Error('Tilstanden er publiceret, men diskens varighed kunne ikke bekræftes. Udfaldet er ukendt; genstart og kontrollér lageret før nye skrivninger.', { cause: error });
+      uncertain.code = 'STATE_DURABILITY_UNKNOWN';
+      uncertain.statePublished = true;
+      throw uncertain;
+    }
     throw error;
   }
 }

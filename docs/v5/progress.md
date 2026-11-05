@@ -2,6 +2,8 @@
 
 Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema `1`, published commit **`f19c85d695b87cc7f7c93f609afa3cc756de3df2`**, source tree `aa19a74523a5e57ea2322bba6f30f000d8d25020` and **application subtree `bf87ea8604223ed4ec401ddbd781d55c945203ea`**. GitHub Actions `41944996605`: **240/240 Node 22 tests and Chromium + WebKit at 1390×950 and 390×844 passed**; all 16 synthetic screenshots saved as artifact `13378367690`. A subsequent documentation-only update preserves this exact application subtree. No M7 action has been taken.
 
+**Resume iteration (2026-11-05; awaiting publication/CI):** A second, separate worktree `jarvis-v5-resume` was reconstructed against all **133/133** blobs at remote head `e07dba1c187e5e4fff66ba98912f04d36887168e`, tree `d836025a409985c514af95617ed602f602c52318`. The original `jarvis-v5-work` worktree, with its pre-existing uncommitted changes, remains untouched. The unmodified remote snapshot initially ran **239/240** Node tests locally because the R01 test assumed startup had not already created `state.json`; after making that fault-injection setup deterministic and guarding additional legacy local writes, the revised local suite passes **243/243** (Node 24.22.1). This *new code* has not yet passed remote Node 22 or browser CI; do not attribute the previous green run to it.
+
 ## Provenance
 
 - Production and M7 were not accessed or performed.
@@ -27,6 +29,7 @@ Latest fully browser-tested **application**: 2026-11-05, package `5.0.0`, schema
 
 - **M0**: baseline SHA/tree and historical tests verified; representative before/after synthetic performance measured. Scope matrix complete.
 - **M1**: R01/R02/R04/R05/R06/R07/R08 focused fault and approval tests green; release schema compatibility is now bound to manifest/staging approval. R03 still requires browser draft/focus acceptance; legacy in-memory-before-save cases still need full sweep.
+- **M1 continuation**: Organizer, legacy memory, inbox/approvals, personal playbook, manual job create/update/archive, proactive settings and preferences now use serialized in-memory rollback on known failed publication. New tests inject rename/disk failures and ensure no ghost state, then verify recovery. Post-rename directory fsync failures are explicitly **unknown** (memory retained, subsequent writes fail closed); not treated as an unapplied mutation. Background-job, project-file and multi-file settings transactions remain open.
 - **M2**: JSON schema 1, immutable backup, atomic/fsync publish, readiness write-probe, same-file mutation contract, action journal, queue and domain APIs implemented/tested synthetically. Not every legacy mutation or external wait uses the shared queue; **partial**.
 - **M3**: personal claims/search, separate persistent tasks, deterministic capacity with fail-closed actual read-only calendar coverage, follow-ups, skills versioning, Discord resilience and recurring retry/observation are integrated and Node-tested. **B3 genuine Danish semantic model missing**, independent 90% retrieval gate pending.
 - **M4**: household rhythm, recipe review/feedback, inventory reservations, editable meals, shopping proposal and one-use Nemlig owner-click intention implemented/tested synthetically. Live credential-free browser and household acceptance pending.
@@ -39,6 +42,7 @@ The concrete staged M7 decision path, candidate binding and blockers are in `rel
 ## Executed tests / known limits
 
 - `cd jarvis-starter && npm test`: **239/239** in 4.69 seconds, 0 failures (latest local amendment); first published commit CI **236/236**.
+- Resume snapshot command `cd /workspace/scratch/0a910068d923/jarvis-v5-resume/jarvis-starter && npm test`: **243/243** in 7.12 seconds, 0 failures (after local R01 fault fixture correction and three added regression cases). This run is **not yet remote CI evidence**.
 - `node --test test/v5-intelligence.test.mjs`: 45 tests; 80/80 lexical correct-source@5, 30 planning cases; this is not genuine semantic evaluation.
 - `node --test test/deploy-release.test.mjs test/v5-server.test.mjs`: 9 tests green, including restart, click-intent and version/rollback safety.
 - `node scripts/v5-visual-smoke.mjs`: local Chromium remains blocked by sandbox `socket() Operation not permitted`, but CI `41944996605` ran all four browser cases successfully and saved 16 synthetic screenshots from the exact final application hash.
@@ -47,8 +51,6 @@ The concrete staged M7 decision path, candidate binding and blockers are in `rel
 
 ## Continuation
 
-1. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7), the exact application hash `bf87ea86`, green CI `41944996605`, synthetic screenshots and the outstanding requirements matrix. If documentation-only progress changes advance the PR head, they do **not** change the tested application subtree; recheck exact commit binding before any future M7 decision.
-2. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows. Keep incomplete items pending, never accepted by inference.
-3. Have owner/manual reviewers complete physical iPhone/desktop and administrator-safe recovery checks. M7 merge, stable `v5.0.0` tag/release and production install remain separate authorisations.
-4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.
-5. Have owner/manual reviewers complete physical iPhone/desktop and administrator-safe recovery checks. M7 merge, stable `v5.0.0` tag/release and production install are separate authorisations.
+1. Publish the resumed M1 code as a **fast-forward child of `e07dba1c`**, compare all blob hashes/tree, and run Node 22 plus the four mandatory browser CI workflows against the exact new code. Update this record with the remote SHA and CI outcome.
+2. Complete the remaining legacy/multi-file write sweep, a genuine local Danish semantic provider and **independent** ≥90% source@5 evaluation, then consolidate the duplicate memory editors and expand keyboard/zoom/source-route browser tests.
+3. Arrange actual physical iPhone/desktop acceptance and an administrator-controlled recovery rehearsal. M7 merge, stable tag, release and installation remain **separate authorisations**.

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rmdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rmdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -43,14 +43,56 @@ test('R01: one disk write error does not poison subsequent state saves', async t
   const { dataDir, api } = await fixture(t);
   // The atomic writer now uses unique, unpredictable temporary paths. Force
   // the actual publication/rename to fail by making the destination a folder.
+  // The server may already have initialized state.json in a background tick;
+  // keep that exact prior snapshot for restoration after the injected fault.
+  const statePath = join(dataDir, 'state.json');
+  assert.equal((await api('POST', '/api/preferences', { text: 'Previously saved' })).status, 200);
+  const priorState = await readFile(statePath, 'utf8');
+  const heldState = join(dataDir, 'state.json.held-for-test');
+  await rename(statePath, heldState);
   await mkdir(join(dataDir, 'state.json'));
   const failed = await api('POST', '/api/preferences', { text: 'Must not be saved' });
   assert.equal(failed.status, 500);
-  assert.equal((await api('GET', '/api/state')).body.preferences, '');
+  assert.equal((await api('GET', '/api/state')).body.preferences, 'Previously saved');
   await rmdir(join(dataDir, 'state.json'));
+  await rename(heldState, statePath);
+  assert.equal(await readFile(statePath, 'utf8'), priorState, 'injected rename failure preserved the old disk snapshot');
   const successful = await api('POST', '/api/preferences', { text: 'Correct saved state' });
   assert.equal(successful.status, 200);
   assert.equal(JSON.parse(await readFile(join(dataDir, 'state.json'), 'utf8')).preferences, 'Correct saved state');
+});
+
+test('M1: failed legacy list, memory and task mutations leave no visible or durable ghost state', async t => {
+  const { dataDir, api } = await fixture(t);
+  const created = await api('POST', '/api/organizer', { title: 'Manuel oversigt', type: 'notes' });
+  assert.equal(created.status, 201);
+  const collectionId = created.body.collection.id;
+  const statePath = join(dataDir, 'state.json');
+  const before = await readFile(statePath, 'utf8');
+  const heldState = join(dataDir, 'state.json.held-for-test');
+  await rename(statePath, heldState);
+  await mkdir(statePath);
+
+  const invalidListWrite = await api('POST', `/api/organizer/${collectionId}/items`, { text: 'Skal ikke overleve disken' });
+  const invalidMemoryWrite = await api('POST', '/api/memories', { text: 'Skal ikke blive til en personlig kendsgerning' });
+  const invalidTaskWrite = await api('POST', '/api/tasks', { title: 'Skal ikke køre', prompt: 'Kun syntetisk test',
+    runAt: '2026-11-09T13:00:00Z' });
+  assert.deepEqual([invalidListWrite.status, invalidMemoryWrite.status, invalidTaskWrite.status], [400, 400, 400]);
+  assert.deepEqual((await api('GET', '/api/organizer')).body.collections[0].items, []);
+  assert.deepEqual((await api('GET', '/api/memories')).body.memories, []);
+  assert.deepEqual((await api('GET', '/api/tasks')).body.tasks, []);
+  await rmdir(statePath);
+  await rename(heldState, statePath);
+  assert.equal(await readFile(statePath, 'utf8'), before, 'no failed edit was durably published');
+
+  const [item, memory] = await Promise.all([
+    api('POST', `/api/organizer/${collectionId}/items`, { text: 'Manuel tilføjelse' }),
+    api('POST', '/api/memories', { text: 'En bekræftet manuel oplysning' }),
+  ]);
+  assert.deepEqual([item.status, memory.status], [201, 201]);
+  const persisted = JSON.parse(await readFile(statePath, 'utf8'));
+  assert.equal(persisted.organizer[0].items.length, 1);
+  assert.equal(persisted.memories.length, 1);
 });
 
 test('R02: concurrent private settings edits survive and failed rename changes no active values', async t => {

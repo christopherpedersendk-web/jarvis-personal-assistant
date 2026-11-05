@@ -119,6 +119,7 @@ try {
 const tokenDigest = createHash('sha256').update(accessToken).digest();
 let saveQueue = Promise.resolve();
 let privateSettingsQueue = Promise.resolve();
+let uncertainLocalPublication = false;
 const chatWorkQueue = new BoundedJobQueue({ concurrency: 1, maxWaiting: 4 });
 const recentEventIds = new Set();
 
@@ -196,12 +197,18 @@ async function bodyJson(req, limit = 12_000) {
 }
 
 function save() {
+  if (uncertainLocalPublication) return Promise.reject(new Error('Lagerets sidste skrivning har ukendt varighed. Genstart og kontrollér data, før du gemmer igen.'));
   state.history = state.history.slice(-200);
   if (Array.isArray(state.actionJournal)) state.actionJournal = state.actionJournal.slice(-200);
   state.schemaVersion = STATE_SCHEMA_VERSION;
   const snapshot = JSON.stringify(state, null, 2);
   const operation = saveQueue.then(async () => {
-    await atomicStateWrite(dataPath, snapshot);
+    if (uncertainLocalPublication) throw new Error('Lagerets sidste skrivning har ukendt varighed. Genstart og kontrollér data, før du gemmer igen.');
+    try { await atomicStateWrite(dataPath, snapshot); }
+    catch (error) {
+      if (error.statePublished === true) uncertainLocalPublication = true;
+      throw error;
+    }
   });
   // The original caller still receives its error. Only the internal tail
   // recovers, allowing subsequent saves to run without a process restart.
@@ -217,7 +224,10 @@ function mutateV5(keys, action) {
     const before = keys.map(key => [key, structuredClone(state[key])]);
     try { return await action(); }
     catch (error) {
-      for (const [key, value] of before) state[key] = value;
+      // If rename succeeded but durability is unknown, reverting memory would
+      // contradict the just-published disk content. Block further writes.
+      if (error.statePublished !== true && !uncertainLocalPublication)
+        for (const [key, value] of before) state[key] = value;
       throw error;
     }
   });
@@ -225,8 +235,29 @@ function mutateV5(keys, action) {
   return operation;
 }
 
+// Older domain objects also mutate their shared state before calling save().
+// Bring their local-only edits through the same serialized rollback boundary as
+// the new v5 collections. Only methods without an external side effect belong
+// here; a network/file operation cannot safely be undone by restoring JSON.
+function protectLocalMutations(domain, methods) {
+  for (const [method, keys] of Object.entries(methods)) {
+    const original = domain[method].bind(domain);
+    domain[method] = (...args) => mutateV5(keys, () => original(...args));
+  }
+}
+
 const secretary = new SecretaryCore({ state, save });
 const organizer = new OrganizerCore({ state, save });
+protectLocalMutations(secretary, {
+  savePlaybook: ['playbook'], remember: ['memories'], updateMemory: ['memories'],
+  confirmMemory: ['memories'], archiveMemory: ['memories'],
+  addInbox: ['inbox'], readInbox: ['inbox'],
+  proposeAction: ['approvals'], decideAction: ['approvals'],
+});
+protectLocalMutations(organizer, {
+  create: ['organizer'], rename: ['organizer'], archive: ['organizer'],
+  addItem: ['organizer'], updateItem: ['organizer'], removeItem: ['organizer'],
+});
 const knowledge = new PersonalKnowledge({ state });
 const claims = new PersonalClaims({ state, save });
 const followUps = new FollowUpCases({ state, save });
@@ -275,6 +306,7 @@ const reminders = new ProactiveReminders({ state, organizer, save, notify: async
 },
   enabled: () => state.settings.remindersEnabled !== false });
 const proactive = new ProactivePlanner({ state, organizer, save, notify: notifyDiscord });
+protectLocalMutations(proactive, { configure: ['settings'] });
 
 function addMessage(role, text, channel = 'text') {
   state.history.push({ role, text: text.slice(0, 6000), channel, at: new Date().toISOString() });
@@ -368,6 +400,9 @@ const taskEngine = new TaskEngine({
     if (notificationsEnabled(pushConfig)) await sendPushover(pushConfig, taskNotification(task, status));
   },
   maxRunsPerDay: state.settings.maxRunsPerDay || process.env.JARVIS_MAX_RUNS_PER_DAY || 10,
+});
+protectLocalMutations(taskEngine, {
+  create: ['tasks'], action: ['tasks'], remove: ['tasks'],
 });
 
 async function proposeCode({ file, request, original }) {
@@ -599,6 +634,10 @@ async function route(req, res) {
   if (path === '/health') return json(res, 200, { ok: true, version: packageVersion });
   if (path === '/ready') {
     const storage = await storageReadiness(dirname(dataPath));
+    if (uncertainLocalPublication) {
+      storage.ready = false;
+      storage.reason = 'Sidste tilstandsskrivning blev publiceret, men varigheden er ukendt. Kræver genstart og lagerkontrol.';
+    }
     return json(res, storage.ready ? 200 : 503, { ok: storage.ready, version: packageVersion, storage });
   }
   // OAuth redirects cannot carry JARVIS' bearer token. One-time PKCE and
@@ -985,7 +1024,8 @@ async function route(req, res) {
       catch (error) { return json(res, 400, { error: error.message }); }
     }
     if (req.method === 'GET' && path === '/api/system-health') return json(res, 200,
-      await systemHealth({ discord, taskEngine, dataDirectory: dirname(dataPath), version: packageVersion }));
+      await systemHealth({ discord, taskEngine, dataDirectory: dirname(dataPath), version: packageVersion,
+        publicationUncertain: uncertainLocalPublication }));
     if (req.method === 'GET' && path === '/api/updates') return json(res, 200, updates.snapshot());
     if (req.method === 'POST' && path === '/api/updates/action') {
       try {
@@ -1055,11 +1095,13 @@ async function route(req, res) {
             token: input.pushToken?.trim() || next.push.token,
             user: input.pushUser?.trim() || next.push.user };
         });
-        state.settings.maxRunsPerDay = limit;
+        await mutateV5(['settings'], async () => {
+          state.settings.maxRunsPerDay = limit;
+          if (typeof input.remindersEnabled === 'boolean') state.settings.remindersEnabled = input.remindersEnabled;
+          if (typeof input.discordAlertsEnabled === 'boolean') state.settings.discordAlertsEnabled = input.discordAlertsEnabled;
+          await save();
+        });
         taskEngine.maxRunsPerDay = limit;
-        if (typeof input.remindersEnabled === 'boolean') state.settings.remindersEnabled = input.remindersEnabled;
-        if (typeof input.discordAlertsEnabled === 'boolean') state.settings.discordAlertsEnabled = input.discordAlertsEnabled;
-        await save();
         return json(res, 200, { ok: true });
       } catch (error) { return json(res, 400, { error: error.message }); }
     }
@@ -1231,13 +1273,7 @@ async function route(req, res) {
     if (req.method === 'POST' && path === '/api/preferences') {
       const input = await bodyJson(req);
       if (typeof input.text !== 'string' || input.text.length > 10000) return json(res, 400, { error: 'Noterne skal være tekst på højst 10.000 tegn.' });
-      const previous = state.preferences;
-      state.preferences = input.text;
-      try { await save(); }
-      catch (error) {
-        state.preferences = previous;
-        throw error;
-      }
+      await mutateV5(['preferences'], async () => { state.preferences = input.text; await save(); });
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/message') {
