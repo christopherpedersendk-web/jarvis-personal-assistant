@@ -2,7 +2,15 @@
 
 Opdateret 5. november 2026. **Alle P0 og P1 skal være løst og verificeret før release.** R01–R13 og nye reproduktioner er kode-/testfund, ikke rapporterede brugerhændelser.
 
-## Identitet
+## Aktuel samlet kandidat – 5. november 2026
+
+Kode `968a8dc028643f467b3af454beced449bd5803ce`, app-træ `3ca692656b835006832e7e343e820e524533510f`, [CI12](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42053601605). **990/990 Node-tests** bestået (32,403 s); ægte lokal hybrid-kilde@5 **75/80 = 93,75 %**, mål 90 %, 16 supplerende sikkerhedsspørgsmål og ingen ugyldige kildelækager; dependency-audit **0 fund**. **36/36 GUI-scenarier og4/4 dybe browserforløb bestået**: Chromium og WebKit på desktop og mobil.
+
+Deadline-rydning nulstiller WebKits native datoeditor. Uændrede knap-/statuslabels og jobpreview omtegnes ikke ved blur/change. Fokuserede felter holdes over den faste bundmenu ved kompakt reflow. De eksisterende objekt-, revisions-, rettigheds- og kladdekontroller er bevaret. Job oprettes fortsat pauserede.
+
+Syntetisk migration/backup/restore med to serverstarter er bestået. **Fysisk iPhone/desktop, faktisk browserzoom/OS-keyboard/mikrofon og konkret administrator-/driftsaccept er fortsat åbne. M6 er ikke endeligt accepteret; M7 er ikke udført.** Ingen merge, tag eller deployment.
+
+## Historiske fundament-checkpoints
 
 - Repository: christopherpedersendk-web/jarvis-personal-assistant.
 - Baseline: v4.9.1 / **6b2b0736a32e0968d5db233512672d197b4885f7**, root-træ **3de6cd0accb7f5c637835b55ca0049276b5ab08b**, app-træ **900407cb571c6a82e3a5131077455c540876d457**. Oprindelig suite149/149. Main står fortsat på baseline ved seneste kontrol; genkontrollér før publicering. Historiske tags er urørte; v4.9.0 er ikke baseline.

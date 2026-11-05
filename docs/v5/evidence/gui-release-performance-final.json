@@ -1,0 +1,236 @@
+[
+  {
+    "status": "measured",
+    "label": "v4.9.1",
+    "candidate": {
+      "commit": "6b2b0736a32e0968d5db233512672d197b4885f7",
+      "applicationTree": "900407cb571c6a82e3a5131077455c540876d457",
+      "dirty": false
+    },
+    "benchmarkSha256": "6f12ebae3b0d85648dc58c302711fc58c38aaeb540e4660e9ca2482af67f5b1a",
+    "node": "v22.23.4",
+    "platform": "linux",
+    "architecture": "x64",
+    "logicalCpuCount": 2,
+    "fixture": {
+      "version": "da-local-performance-v2",
+      "sha256": "ed5f76624359bb2f2f6a0fcb2f31752ea1454b9cae7af26d404bad0f7c13962f",
+      "bytes": 157048,
+      "organizerCollections": 2,
+      "organizerItems": 400,
+      "memories": 200,
+      "historyEntries": 200,
+      "realPersonalData": false
+    },
+    "methodology": "Same fixture; five warmups per endpoint; p95 nearest-rank. Sequential local requests plus a three-message burst with strictly synthetic 200 ms model wait. No real provider latency, billing or physical-device performance is inferred.",
+    "fullState": {
+      "requests": 40,
+      "p50Ms": 3.397,
+      "p95Ms": 11.708,
+      "responseBytesMedian": 165621,
+      "warmupRequests": 5
+    },
+    "bootstrap": null,
+    "overview": null,
+    "retrieval": {
+      "requests": 40,
+      "p50Ms": 4.165,
+      "p95Ms": 5.523,
+      "responseBytesMedian": 4135,
+      "warmupRequests": 5
+    },
+    "writes": {
+      "requests": 30,
+      "p50Ms": 4.751,
+      "p95Ms": 5.96,
+      "responseBytesMedian": 11,
+      "warmupRequests": 5
+    },
+    "concurrentReads": {
+      "route": "/api/state",
+      "requests": 65,
+      "p50Ms": 2.666,
+      "p95Ms": 6.22,
+      "responseBytesMedian": 165314,
+      "samplesDuringSimulatedModelWait": 62
+    },
+    "syntheticModelBurst": {
+      "concurrencyRequested": 3,
+      "simulatedWaitPerCallMs": 200,
+      "messageLatency": {
+        "requests": 3,
+        "p50Ms": 442.477,
+        "p95Ms": 657.376,
+        "responseBytesMedian": 78
+      },
+      "queueMeasured": false,
+      "queue": [],
+      "queueP95Ms": null,
+      "runP95Ms": null,
+      "measuredSimulatedWaitP95Ms": 201.501
+    },
+    "resources": {
+      "startRssBytes": 78286848,
+      "peakSampledRssBytes": 92708864,
+      "memoryMetric": "Sampled RSS, not an allocation peak or server sizing guarantee."
+    },
+    "usage": {
+      "realModelCalls": 0,
+      "syntheticModelCalls": 3,
+      "toolCalls": 0,
+      "activatedRecurringJobs": 0,
+      "realBasketWrites": 0,
+      "unexpectedNetworkAttempts": 0,
+      "modelInputCharacters": [
+        {
+          "number": 1,
+          "inputCharacters": 5429,
+          "instructionCharacters": 6669
+        },
+        {
+          "number": 2,
+          "inputCharacters": 5142,
+          "instructionCharacters": 6669
+        },
+        {
+          "number": 3,
+          "inputCharacters": 4855,
+          "instructionCharacters": 6669
+        }
+      ],
+      "actualModelTokens": null,
+      "actualModelTokensReason": "No paid model was used; characters are not tokens. Real local semantic model/provider measurements are separate."
+    }
+  },
+  {
+    "status": "measured",
+    "label": "candidate",
+    "candidate": {
+      "commit": "eb7f1547c6c9edcbb9edcbd441a8dd238069f4cb",
+      "applicationTree": "3f3cef83ae2ad5bc914e9ee552064b629fb4f52e",
+      "dirty": false
+    },
+    "benchmarkSha256": "6f12ebae3b0d85648dc58c302711fc58c38aaeb540e4660e9ca2482af67f5b1a",
+    "node": "v22.23.4",
+    "platform": "linux",
+    "architecture": "x64",
+    "logicalCpuCount": 2,
+    "fixture": {
+      "version": "da-local-performance-v2",
+      "sha256": "ed5f76624359bb2f2f6a0fcb2f31752ea1454b9cae7af26d404bad0f7c13962f",
+      "bytes": 157048,
+      "organizerCollections": 2,
+      "organizerItems": 400,
+      "memories": 200,
+      "historyEntries": 200,
+      "realPersonalData": false
+    },
+    "methodology": "Same fixture; five warmups per endpoint; p95 nearest-rank. Sequential local requests plus a three-message burst with strictly synthetic 200 ms model wait. No real provider latency, billing or physical-device performance is inferred.",
+    "fullState": {
+      "requests": 40,
+      "p50Ms": 10.099,
+      "p95Ms": 14.64,
+      "responseBytesMedian": 165818,
+      "warmupRequests": 5
+    },
+    "bootstrap": {
+      "requests": 40,
+      "p50Ms": 1.323,
+      "p95Ms": 1.978,
+      "responseBytesMedian": 7123,
+      "warmupRequests": 5
+    },
+    "overview": {
+      "requests": 40,
+      "p50Ms": 0.683,
+      "p95Ms": 1.031,
+      "responseBytesMedian": 117,
+      "warmupRequests": 5
+    },
+    "retrieval": {
+      "requests": 40,
+      "p50Ms": 10.641,
+      "p95Ms": 13.979,
+      "responseBytesMedian": 5729,
+      "warmupRequests": 5
+    },
+    "writes": {
+      "requests": 30,
+      "p50Ms": 7.859,
+      "p95Ms": 10.576,
+      "responseBytesMedian": 11,
+      "warmupRequests": 5
+    },
+    "concurrentReads": {
+      "route": "/api/state?scope=bootstrap",
+      "requests": 90,
+      "p50Ms": 1.495,
+      "p95Ms": 5.069,
+      "responseBytesMedian": 6831,
+      "samplesDuringSimulatedModelWait": 81
+    },
+    "syntheticModelBurst": {
+      "concurrencyRequested": 3,
+      "simulatedWaitPerCallMs": 200,
+      "messageLatency": {
+        "requests": 3,
+        "p50Ms": 489.508,
+        "p95Ms": 711.091,
+        "responseBytesMedian": 78
+      },
+      "queueMeasured": true,
+      "queue": [
+        {
+          "state": "completed",
+          "queuedMs": 0,
+          "runMs": 236
+        },
+        {
+          "state": "completed",
+          "queuedMs": 220,
+          "runMs": 238
+        },
+        {
+          "state": "completed",
+          "queuedMs": 458,
+          "runMs": 234
+        }
+      ],
+      "queueP95Ms": 458,
+      "runP95Ms": 238,
+      "measuredSimulatedWaitP95Ms": 201.383
+    },
+    "resources": {
+      "startRssBytes": 84676608,
+      "peakSampledRssBytes": 109481984,
+      "memoryMetric": "Sampled RSS, not an allocation peak or server sizing guarantee."
+    },
+    "usage": {
+      "realModelCalls": 0,
+      "syntheticModelCalls": 3,
+      "toolCalls": 0,
+      "activatedRecurringJobs": 0,
+      "realBasketWrites": 0,
+      "unexpectedNetworkAttempts": 0,
+      "modelInputCharacters": [
+        {
+          "number": 1,
+          "inputCharacters": 5429,
+          "instructionCharacters": 6852
+        },
+        {
+          "number": 2,
+          "inputCharacters": 5142,
+          "instructionCharacters": 6852
+        },
+        {
+          "number": 3,
+          "inputCharacters": 4855,
+          "instructionCharacters": 6852
+        }
+      ],
+      "actualModelTokens": null,
+      "actualModelTokensReason": "No paid model was used; characters are not tokens. Real local semantic model/provider measurements are separate."
+    }
+  }
+]

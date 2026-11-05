@@ -1,5 +1,13 @@
 # GUI-verifikation
 
+## Aktuel samlet kandidat – 5. november 2026
+
+Kode `968a8dc028643f467b3af454beced449bd5803ce`, app-træ `3ca692656b835006832e7e343e820e524533510f`, [CI12](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42053601605). **990/990 Node-tests** bestået (32,403 s); ægte lokal hybrid-kilde@5 **75/80 = 93,75 %**, mål 90 %, 16 supplerende sikkerhedsspørgsmål og ingen ugyldige kildelækager; dependency-audit **0 fund**. **36/36 GUI-scenarier og4/4 dybe browserforløb bestået**: Chromium og WebKit på desktop og mobil.
+
+Deadline-rydning nulstiller WebKits native datoeditor. Uændrede knap-/statuslabels og jobpreview omtegnes ikke ved blur/change. Fokuserede felter holdes over den faste bundmenu ved kompakt reflow. De eksisterende objekt-, revisions-, rettigheds- og kladdekontroller er bevaret. Job oprettes fortsat pauserede.
+
+Syntetisk migration/backup/restore med to serverstarter er bestået. **Fysisk iPhone/desktop, faktisk browserzoom/OS-keyboard/mikrofon og konkret administrator-/driftsaccept er fortsat åbne. M6 er ikke endeligt accepteret; M7 er ikke udført.** Ingen merge, tag eller deployment.
+
 ## Oprindelig ren basis – faktisk kørt 5. november 2026
 
 | Felt | Registreret værdi |
@@ -116,4 +124,94 @@ Artifacts: [unit](https://github.com/christopherpedersendk-web/jarvis-personal-a
 
 Den dybe regression beholder alle upstreams assertions og rapporterer hvert device separat med fejl og screenshot. At ét forløb består giver ikke de andre et grønt resultat. Brugeren kan gennemgå de faktiske fejl i [browserartifacts fra CI3](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42036701067/artifacts/13417754902); [Node-artifact](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42036701067/artifacts/13418812659). ZIP-SHA256: browser `cd818463088bf502601fc1693dd1483db29ec46f6fe90e0ed0c0c0c9138eb5f7`, unit `bef5c8acdedb16efee94f7525947d537544cfa07160355cd20fc0da0c1e3dd62`.
 
-Efter CI3 er den konkrete korte-skærm-fejl rettet i `gui.css`: toasten er ikke-interaktiv og flyttes til toppen ved højder på højst 640 px. Den tidligere faste bundplacering lå over det fokuserede felt under bundnavigationen på en skærm på 475 px. Den dybe regression er også udvidet med formvaliditet, submit-/kliksporing og observerede HTTP-metoder omkring WebKit-opfølgning, uden at bypass'e formvalidering eller skjule den manglende POST. **Disse to efterfølgende ændringer er endnu ikke browserverificeret.**
+Efter CI3 blev den konkrete korte-skærm-fejl rettet i `gui.css`: toasten er ikke-interaktiv og flyttes til toppen ved højder på højst 640 px. Den tidligere faste bundplacering lå over det fokuserede felt under bundnavigationen på en skærm på 475 px. Den dybe regression blev også udvidet med formvaliditet, submit-/kliksporing og observerede HTTP-metoder omkring WebKit-opfølgning, uden at omgå formvalidering eller skjule den manglende POST. Disse ændringer blev faktisk prøvet i CI4 og CI5 nedenfor.
+
+## Fjerde faktiske CI – 060759b
+
+[Run 42041109366](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42041109366) verificerede præcis `060759b37cde8a9dd93eb640bcae4921a2de2811`, Git-træ `41a94361c0d143d810d3971cfac94344712682fe`, app-træ `8565e46145f291822b8157483c14a50c1381d6b7`, rene checkouts og uændrede offentlige assets under testen.
+
+- Node **988/988 bestået**; normal/tom/fejl i Chromium og WebKit ved alle seks specificerede bredder: **36/36 bestået**.
+- Den dybe browserregression: **2/4 bestået**, nemlig Chromium-desktop og Chromium-mobil. Desktop gennemførte nu også **695×475**-reflow og de lange v5-flows. WebKit-desktop og WebKit-mobil fejlede stadig ved første opfølgning; formularen var gyldig, men der kom intet forventet POST.
+- Faktiske [browserbilleder, traces og rapporter](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42041109366/artifacts/13423750139) og [Node-resultat](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42041109366/artifacts/13421921035). Browser-ZIP blev downloaded, SHA256-kontrolleret og inspiceret lokalt; hash `7e9be77e5fc16e4d27c519ba03853391fa5a450f53333ddd54d6adfa6bb39b60`.
+
+## Femte faktiske CI – 38be0cf
+
+[Run 42043134148](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42043134148) verificerede `38be0cf4b197dbd1ea0b417b0d8bb2a02a9c4904`, Git-træ `58e8c9a1061909cf7c1da8a919cda06974211603`. Ændringen var udelukkende præcis browserhændelseslogning i regressionstesten.
+
+- Node **988/988 bestået** og almindelig GUI-matrix **36/36 bestået**. Dyb regression **2/4 bestået**: Chromium begge enheder bestod; WebKit begge enheder fejlede stadig før API-anmodningen.
+- WebKit-logging bekræftede `pointerdown`, `mousedown`, `pointerup` og `mouseup` på selve den gyldige, aktive **Opret opfølgning**-knap; der var **ingen `click` og ingen `submit`**, ingen dokumentnavigation og ingen POST. Den manglende handling kunne derfor ikke forklares med ugyldige felter, forkert form-ejerskab, overlay eller API-afslag.
+- Den konkrete kandidatændring efter CI5 gør ændringsmarkeringens kontrolopdatering idempotent, så et `change` på det seneste tekstfelt under fokus-skift ikke genopretter submitknappens indhold mellem musehændelser. Den almindelige submit-eventhandler og dens API-kontrakt er uændrede. Virkningen af dette kodefix kræver særskilt browserverifikation.
+- [CI5 browserartifacts](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42043134148/artifacts/13421799096) og [Node-artifact](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42043134148/artifacts/13423406855).
+
+
+## Samlet releasekandidat – 5. november 2026
+
+Kandidat `b128867abd570ee41e2065356bab5c90fa64ca34`, root-træ
+`2039ef8c3ba836caccb332b035be341dcad7bcd1`.
+[Samlet CI](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42047122858).
+
+- WebKit-opgaveflowet på `87ae35e` stoppede efter rydning af deadline; ingen PATCH blev observeret, og det native datofelt var ugyldigt. Tidligere status om kun opfølgningsknappen er ikke det seneste fejlresultat.
+- En eksplicit **Fjern deadline**-handling nulstiller hele det native felt og dets oprindelige tidsmetadata. Den markerer/persisterer kun kladden; normal revisionsbundet gemning foretager PATCH. Delvise datoer omfortolkes ikke automatisk til tomme gyldige værdier.
+- Uændrede statuslabels genopbygges ikke ved blur/change, så pointergestus bevarer sit mål.
+- Lokal Node 24.22.1: **989/989 bestået**, 0 fejl/skips, 27.586109939 s. Målrettet planeditor: **25/25**. Dette omfatter null-deadline efter kladde-reload, oprindelig revision og ingen write ved selve rydningen.
+- Samme GUI-workflow kører nu også ægte lokal semantik, dependency-audit og parret baseline/kandidat-performance på den eksakte head-SHA. Node22 anvendes til model/performance, Node24 til GUI/fuld regression.
+- Den fysiske acceptliste er rettet til fire hoveddestinationer. Fysisk Safari/skærmtastatur, faktisk browserzoom/mikrofon og administratorens driftsmiljø er fortsat ikke verificeret.
+
+Dette var stoppunktet før CI8; det efterfølgende faktiske resultat følger nedenfor.
+
+
+### Isoleret restoreøvelse på kandidatens app-indhold
+
+Faktisk kørt 2026-11-05 14:41 UTC med Node24.22.1. En syntetisk skema0-state blev startet med den rigtige server, migreret, stoppet og kopieret som et samlet datamappeinventar. Kopien blev hashkontrolleret, gendannet til en separat mappe og startet/genstartet med `/health` version5.0.0 og `/ready` storage.ready=true. Den oprindelige migrationsbackup og den eksplicitte manuelle markør/revision var bevaret. Backupinventaret blev ikke ændret.
+
+[Maskinlæsbar evidens](../v5/evidence/gui-release-restore.json). Inventaret indeholdt state, migrationsbackup og updaterjournal. Dette er en konkret syntetisk restore-/genstartsprøve, ikke en komplet prøve af produktionscredentials, Discordjournal, mediearkiv, projekter eller administratorens servicekonfiguration. Disse driftskontroller forbliver åbne.
+
+### Samlet model-, audit- og performanceresultat
+
+På `b128867`, CI42047122858: Node **989/989**, 0 fejl/skips, 26.181474241 s. Semantisk hybrid-kilde@5 **75/80 (93,75 %)** med uændret 90 %-mål. Audit af den installerede valgfrie modelruntime: **0 fund**.
+
+Performancejobbet er en måling, ikke et generelt løfte om hurtigere adfærd. Samme syntetiske datasæt og benchmark på Node22.23.4:
+
+| Måling | v4.9.1 | Samlet V5-kandidat |
+|---|---:|---:|
+| Fuld state p95 | 15,187 ms | 14,667 ms |
+| Bootstrap p95 / payload | Ikke tilgængelig | 2,562 ms / 7.123 bytes |
+| Retrieval p95 | 10,305 ms | 15,429 ms |
+| Durable writes p95 | 7,202 ms | 13,371 ms |
+| Målt RSS-peak | 93.396.992 bytes | 111.292.416 bytes |
+
+Bootstrap reducerer datamængden sammenlignet med baseline fuld state på165.621 bytes. Retrieval og writes er langsommere i denne serie, og hukommelsen er højere; disse resultater skjules ikke af det grønne workflow. Ingen produktionslatens, faktiske modelomkostninger eller serverkapacitetsgaranti kan udledes. Nul reelle modelkald, eksterne værktøjskald, aktiverede jobs eller kurveskrivninger. [Begge målinger](../v5/evidence/gui-release-performance.json).
+
+### Første samlede kandidat: faktisk browserfejl og opfølgning
+
+CI42047122858 på `b128867` bestod Node989/989, GUI-matrix36/36, semantik/audit og performancemåling. Den dybe regression bestod Chromium desktop/mobil, men fejlede i begge WebKit-profiler: selv efter `.value = ''` var det native deadlinefelt ugyldigt. Den nye direkte assertion fangede dette før PATCH; resultatet er **2/4, ikke godkendt**.
+
+Opfølgende kandidat `eb7f1547c6c9edcbb9edcbd441a8dd238069f4cb` nulstiller datokontrollens interne editor ved kortvarigt at skifte samme element til teksttype, rydde værdien og genskabe datetime-local-typen. Elementidentitet, labels, listeners og normal validering bevares. Den eksplicitte handling flytter ikke fokus tilbage ind i den tomme segmenteditor. Målrettet regression25/25 består. Den samme browserassertion og alle øvrige flows skal bestå på denne kandidat; intet fejlet resultat ommærkes.
+
+### Anden samlede kandidat og bredere WebKit-rettelse
+
+CI42048971546 på `eb7f1547` bestod Node989/989, GUI36/36, semantik75/80 og audit0. Deadline-rydning, opgavegemning og opfølgning passerede nu i WebKit. Begge WebKit-profiler stoppede senere ved oprettelse af et syntetisk **pauset** job; Chromium desktop/mobil bestod. Resultatet for hele den dybe suite er fortsat2/4.
+
+`00cdee8e` retter jobeditorens gentagne change-/blur-omtegning. Kandidat `096bbe2d490bb1e76067dc2ab1aa1b6046d194aa` bevarer denne ændring og sikrer også stabile, uændrede actionlabels i claim-/projekteditorerne. Regressionen kontrollerer, at et uændret change-event bevarer både jobknappens tekstnode og previewets børn; gemning opretter stadig kun et pauset job.
+
+Lokalt: målrettet editorregression60/60. En fuld kørsel inden integration af den samtidige jobrettelse gav989/990 med timeout i den uændrede project-agent-test `refuses rollback when a file has been modified outside agent` (JavaScript-syntakskontrol). En efterfølgende isoleret serie med project-agent, jobeditor og planeditor bestod42/42 på2.117847064 s, uden ændrede produktions- eller testtimeouts. Den fejlede fulde kørsel bevares som fejl, ikke ommærket som succes. Den efterfølgende rene CI11 bestod990/990; det lokale timeoutresultat er fortsat historisk registreret.
+
+Lokalt app-træ for `096bbe2d`: `d04251d64e8f7b58919a8a19141e95b77595322e`. [CI42051097831](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42051097831) tester denne samlede kandidat. Seneste tidligere parrede måling findes i [gui-release-performance-final.json](../v5/evidence/gui-release-performance-final.json) og er eksplicit bundet til `eb7f1547`, ikke denne nyere kandidat.
+
+### CI11 og den sidste reflowrettelse
+
+CI42051097831 (`096bbe2d`) bestod990/990 Node,36/36 GUI, semantik75/80, audit0 og performancemåling. Den dybe suite bestod3/4: Chromium desktop/mobil og WebKit mobil. WebKit desktop fejlede ved695×475, hvor projektets titelfelt (top424,5/bund468,5) lå bag bundmenuen (top403). Det var en faktisk fokus-/tildækningsfejl, ikke en test der kunne udelades.
+
+Den samtidige GUI-rettelse `968a8dc0` tilføjer root scroll-padding og en afgrænset focusin-kontrol for workspace-kontroller bag fast navigation. Overlays og desktopnavigation undtages. Ingen assertions er svækket. CI12 kontrollerer den samlede kode igen.
+
+### Aktuel parret performancemåling og modelinventar
+
+CI12 på968a8dc0, Node22.23.4, samme syntetiske datasæt og benchmark modv4.9.1. Fuld state p95:10,014 →15,037 ms; retrieval6,068 →13,969 ms; durable write3,988 →10,545 ms. Kandidatbootstrap p951,829 ms og7.123 bytes mod baselines fulde state165.621 bytes. Målt RSS93.618.176 →110.735.360 bytes. Der er højere omkostninger på nogle operationer; grøn målejobstatus er ikke en latensgaranti eller en påstand om generelt forbedret hastighed.
+
+[Parret performance](../v5/evidence/gui-release-performance-968a8dc0.json) og [model/audit](../v5/evidence/gui-release-semantic-968a8dc0.json) fastholder præcis revision, datasæt, misses og inventar. Modeltesten måler kilderetrieval, ikke genererede svars faktuelle korrekthed. Ingen faktiske eksterne modelkald, aktiverede jobs eller kurveskrivninger i benchmark.
+
+### Afsluttet CI12 – samlet automatisk gate bestået
+
+På968a8dc0 bestod **990/990 Node**, **36/36 GUI** og **4/4 dybe browserforløb** (Chromium desktop/mobil og WebKit desktop/mobil). Den tidligere blokerende WebKit-desktop-reflowkontrol er nu bestået. Semantik75/80, audit0 og parret performance er kørt på samme app-træ. CI-run42053601605 opbevarer screenshots, traces, accessibility-report og præcis checkout-/assethashbinding. Dokumentationsopdateringen efter dette kodecheckpoint ændrer ikke app-træet3ca692656b835006832e7e343e820e524533510f.
+
+Dette lukker de reproducerede automatiske browserblokeringer. Det registrerer ikke fysisk enhedsaccept, administratorens komplette restore eller M6/M7-godkendelse.
