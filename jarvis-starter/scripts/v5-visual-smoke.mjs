@@ -608,6 +608,15 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
     await plan.screenshot({ path: join(screenshotDir, `${label}-compact-meal-plan.png`), animations: 'disabled' });
     await openMealDay(plan, fromDate);
     await plan.locator(`[data-meal-date="${fromDate}"]`).getByLabel('Ret', { exact: true }).selectOption(recipeId);
+    const previousPlan = await page.locator('#meal-plan-choice option').evaluateAll((options, selected) => options.find(option => option.value !== selected)?.value, id);
+    assert.ok(previousPlan, `${label}: fixture retains a historical plan in the selector`);
+    await page.locator('#meal-plan-choice').selectOption(previousPlan);
+    await page.locator(`[data-record-key="plan:${previousPlan}"]`).waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.meal-plan-card:visible').count(), 1);
+    await page.locator('#meal-plan-choice').selectOption(id);
+    await plan.waitFor({ state: 'visible' });
+    assert.equal(await plan.locator(`[data-meal-date="${fromDate}"]`).getByLabel('Ret', { exact: true }).inputValue(), recipeId,
+      `${label}: changing selected plan preserves the unsaved meal choice`);
     const selected = await uiWrite(page, 'PUT', `/api/meals/plans/${id}`,
       () => plan.getByRole('button', { name: 'Gem ændringer i madplanen', exact: true }).click());
     assert.equal(selected.input.expectedRevision, created.body.plan.revision);
@@ -1418,6 +1427,7 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#tab-meals').waitFor({ state: 'visible' });
   await page.evaluate(() => refreshMeals());
+  for (const section of await page.locator('.meal-secondary-section').all()) await openDetails(section);
   await page.locator('#meal-family-start').fill(day); await page.locator('#meal-family-show').click();
   assert.equal(await dateCard.getByLabel('Voksne hjemme', { exact: true }).inputValue(), '3');
   assert.equal(Number(await dateCard.getAttribute('data-revision')), draftRevision,
