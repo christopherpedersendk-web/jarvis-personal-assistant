@@ -8,7 +8,8 @@ import { discordImageAttachment } from './recipe-fetch.mjs';
 import { atomicStateWrite } from './state-schema.mjs';
 import { BoundedJobQueue } from './bounded-queue.mjs';
 import { redactSecrets } from './privacy.mjs';
-const INTENTS = (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15);
+const DM_INTENTS = (1 << 12);
+const GUILD_INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
 const SNOWFLAKE = /^\d{15,22}$/;
 const DEDUPE_LIMIT = 2000;
 const JOURNAL_SCHEMA = 2;
@@ -52,12 +53,18 @@ export function validateDiscordConfig(config) {
   return { userId, guildId };
 }
 
+export function discordMessageRejection(event, config) {
+  if (event?.author?.bot || event?.webhook_id) return 'bot';
+  if (!config.userId || event?.author?.id !== config.userId) return 'user';
+  if (!SNOWFLAKE.test(String(event.channel_id || '')) || !SNOWFLAKE.test(String(event.id || ''))) return 'invalid';
+  if (event.guild_id && (!config.guildId || event.guild_id !== config.guildId)) return 'guild';
+  if (typeof event.content !== 'string' || event.content.length > 5000) return 'content';
+  if (!event.content.trim() && !discordMessageMetadata(event).attachments.length) return 'empty';
+  return null;
+}
+
 export function authorizedDiscordMessage(event, config) {
-  if (!config.userId || event?.author?.id !== config.userId || event?.author?.bot) return false;
-  if (!SNOWFLAKE.test(String(event.channel_id || '')) || !SNOWFLAKE.test(String(event.id || '')) || event.webhook_id) return false;
-  if (event.guild_id && (!config.guildId || event.guild_id !== config.guildId)) return false;
-  if (typeof event.content !== 'string' || event.content.length > 5000) return false;
-  return Boolean(event.content.trim()) || discordMessageMetadata(event).attachments.length > 0;
+  return discordMessageRejection(event, config) === null;
 }
 
 // Only these metadata are passed to the recipe intake. In particular, never pass
@@ -125,13 +132,15 @@ export class DiscordGateway {
     this.lastHeartbeatAckAt = null;
     this.lastConnectedAt = null;
     this.lastMessageAt = null;
+    this.lastIncoming = null;
+    this.lastFailure = null;
   }
 
   snapshot() {
     return { status: this.status, lastError: this.lastError,
       lastConnectedAt: this.lastConnectedAt, lastHeartbeatSentAt: this.lastHeartbeatSentAt,
       lastHeartbeatAckAt: this.lastHeartbeatAckAt, awaitingHeartbeatAck: this.awaitingHeartbeatAck,
-      lastMessageAt: this.lastMessageAt, reconnectAttempts: this.retryCount || 0,
+      lastMessageAt: this.lastMessageAt, lastIncoming: this.lastIncoming, lastFailure: this.lastFailure, reconnectAttempts: this.retryCount || 0,
       dedupeStatus: this.dedupeEnabled ? (this.dedupeFailure ? 'error' : this.dedupeLoaded ? 'active' : 'loading') : 'inactive',
       unknownMessageCount: [...this.seen.values()].filter(item => item.status === 'unknown' ||
         (this.dedupeFailure && item.status === 'received' && item.phase === 'processing')).length,
@@ -178,7 +187,7 @@ export class DiscordGateway {
 
   start(config) {
     this.stop();
-    this.config = { ...config };
+    this.config = { ...config, ...validateDiscordConfig(config), token: String(config.token || '').trim() };
     this.lastError = '';
     this.retryCount = 0;
     this.sequence = null;
@@ -188,7 +197,7 @@ export class DiscordGateway {
     this.botId = null;
     this.dedupeFailure = false;
     this.dedupeLoaded = false;
-    this.dedupeEnabled = Boolean(config.enabled && config.token && config.userId);
+    this.dedupeEnabled = Boolean(this.config.enabled && this.config.token && this.config.userId);
     const generation = this.generation;
     if (this.dedupeEnabled) this.status = 'connecting';
     this.dedupeReady = this.dedupeEnabled ? this.loadSeen(generation).then(() => {
@@ -321,7 +330,7 @@ export class DiscordGateway {
       this.firstHeartbeat.unref?.();
       this.sendGateway(this.sessionId && this.sequence !== null
         ? { op: 6, d: { token: this.config.token, session_id: this.sessionId, seq: this.resumeSequence ?? this.sequence } }
-        : { op: 2, d: { token: this.config.token, intents: INTENTS, properties: { os: 'windows', browser: 'jarvis', device: 'jarvis' } } });
+        : { op: 2, d: { token: this.config.token, intents: DM_INTENTS | (this.config.guildId ? GUILD_INTENTS : 0), properties: { os: process.platform, browser: 'jarvis', device: 'jarvis' } } });
     } else if (packet.op === 1) {
       // Discord can request a heartbeat at any time. Respond immediately,
       // while keeping the pending-ACK watchdog active.
@@ -470,6 +479,7 @@ export class DiscordGateway {
     let safeText = redactSecrets(String(text || ''), [token]);
     if (safeText.length > MAX_REPLY_LENGTH)
       safeText = `${safeText.slice(0, MAX_REPLY_LENGTH - 65)}\nSvaret er forkortet. Se resten i JARVIS.`;
+    if (!safeText.trim()) throw discordError('DISCORD_EMPTY_REPLY', 'Assistenten returnerede intet svar.', { deliveryNotAttempted: true });
     let sentChunks = 0;
     const requireSession = () => {
       if (this.dedupeEnabled && this.dedupeFailure)
@@ -676,17 +686,32 @@ export class DiscordGateway {
       return { accepted: true, outcome: 'unknown' };
     }
     let outcome = 'completed';
+    let replyAttempted = false;
+    this.lastFailure = null;
     try {
       const answer = await this.onMessage(context.content, context.metadata);
       if (context.generation !== this.generation) outcome = 'unknown';
-      else await this.sendReply(context.channelId, answer, context.generation);
+      else {
+        if (!String(answer || '').trim()) throw discordError('DISCORD_EMPTY_REPLY', 'Assistenten returnerede intet svar.');
+        replyAttempted = true; await this.sendReply(context.channelId, answer, context.generation);
+      }
     } catch (error) {
       outcome = 'unknown';
       if (context.generation === this.generation)
         this.lastError = 'Discord-beskeden havde et ukendt eller delvist resultat. Kontroller JARVIS før en ny handling.';
+      const stage = replyAttempted ? 'delivery' : 'processing';
+      // Only fixed public messages/codes enter status; never API bodies or user text.
+      if (context.generation === this.generation) this.lastFailure = { at: new Date().toISOString(), stage,
+        code: /^DISCORD_[A-Z_]+$/.test(error.code || '') ? error.code : 'ASSISTANT_FAILED',
+        message: replyAttempted ? 'Svaret kunne ikke leveres til Discord. Kontrollér bottens adgang til kanalen og Send Messages.'
+          : 'Beskeden blev modtaget, men assistenten kunne ikke færdiggøre den. Kontrollér API-opsætning og serverlog.' };
       this.logError('Discord-beskedfejl', error, context.token);
-      // No automatic retry or second "error response" POST after an ambiguous
-      // send. Either could duplicate an already performed external action.
+      if (!replyAttempted && context.generation === this.generation && !this.dedupeFailure) {
+        try { await this.sendReply(context.channelId,
+          'Jeg modtog din besked, men kunne ikke færdiggøre den. Kontrollér JARVIS, før du gentager en handling; noget kan allerede være udført. Se Discord-status under Indstillinger → Integrationer.', context.generation); }
+        catch (deliveryError) { this.logError('Discord-fejlbesked', deliveryError, context.token); }
+      }
+      // Never retry a handler or send a second response after an attempted reply.
     }
     await this.closeReceipt(context, outcome);
     if (context.generation !== this.generation) outcome = 'unknown';
@@ -727,8 +752,16 @@ export class DiscordGateway {
   }
 
   handleIncoming(event, generation = this.generation) {
-    if (generation !== this.generation || !authorizedDiscordMessage(event, this.config) || event.author.id === this.botId)
-      return Promise.resolve(false);
+    if (generation !== this.generation || event?.author?.id === this.botId) return Promise.resolve(false);
+    const reason = discordMessageRejection(event, this.config);
+    if (reason === 'bot') return Promise.resolve(false);
+    const messages = { user: 'Besked afvist: afsenderen matcher ikke Dit Discord User ID.',
+      guild: 'Besked afvist: serveren matcher ikke Discord Server ID. Brug en direkte besked eller ret Server ID.',
+      invalid: 'Besked afvist: ugyldige besked-/kanaldata.', content: 'Besked afvist: manglende tekst eller over 5.000 tegn.',
+      empty: 'Besked uden læsbart indhold. Kontrollér Message Content Intent ved serverchat.' };
+    this.lastIncoming = { at: new Date().toISOString(), accepted: !reason,
+      reason: reason || 'accepted', message: messages[reason] || 'Besked modtaget fra den tilladte bruger.' };
+    if (reason) return Promise.resolve(false);
     const id = String(event.id);
     // Reserve a bounded slot before any async wait. A replay must not consume
     // another slot or retain another complete event while the first is running.

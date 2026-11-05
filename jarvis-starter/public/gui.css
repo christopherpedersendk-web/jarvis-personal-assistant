@@ -521,3 +521,11 @@ footer { color: var(--gui-muted); font-size: 12px; line-height: 18px; padding: 2
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* One compact week; day editors open on demand, also via exact source links. */
+.meal-dishes { display: flex; flex-direction: column; gap: 8px; }
+.meal-day-disclosure { border: 1px solid var(--gui-separator); border-radius: 10px; min-width: 0; }
+.meal-day-disclosure > summary { padding: 12px; overflow-wrap: anywhere; font-weight: 600; }
+.meal-day-disclosure .meal-day-editor { border: 0; margin: 0; }
+.meal-secondary-section > summary { padding: 16px; font-weight: 600; }
+#meal-plan-choice { margin-block: 8px; }

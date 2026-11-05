@@ -105,6 +105,13 @@
     move('#tab-organizer', 'plan-notes');
     const oldMeal = byId('tab-meals'); if (oldMeal && oldMeal.parentElement !== byId('tab-plan')) byId('tab-plan')?.append(oldMeal);
     settingsGroups(); splitCalendar();
+    // Secondary meal tools stay available without extending the daily overview.
+    for (const section of [...(byId('tab-meals')?.children || [])].slice(1)) {
+      if (!section.classList.contains('panel')) continue;
+      const disclosure = node('details', '', 'gui-disclosure meal-secondary-section');
+      disclosure.append(node('summary', section.querySelector('h2')?.textContent || 'Flere madværktøjer'));
+      section.replaceWith(disclosure); disclosure.append(section);
+    }
     const approvals = node('details', '', 'gui-disclosure home-approvals'); approvals.id = 'home-approvals';
     approvals.append(node('summary', 'Indbakke og godkendelser'));
     const secretary = document.querySelector('#legacy-layout .secretary-panel');

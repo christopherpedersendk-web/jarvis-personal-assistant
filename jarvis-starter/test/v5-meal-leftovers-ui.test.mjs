@@ -34,6 +34,7 @@ async function fixture({ state = {}, saved = new Map(), sourceId = null } = {}) 
   document.getElementById = id => { const visit = node => node.id === id ? node : node.children.map(visit).find(Boolean); return visit(document.body) || null; };
   document.dispatchEvent = event => document.routes.push(event);
   const root = document.createElement('div'); root.id = 'meal-plans'; document.body.append(root);
+  const choice = document.createElement('select'); choice.id = 'meal-plan-choice'; document.body.append(choice);
   const shoppingRoot = document.createElement('div'); shoppingRoot.id = 'meal-shopping-drafts'; document.body.append(shoppingRoot);
   const requests = [], toasts = [], navigations = []; let fail = null, hold = null, refreshError = null;
   const context = vm.createContext({ document, Date, Intl, URL, structuredClone, console,
@@ -41,7 +42,7 @@ async function fixture({ state = {}, saved = new Map(), sourceId = null } = {}) 
     window: { location: { href: 'https://synthetic.invalid/?view=meals' + (sourceId ? '&source=' + encodeURIComponent(sourceId) : '') } },
     localStorage: { getItem: () => 'synthetic-not-stored-access-token' },
     sessionStorage: { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
-    selectTab: (...args) => navigations.push(args), toast: message => toasts.push(message),
+    selectTab: (...args) => { navigations.push(args); context.window.location.href = 'https://synthetic.invalid/?view=meals&source=' + encodeURIComponent(args[1].sourceId); }, toast: message => toasts.push(message),
     api: async (path, options = {}) => {
       const body = options.body ? JSON.parse(options.body) : undefined, method = options.method || 'GET';
       requests.push({ path, method, body }); if (hold) await hold; if (fail) throw fail;
@@ -55,7 +56,7 @@ async function fixture({ state = {}, saved = new Map(), sourceId = null } = {}) 
     },
   });
   vm.runInContext(source.slice(0, boot) + `\nglobalThis.contract = {
-    show: showMealPlans, editor: mealLeftoversEditor, price: mealPriceSummary, dish: mealDishEditor,
+    show: plans => { mealData.plans = plans; showMealPlans(plans); }, choose: mealChoosePlan, editor: mealLeftoversEditor, price: mealPriceSummary, dish: mealDishEditor,
     showShopping: refreshShoppingDrafts,
     persist: mealPersistDrafts, setRecipes: value => { mealData.recipes = value; },
     invalidateSession: () => { mealSessionGeneration++; mealDirty.clear(); mealDraftControllers.clear(); mealRecoveredDrafts = {};
@@ -63,7 +64,7 @@ async function fixture({ state = {}, saved = new Map(), sourceId = null } = {}) 
   };`, context);
   context.refreshMeals = async () => { if (refreshError) throw refreshError; context.contract.show(planner.plans()); };
   context.contract.setRecipes(planner.recipes()); context.contract.show(planner.plans());
-  return { ...context.contract, document, root, shoppingRoot, state, planner, saved, requests, toasts, navigations,
+  return { ...context.contract, document, root, choice, shoppingRoot, state, planner, saved, requests, toasts, navigations,
     fail: error => { fail = error; }, hold: promise => { hold = promise; }, failRefresh: error => { refreshError = error; } };
 }
 
@@ -193,11 +194,11 @@ test('E1 empty and stale price information never displays an invented price or a
   }
 });
 
-test('R11 an exact older plan source remains renderable beyond the bounded five-plan overview', async () => {
+test('R11 an exact older plan source selects just that plan from the full history', async () => {
   const initial = await fixture(), base = initial.state.mealPlans[0];
   initial.state.mealPlans = Array.from({ length: 8 }, (_, index) => ({ ...structuredClone(base), id: 'synthetic-plan-' + index }));
   const h = await fixture({ state: initial.state, sourceId: 'meal-plan:synthetic-plan-7:2026-11-05' });
-  assert.equal(h.root.children.length, 5); assert.equal(h.root.children[0].dataset.recordKey, 'plan:synthetic-plan-7');
+  assert.equal(h.root.children.length, 1); assert.equal(h.choice.options.length, 8); assert.equal(h.choice.value, 'synthetic-plan-7'); assert.equal(h.root.children[0].dataset.recordKey, 'plan:synthetic-plan-7');
   assert.equal(h.root.children[0].querySelector('[data-meal-date="2026-11-05"]').dataset.mealDate, '2026-11-05');
   assert.equal(h.requests.length, 0, 'source rendering is not a plan write or a new external source read');
 });
@@ -292,4 +293,33 @@ test('G1/A1 a successful list acknowledgement with a failed refresh remains save
   assert.equal(h.plan.shoppingNeedsReview, false); assert.equal(save.disabled, true); assert.equal(h.requests.length, 1);
   assert.match(h.card.querySelector('[data-edit-status]').textContent, /Listen er gemt, men visningen/);
   await save.emit('click'); assert.equal(h.requests.length, 1);
+});
+
+
+test('one selected plan, duplicate-ID suppression and compact day editing preserve unsaved work across selection and polling', async () => {
+  const initial = await fixture(), base = initial.state.mealPlans[0];
+  initial.state.mealPlans = Array.from({ length: 8 }, (_, index) => ({ ...structuredClone(base), id: 'synthetic-plan-' + index }));
+  const h = await fixture({ state: initial.state }), plans = h.planner.plans();
+  h.show([...plans, plans[0]]);
+  assert.equal(h.choice.options.length, 8); assert.equal(h.root.children.length, 1, 'unused historical plans are not rendered into hundreds of hidden controls');
+  const card = h.root.children[0], panels = card.querySelectorAll('.meal-day-disclosure');
+  assert.equal(panels.length, 3); assert.ok(panels.every(panel => !panel.open));
+  const firstId = card.dataset.recordKey.slice(5), nextId = plans.find(plan => plan.id !== firstId).id;
+  panels[0].open = true;
+  const title = panels[0].querySelectorAll('input').find(input => input.type === 'text');
+  assert.ok(title); title.value = 'Min nye aftensmad'; title.focus(); await title.emit('input');
+  assert.match(panels[0].querySelector('summary').textContent, /Min nye aftensmad/);
+  h.show([...plans, plans[0]]);
+  assert.equal(h.document.activeElement, title); assert.equal(h.document.focusDetachments, 0);
+  h.choose(nextId);
+  assert.equal(h.root.children.filter(node => !node.hidden).length, 1);
+  assert.equal(card.hidden, true); assert.equal(h.choice.value, nextId);
+  h.choose(firstId);
+  assert.equal(card.hidden, false); assert.equal(title.value, 'Min nye aftensmad'); assert.equal(panels[0].open, true);
+  assert.equal(h.root.children.filter(node => !node.hidden).length, 1); assert.equal(h.requests.length, 0);
+  assert.deepEqual(plain(h.navigations.at(-1)), ['meals', { sourceId: 'meal-plan:' + firstId }]);
+  h.persist(); const reloaded = await fixture({ state: h.state, saved: h.saved, sourceId: 'meal-plan:' + firstId });
+  const recovered = reloaded.root.children.find(node => node.dataset.recordKey === 'plan:' + firstId);
+  assert.equal(recovered.querySelector('.meal-day-disclosure').open, true);
+  assert.match(recovered.querySelector('.meal-day-disclosure').querySelector('summary').textContent, /Min nye aftensmad/);
 });

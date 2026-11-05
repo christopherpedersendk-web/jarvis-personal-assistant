@@ -3,6 +3,7 @@ name: JARVIS GUI exact-candidate verification
 on:
   pull_request:
     branches:
+      - main
       - feature/v5-foundation
       - feature/gui-redesign
     paths:

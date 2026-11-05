@@ -122,7 +122,10 @@ const JarvisSettings = (() => {
             connected: 'Forbundet', paused: 'Midlertidigt pauset – køen er fuld', error: 'Fejl' };
           byId('discord-status').textContent = [
             `Discord: ${names[snapshot.status] || 'Status ukendt'} · Token: ${snapshot.hasToken ? 'gemt' : 'mangler'}`,
-            snapshot.lastError || '', snapshot.dedupeStatus ? `Modtagelsesjournal: ${({ active: 'klar', loading: 'indlæses', error: 'fejlet', inactive: 'inaktiv' })[snapshot.dedupeStatus] || 'ukendt'}` : '',
+            snapshot.lastError || '',
+            snapshot.lastIncoming ? `${snapshot.lastIncoming.message} (${snapshot.lastIncoming.at})` : 'Ingen besked registreret siden serverstart.',
+            snapshot.lastFailure?.message || '',
+            snapshot.lastMessageAt ? `Seneste færdige svar: ${snapshot.lastMessageAt}` : '', snapshot.dedupeStatus ? `Modtagelsesjournal: ${({ active: 'klar', loading: 'indlæses', error: 'fejlet', inactive: 'inaktiv' })[snapshot.dedupeStatus] || 'ukendt'}` : '',
             snapshot.unknownMessageCount ? `${snapshot.unknownMessageCount} uafklarede beskeder; ingen automatisk gentagelse` : '',
             snapshot.incoming ? `Kø: ${snapshot.incoming.running} arbejder · ${snapshot.incoming.waiting} venter` : '',
             snapshot.ingressGap?.status === 'requires_review' ? 'Muligt leveringshul: kontrollér manglende ønsker og send dem som nye beskeder efter gennemgang.' : '',
