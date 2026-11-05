@@ -96,8 +96,9 @@ async function runDevice(type, width, height, label) {
   await page.evaluate(() => refresh()); // establish server baseline even if draft was typed before the first fetch
   const beforeEdit = await page.evaluate(() => ({ dirty: savedDrafts.preferences.dirty,
     serverValue: savedDrafts.preferences.serverValue, draftValue: savedDrafts.preferences.value }));
+  const concurrentText = `Syntetisk ændring fra en anden fane: ${label}`;
   const concurrentChange = await page.request.post(`${origin}/api/preferences`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { text: 'Syntetisk ændring fra en anden fane' },
+    headers: { Authorization: `Bearer ${token}` }, data: { text: concurrentText },
   });
   assert.equal(concurrentChange.status(), 200);
   const serverProof = await page.request.get(`${origin}/api/state`, {
@@ -105,7 +106,7 @@ async function runDevice(type, width, height, label) {
   });
   assert.equal(serverProof.status(), 200);
   const savedServerText = (await serverProof.json()).preferences;
-  assert.equal(savedServerText, 'Syntetisk ændring fra en anden fane', 'synthetic remote save must be visible in GET state');
+  assert.equal(savedServerText, concurrentText, 'each device must produce a real new synthetic server revision');
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
     `${label}: concurrent save replaced a dirty local draft`);

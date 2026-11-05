@@ -1,6 +1,6 @@
 # JARVIS v5 resumable progress
 
-Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `6c41e2a8` passed Node 22 CI but its browser installation timed out at 18 minutes on slow Ubuntu apt downloads; the diagnostic browser test was **never run**. CI bootstrap now tries browser binaries without apt installation, retaining the unconditional Chromium/WebKit gate. **Browser recheck required.** No M7 action has been taken.
+Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `2710b82e` passed Node 22 CI and installed browser binaries rapidly. Chromium desktop completed the full synthetic workflow, including a real concurrent draft conflict. Mobile exposed a **test fixture issue**: repeated identical external edit from desktop, so no new conflict should have occurred. Device-scoped synthetic values are now required before full browser acceptance. No M7 action has been taken.
 
 ## Provenance
 
@@ -18,7 +18,8 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 - Current locally tested **dirty-draft baseline fix application subtree hash**: `7a9fefa79ca929302826483c7cdc76f8f035c06c` (240/240 tests; verify remote tree after publication).
 - Current locally tested **first-fetched-baseline fix application subtree hash**: `3dbe5d5b3c40626bd93e0094ccbee68d37ef7005` (240/240 tests; compare new remote tree after publication).
 - Current locally tested **CI diagnostic iteration application subtree hash**: `ac48d6a431daa86382d0abc1a41bec7d52adba54` (240/240 tests; browser before/after evidence pending).
-- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41940701409` verified 240 Node tests but cancelled before browser checks due slow OS package downloads. Diagnostics and new browser bootstrap rerun pending.
+- Current locally tested **per-device UI regression fixture subtree hash**: `92de68a25037935eeef6e98cdac030915e7301ce` (240/240 tests; only synthetic browser script changed since `ac48d6a4`).
+- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41943432245` verified 240 Node tests and completed Chromium desktop; next mobile test detected the repeated-value fixture error. Unique per-device edit and browser rerun pending.
 - Published `ceeb038` includes session-scoped draft recovery; fail-closed calendar coverage and persisted OAuth token rotations; independent `/ready` storage write-probe; and schema compatibility checks from release manifest through staging/deployment. A separate layout correction now awaits CI.
 
 ## Status
@@ -43,7 +44,7 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 
 ## Continuation
 
-1. Publish the CI bootstrap improvement and paired benchmark notes as a descendant of `6c41e2a8` via GitHub Git Data API, compare exact tree, and rerun hard-gated Chromium/WebKit with synthetic diagnostics.
+1. Publish the per-device browser fixture correction (Node 240/240) as a descendant of `2710b82e` via GitHub Git Data API, compare exact tree, and rerun hard-gated Chromium/WebKit on both sizes.
 2. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) and new CI: first-screen composer must fit 1390×950 and 390×844 on both Chromium/WebKit, with saved screenshots and reload-persistence checks.
 3. Capture the last commit SHA and working-tree status, update review comments if a further patch is required. Never treat this as M7 approval.
 4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.
