@@ -1,3 +1,7 @@
+import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
+import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
+import { ProviderControl } from '../provider-control.mjs';
+const providerControl = new ProviderControl({ state: {}, transact: async (_keys, fn) => fn(), save: async () => {} });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -13,6 +17,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
   const tool = { type: 'function', name: 'create_collection', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: [] } };
   const handler = async (name, args) => { effects.push({ name, args }); return { saved: true }; };
   const result = vm.runInNewContext(source.slice(from, to) + '\n({ processTextMessage, discord, classifyChatFailure })', {
+    JSON, assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl,
     state: { history: [] }, process: { env: {} }, validApiKey: configured, planningTools,
     organizerTools: [tool], knowledgeTools: [], homeTools: [],
     instructions: async () => 'Synthetic instructions', outputText: value => value.text || '',
@@ -25,7 +30,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
   });
   return { ...result, calls, effects, history, queue };
 }
-const call = n => ({ type: 'function_call', call_id: 'synthetic-' + n, name: 'create_collection', arguments: '{"text":"synthetic"}' });
+const call = n => ({ type: 'function_call', call_id: 'synthetic-' + n, name: 'create_collection', arguments: '{"title":"synthetic","type":"notes"}' });
 
 for (const channel of ['text', 'discord']) test(`${channel}: a third tool round gets a final answer without replaying completed actions`, async () => {
   const f = fixture({ response: async n => n <= 3 ? { output: [call(n)] } : { output: [], text: 'Tre lokale resultater.' } });
@@ -78,7 +83,7 @@ test('OpenAI transport preserves error status/code for classification without ex
   const begin = source.indexOf('async function openaiJson('), end = source.indexOf('\nasync function backgroundResearch(', begin);
   const openaiJson = vm.runInNewContext(source.slice(begin, end) + '\nopenaiJson', {
     fetch: async () => ({ ok: false, status: 429, json: async () => ({ error: { code: 'insufficient_quota', message: 'synthetic private API fragment' } }) }),
-    AbortSignal, apiKey: 'synthetic', knownSecrets: () => [], redactSecrets: value => value,
+    providerControl, AbortSignal, apiKey: 'synthetic', knownSecrets: () => [], redactSecrets: value => value,
   });
   const f = fixture();
   await assert.rejects(openaiJson('/responses'), error => {

@@ -1,0 +1,69 @@
+# Verifikation af v5.1.0-arbejdet
+
+## Baseline og afgrænsning
+
+6. november 2026, Node 24.22.1. Baseline: 1.018/1.018 Node-tests bestået.
+Kørsler er isolerede med syntetiske data. Ingen produktionscredentials indlæst,
+ingen køb, kalenderændring eller ekstern besked udført. Miljøet har ingen
+OPENAI_API_KEY eller OPENAI_TEXT_MODEL; ingen live modelprøve er udført.
+
+## Reproducerbare kommandoer
+
+Fra `jarvis-starter`:
+
+```sh
+node --test
+node scripts/v51-control-smoke.mjs
+```
+
+Browserprøven kræver installeret Playwright/Chromium. Den registrerer sin faktiske
+version; lokal 1.62.1 erstatter ikke projektets eksisterende 1.64.1-CI-gate.
+
+Offline formatmanifest (ingen modelanmodning):
+
+```sh
+OPENAI_TEXT_MODEL=den-konfigurerede-model node scripts/provider-contract-probe.mjs
+```
+
+Live formatprøve skal køres i et godkendt testmiljø med den faktisk konfigurerede
+model/API-nøgle i miljøet, aldrig med en nøgle i argumenter eller chat:
+
+```sh
+node --env-file=.env scripts/provider-contract-probe.mjs --live
+```
+
+Prøven sender ét syntetisk Responses-kald med værktøjer slået fra, intet privat
+indhold og højst 128 outputtokens. Den tester schemaaccept, ikke opgaveløsning,
+fuld svartid, Realtime eller godkendelsespolitikken. Automatisk retry findes ikke.
+
+Sammenlign et konsistent backupgrundlag med separat gendannede data:
+
+```sh
+node scripts/verify-restored-data.mjs /isoleret/backup/data /isoleret/restore/data
+```
+
+Ingen filer ændres. Kontrollér derudover servicekonfiguration, afkryptering,
+projektmapper uden for datamappen og faktisk isoleret serviceboot. Kør ikke
+sammenligningen mod en aktiv datamappe og kald det konsistent backupbevis.
+
+## Åbne gates
+
+Se roadmap.md. Alle P0/P1 forbliver i scope. Især er fuld Realtime-budgettering,
+serverkontrolleret godkendelse af risikofyldte handlinger, fælles ældre stemme-
+dispatch, modelbaseret N3-evaluering, fysisk iPhone og produktionsnær restore
+fortsat åbne. Denne arbejdsgren må ikke markeres som en færdig release.
+
+## Udført i første implementeringspakke
+
+- 1.065/1.065 Node-tests bestået fra `jarvis-starter` på Node 24.22.1.
+  47 nye tests dækker reservation, stop/genstart, kanalværktøjer og releaseprober.
+- Den nye smoke gennemførte autentifikation, faktisk HTTP-dedupe, stop gennem
+  genstart samt afslutning/ugeoverblik mod en rigtig isoleret server.
+- Browserdelen kunne ikke starte lokalt: først manglede den forventede
+  Playwright-browserbinær; den installerede system-Chromium kunne heller ikke
+  starte i dette runtime. Ingen screenshot/mobilaccept påstås.
+- Smoke er tilføjet den eksisterende browser-CI med projektets pinned runtime.
+- En fejlkørsel fra repo-roden havde én startupfejl, fordi den historiske
+  `server.test.mjs` forventer app-mappen som cwd. Den korrekte kommando ovenfor
+  køres fra `jarvis-starter`; ingen assertion er fjernet.
+- Live API, fysisk iPhone, fuld serverrestore og faktisk driftsmåling er ukørte.

@@ -1,3 +1,7 @@
+import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
+import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
+import { ProviderControl } from '../provider-control.mjs';
+const providerControl = new ProviderControl({ state: {}, transact: async (_keys, fn) => fn(), save: async () => {} });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -51,7 +55,7 @@ function assertWholeRecords(context, memories, limit) {
 
 function runtime(f) {
   const calls = [], savedIds = [];
-  const context = vm.createContext({ Date, JSON, process: { env: {} }, persona: 'Syntetisk persona.', state: f.state,
+  const context = vm.createContext({ assistantTools, voiceExtraTools, Date, JSON, process: { env: {} }, persona: 'Syntetisk persona.', state: f.state,
     secretary: f.secretary, knowledge: f.knowledge, skills, organizer: { summary: () => [] }, validApiKey: true,
     planningTools: [], knowledgeTools: [], organizerTools: [], homeTools: [],
     openaiJson: async (path, options = {}) => {

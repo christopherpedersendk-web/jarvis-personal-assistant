@@ -247,6 +247,8 @@ async function api(path, options = {}) {
     const error = new Error(detail || `HTTP ${response.status}`);
     error.status = response.status;
     error.code = payload?.code; error.outcome = payload?.outcome;
+    error.requestId = payload?.requestId || response.headers.get('X-Jarvis-Request-Id');
+    if (error.requestId && /^[0-9a-f-]{36}$/.test(error.requestId)) error.message += ` Reference: ${error.requestId}.`;
     throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();
@@ -587,7 +589,10 @@ async function handleVoiceTool(channel, call) {
   let output;
   try {
     const args = JSON.parse(call.arguments || '{}');
-    if (call.name === 'create_research_task') {
+    if (['list_personal_tasks', 'create_personal_task', 'update_personal_task', 'complete_personal_task', 'list_follow_up_cases', 'create_follow_up_case', 'update_follow_up_case', 'get_weekly_review'].includes(call.name)) {
+      output = await api('/api/assistant/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: call.name, args, callId: call.call_id }) });
+    } else if (call.name === 'create_research_task') {
       const data = await api('/api/tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...args, activation: 'paused' }),
       });

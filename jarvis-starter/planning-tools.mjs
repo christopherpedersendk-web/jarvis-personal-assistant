@@ -109,7 +109,7 @@ function validType(type, value) {
 
 // Tool schemas are not a security boundary on their own. Repeat validation at
 // dispatch, including unknown nested keys, before any local or remote effect.
-function validate(schema, value, path = 'arguments') {
+export function validate(schema, value, path = 'arguments') {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   if (!types.some(type => validType(type, value))) throw new Error(`Ugyldig type i ${path}.`);
   if (value === null) return;

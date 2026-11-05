@@ -28,6 +28,7 @@
   <script src="/gui-watches.js" defer></script>
   <script src="/gui-shell.js" defer></script>
   <script src="/app.js" defer></script>
+  <script src="/assistant-control.js" defer></script>
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
   <script src="/system-health.js" defer></script>
@@ -290,6 +291,14 @@
 <section id="settings-integrations" class="settings-subview hidden" aria-label="Integrationer"></section>
 <section id="settings-automations" class="settings-subview hidden" aria-label="Automatiseringer"></section>
 <section id="settings-system" class="settings-subview hidden" aria-label="System og opdateringer">
+  <section class="panel gui-settings-group" aria-labelledby="assistant-control-title">
+    <h2 id="assistant-control-title">Assistentens forbrug og stop</h2>
+    <p id="assistant-control-status" role="status" aria-live="polite">Hent status for at se forbrug og stopkontrol.</p>
+    <p class="muted small-text">Grænsen dækker tekst, research og kodekald. Stemmelyd og udgifter i kroner er endnu ikke medregnet. Stop afbryder aktive modelanmodninger og spærrer efterfølgende chatværktøjer; allerede udførte handlinger og research hos udbyderen kan stadig have virkning.</p>
+    <button id="assistant-control-refresh" type="button">Hent status</button>
+    <button id="assistant-control-stop" type="button" disabled>Stop modelarbejde</button>
+    <button id="assistant-control-resume" type="button" disabled>Genoptag nye anmodninger</button>
+  </section>
   <section id="ai-setup" class="panel gui-settings-group" tabindex="-1" aria-labelledby="ai-setup-title">
     <h2 id="ai-setup-title">AI-forbindelse på serveren</h2>
     <p class="muted small-text">Chat og stemme bruger serverens OpenAI-forbindelse. Åbn <code>.env</code> på serveren, angiv din API-nøgle i <code>OPENAI_API_KEY</code>, og genstart JARVIS.</p>
