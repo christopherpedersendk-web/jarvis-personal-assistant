@@ -130,3 +130,75 @@ jobs:
           path: jarvis-starter/artifacts/gui/
           retention-days: 30
           if-no-files-found: warn
+
+  local-semantic-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact proposed code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned local inference runtime in ephemeral CI only
+        id: runtime-install
+        working-directory: jarvis-starter
+        run: npm ci --prefix local-semantic-runtime
+      - name: Verify and prepare immutable public model assets
+        working-directory: jarvis-starter
+        run: node scripts/prepare-local-semantic-model.mjs --directory "$RUNNER_TEMP/jarvis-e5-small" --accept-public-download
+      - name: Measure genuine Danish semantic retrieval on fixed synthetic questions
+        working-directory: jarvis-starter
+        run: node scripts/v5-semantic-eval.mjs --model-directory "$RUNNER_TEMP/jarvis-e5-small" --output artifacts/v5-semantic-evaluation.json
+      - name: Audit exact installed optional runtime and retain dependency tree
+        if: always() && steps.runtime-install.outcome == 'success'
+        working-directory: jarvis-starter
+        run: node scripts/audit-local-semantic-runtime.mjs --output artifacts/v5-dependency-audit.json
+      - name: Preserve candidate-bound synthetic model evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-v5-semantic-evaluation
+          path: |
+            jarvis-starter/artifacts/v5-semantic-evaluation.json
+            jarvis-starter/artifacts/v5-dependency-audit.json
+            jarvis-starter/local-semantic-runtime/package-lock.json
+          retention-days: 30
+          if-no-files-found: warn
+  candidate-performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact proposed code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          persist-credentials: false
+      - name: Checkout recorded v4.9.1 baseline separately
+        uses: actions/checkout@v4
+        with:
+          ref: 6b2b0736a32e0968d5db233512672d197b4885f7
+          path: .perf-baseline
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Measure baseline with the same synthetic benchmark
+        working-directory: jarvis-starter
+        run: node scripts/v5-perf.mjs --app ../.perf-baseline/jarvis-starter --label v4.9.1 --output artifacts/v5-performance-baseline.json
+      - name: Measure exact candidate with all real integrations blocked
+        working-directory: jarvis-starter
+        run: node scripts/v5-perf.mjs --label candidate --output artifacts/v5-performance-candidate.json
+      - name: Preserve revision-bound performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-v5-performance
+          path: jarvis-starter/artifacts/v5-performance-*.json
+          retention-days: 30
+          if-no-files-found: warn

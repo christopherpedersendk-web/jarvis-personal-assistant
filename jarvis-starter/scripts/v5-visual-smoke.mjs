@@ -1062,7 +1062,9 @@ async function verifyPlanning(page, label, task, followUp) {
   assert.match(await page.locator('#personal-task-form').innerText(), new RegExp(`Redigerer revision ${task.revision}`),
     `${label}: recovered task edit stays bound to the original revision`);
   await page.locator('#personal-task-outcome').fill('Et gennemgået lokalt resultat uden ekstern kontakt');
-  await page.locator('#personal-task-deadline').fill('');
+  await page.getByRole('button', { name: 'Fjern deadline', exact: true }).click();
+  assert.equal(await page.locator('#personal-task-deadline').inputValue(), '');
+  assert.equal(await page.locator('#personal-task-deadline').evaluate(input => input.checkValidity()), true);
   await page.locator('#personal-task-uncertainty').fill('15');
   await page.locator('#personal-task-planned').fill('2030-11-06T09:30');
   await page.locator('#personal-task-locked').check();

@@ -544,6 +544,19 @@ if (typeof document !== 'undefined') (() => {
     if (previousProposals.length) errorStatus('capacity-status', 'Rammerne er ændret. Tidligere forslag er forældede; gennemgå kapaciteten og beregn igen før gemning.');
     persistDrafts();
   };
+  // Native segmented date controls can retain partial editor state after deletion.
+  // An explicit clear action resets the whole value without accepting partial dates.
+  const clearDeadline = button('Fjern deadline', () => {
+    const deadline = byId('personal-task-deadline');
+    deadline.value = '';
+    delete deadline.dataset.originalInstant;
+    delete deadline.dataset.originalLocal;
+    markTaskDirty();
+    deadline.focus();
+  });
+  clearDeadline.id = 'personal-task-clear-deadline';
+  const deadline = byId('personal-task-deadline');
+  deadline.parentNode.insertBefore(clearDeadline, deadline.nextElementSibling);
   const allowedWindows = windowEditor(taskAdvanced.fields, 'Tilladte tidsvinduer for opgaven (tom = ingen ekstra begrænsning)', 'personal-task-status', markTaskDirty);
   const taskCancel = button('Annullér redigering', () => {
     if (taskDirty && !window.confirm('Kassér den ugemte opgavekladde?')) return;
