@@ -48,7 +48,8 @@ test('I1 merely checking Home status never enables Nest, Sonos OAuth or a new re
   const result = home.snapshot({ sonosToken: 'configured-synthetic-token' });
   assert.equal(result.google.configured, false);
   assert.match(result.google.status, /ikke understøttet/);
-  assert.match(result.sonos.tokenExpires, /ikke implementeret/);
+  assert.match(result.sonos.tokenExpires, /Manuelt token/);
+  assert.match(home.snapshot({ sonosToken: 'token', sonosRefreshToken: 'refresh' }).sonos.tokenExpires, /fornyes/);
   for (const id of ['nest', 'google-tasks', 'home-assistant']) {
     const integration = integrationCatalog().find(item => item.id === id);
     assert.equal(integration.implementation, 'planned'); assert.equal(integration.status, 'not_configured');
