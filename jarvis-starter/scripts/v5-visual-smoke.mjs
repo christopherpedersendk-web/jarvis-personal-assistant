@@ -72,13 +72,33 @@ async function signIn(page) {
 }
 
 async function uiWrite(page, method, path, action, statuses = [200]) {
-  const followRequests = [];
-  const followNavigations = [];
+  const observedRequests = [];
+  const observedNavigations = [];
+  if (path.startsWith('/api/personal-tasks') && ['POST', 'PATCH'].includes(method)) {
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith('/api/personal-tasks'))
+        observedRequests.push({ path: new URL(request.url()).pathname, method: request.method() });
+      if (request.isNavigationRequest()) observedNavigations.push({ method: request.method(), url: request.url() });
+    });
+    await page.evaluate(() => {
+      window.__jarvisTaskTrace = [];
+      if (window.__jarvisTaskEventsInstalled) return;
+      window.__jarvisTaskEventsInstalled = true;
+      for (const kind of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'submit']) {
+        document.addEventListener(kind, event => {
+          const form = document.querySelector('#personal-task-form');
+          if (form?.contains(event.target)) window.__jarvisTaskTrace?.push({ event: kind,
+            target: event.target.id || event.target.textContent?.trim()?.slice(0, 40),
+            button: event.target === form.querySelector('[type="submit"]') });
+        }, true);
+      }
+    });
+  }
   if (path === '/api/follow-ups') {
     page.on('request', request => {
-      if (request.isNavigationRequest()) followNavigations.push({ kind: 'navigation', method: request.method(), url: request.url() });
+      if (request.isNavigationRequest()) observedNavigations.push({ kind: 'navigation', method: request.method(), url: request.url() });
       if (new URL(request.url()).pathname.startsWith('/api/follow-ups'))
-        followRequests.push({ path: new URL(request.url()).pathname, method: request.method() });
+        observedRequests.push({ path: new URL(request.url()).pathname, method: request.method() });
     });
     const native = await page.evaluate(() => {
       const form = document.querySelector('#follow-up-form'), button = form.querySelector('[type="submit"]');
@@ -121,6 +141,13 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
       taskStatus: document.querySelector('#personal-task-status')?.textContent || '',
       followStatus: document.querySelector('#follow-up-status')?.textContent || '',
       focused: document.activeElement?.id || null,
+      task: (() => { const form = document.querySelector('#personal-task-form');
+        const button = form?.querySelector('[type="submit"]'), rect = button?.getBoundingClientRect(),
+          hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+        return form ? { valid: form.checkValidity(), events: window.__jarvisTaskTrace || [],
+          buttonDisabled: button?.disabled, buttonRect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+          hit: hit?.id || hit?.outerHTML?.slice(0, 130),
+          controls: [...form.elements].filter(control => !control.checkValidity()).map(control => ({ id: control.id, issue: control.validationMessage })) } : null; })(),
       follow: (() => { const form = document.querySelector('#follow-up-form');
         const button = form?.querySelector('[type="submit"]'), rect = button?.getBoundingClientRect(),
           hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
@@ -132,7 +159,7 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
           controls: [...form.elements].filter(control => !control.checkValidity()).map(control => ({ id: control.id,
             type: control.type, value: control.value, issue: control.validationMessage })) } : null; })(),
     })).catch(() => ({ unavailable: true }));
-    throw new Error(`${method} ${path}: no HTTP response (${error.message}); observed follow-up requests: ${JSON.stringify(followRequests)}; navigations: ${JSON.stringify(followNavigations)}; browser state: ${JSON.stringify(diagnostic)}`);
+    throw new Error(`${method} ${path}: no HTTP response (${error.message}); observed related requests: ${JSON.stringify(observedRequests)}; navigations: ${JSON.stringify(observedNavigations)}; browser state: ${JSON.stringify(diagnostic)}`);
   });
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);

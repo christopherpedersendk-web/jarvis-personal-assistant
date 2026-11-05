@@ -611,10 +611,14 @@ if (typeof document !== 'undefined') (() => {
     }
   }
   function draftStatus() {
-    taskDraftStatus.textContent = [taskEdit ? `Redigerer revision ${taskEdit.revision}.` : '', taskDirty ? 'Ugemt opgavekladde bevaret.' : '', taskConflict,
+    const taskText = [taskEdit ? `Redigerer revision ${taskEdit.revision}.` : '', taskDirty ? 'Ugemt opgavekladde bevaret.' : '', taskConflict,
       (taskDirty || taskEdit) && !storageReady ? 'Browseren afviser kladdelagring; kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
-    followDraftStatus.textContent = [followEdit ? `Redigerer revision ${followEdit.revision}.` : '', followDirty ? 'Ugemt opfølgningskladde bevaret.' : '', followConflict,
+    const followText = [followEdit ? `Redigerer revision ${followEdit.revision}.` : '', followDirty ? 'Ugemt opfølgningskladde bevaret.' : '', followConflict,
       (followDirty || followEdit) && !storageReady ? 'Browseren afviser kladdelagring; kopiér teksten før siden lukkes.' : ''].filter(Boolean).join(' ');
+    // Keep the DOM stable during a WebKit pointer gesture: the preceding input
+    // can dispatch change on blur before mouseup/click reaches the save button.
+    if (taskDraftStatus.textContent !== taskText) taskDraftStatus.textContent = taskText;
+    if (followDraftStatus.textContent !== followText) followDraftStatus.textContent = followText;
     taskDraftStatus.classList.toggle('v5-conflict', Boolean(taskConflict)); followDraftStatus.classList.toggle('v5-conflict', Boolean(followConflict));
   }
   function persistDrafts() {
