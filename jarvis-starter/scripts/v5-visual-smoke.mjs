@@ -94,14 +94,25 @@ async function runDevice(type, width, height, label) {
     `${label}: unsaved preferences draft was lost on reload`);
   assert.match(await page.locator('#preferences-draft-status').textContent(), /Ugemt kladde|Ikke gemt/);
   await page.evaluate(() => refresh()); // establish server baseline even if draft was typed before the first fetch
+  const beforeEdit = await page.evaluate(() => ({ dirty: savedDrafts.preferences.dirty,
+    serverValue: savedDrafts.preferences.serverValue, draftValue: savedDrafts.preferences.value }));
   const concurrentChange = await page.request.post(`${origin}/api/preferences`, {
     headers: { Authorization: `Bearer ${token}` }, data: { text: 'Syntetisk ændring fra en anden fane' },
   });
   assert.equal(concurrentChange.status(), 200);
+  const serverProof = await page.request.get(`${origin}/api/state`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(serverProof.status(), 200);
+  const savedServerText = (await serverProof.json()).preferences;
+  assert.equal(savedServerText, 'Syntetisk ændring fra en anden fane', 'synthetic remote save must be visible in GET state');
   await page.evaluate(() => refresh());
   assert.equal(await page.locator('#preferences').inputValue(), 'Lokalt udkast: mine noter må ikke forsvinde',
     `${label}: concurrent save replaced a dirty local draft`);
-  assert.match(await page.locator('#preferences-draft-status').textContent(), /Ændret et andet sted/);
+  const afterEdit = await page.evaluate(() => ({ dirty: savedDrafts.preferences.dirty,
+    serverValue: savedDrafts.preferences.serverValue, draftValue: savedDrafts.preferences.value }));
+  assert.match(await page.locator('#preferences-draft-status').textContent(), /Ændret et andet sted/,
+    `${label}: conflict mismatch; before=${JSON.stringify(beforeEdit)} after=${JSON.stringify(afterEdit)} saved=${JSON.stringify(savedServerText)}`);
 
   await page.locator('#tab-settings').screenshot({ path: join(screenshotDir, `${label}-settings.png`), animations: 'disabled' });
   await page.locator('[data-tab="knowledge"]').first().click();

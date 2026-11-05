@@ -22,6 +22,7 @@ All times and results below describe **isolated synthetic development**, never p
 | 2026-11-05 | Local follow-up (pending CI) | `public/app.js`, `scripts/v5-visual-smoke.mjs`; `npm test` | **240/240** Node + syntax passed (~5.23 s). Dirty drafts now compare fetched server text with the **previous server baseline** (preserved across reload) rather than comparing against the user's unsaved text. Browser also tests real synthetic concurrent remote save; not yet verified on CI. |
 | 2026-11-05 | Published `36ac8a7f` | GitHub Actions `41939504752` | **240/240 Node 22 passed**, initial desktop, nav, normal refresh and draft reload passed; browser then failed because first recorded server baseline was missing for a draft created before initial fetch, so synthetic concurrent change did not display conflict. |
 | 2026-11-05 | Latest local amendment (pending CI) | `public/app.js` missing-baseline initialisation; `scripts/v5-visual-smoke.mjs` explicit refresh before remote synthetic edit; `npm test` | **240/240 passed**, Node ~4.76 s. Browser check of actual concurrent modification still required. |
+| 2026-11-05 | Published `9e2d909a` | GitHub Actions `41940193356` | Node 22 **240/240 passed**; first-screen/nav/draft/reload passed in Chromium, but an actual synthetic concurrent change still did not produce a conflict message. Further instrumenting test to distinguish server persist vs browser server baseline before changing logic again; not accepted. |
 
 ## Synthetic before/after performance
 

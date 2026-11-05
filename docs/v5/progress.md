@@ -1,6 +1,6 @@
 # JARVIS v5 resumable progress
 
-Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `36ac8a7f` passed Node 22 CI and showed normal draft refresh/reload works, but a true concurrent synthetic save was not detected when the initial server baseline was missing. The current local patch initializes that first observed baseline without replacing the draft. **Browser recheck required.** No M7 action has been taken.
+Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, **240/240 Node tests passed**. Published `9e2d909a` passed Node 22 CI and showed normal draft refresh/reload works, but still failed to flag a synthetic concurrent save. A diagnostic browser test now captures the observed server persistence and browser baseline before any further logic change. **Browser recheck required.** No M7 action has been taken.
 
 ## Provenance
 
@@ -17,7 +17,8 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 - Current locally tested **static-route fix application subtree hash**: `2768d78f1ee08fcf8fb4b0d7fd79fcdffe9cf7c2` (240/240 tests; verify identical remote subtree after publication).
 - Current locally tested **dirty-draft baseline fix application subtree hash**: `7a9fefa79ca929302826483c7cdc76f8f035c06c` (240/240 tests; verify remote tree after publication).
 - Current locally tested **first-fetched-baseline fix application subtree hash**: `3dbe5d5b3c40626bd93e0094ccbee68d37ef7005` (240/240 tests; compare new remote tree after publication).
-- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41939504752` verified 240 Node tests and proceeded through Chromium draft reload, but the expected real concurrent change warning was missing. First-fetched-value fix and browser rerun pending.
+- Current locally tested **CI diagnostic iteration application subtree hash**: `ac48d6a431daa86382d0abc1a41bec7d52adba54` (240/240 tests; browser before/after evidence pending).
+- [Draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) targets `main` but is **not merge-authorised**. Actions `41940193356` verified 240 Node tests and proceeded through Chromium draft reload, but expected real concurrent change warning was still missing. Diagnostics and browser rerun pending.
 - Published `ceeb038` includes session-scoped draft recovery; fail-closed calendar coverage and persisted OAuth token rotations; independent `/ready` storage write-probe; and schema compatibility checks from release manifest through staging/deployment. A separate layout correction now awaits CI.
 
 ## Status
@@ -42,7 +43,7 @@ Latest locally tested candidate: 2026-11-05, package `5.0.0`, data schema `1`, *
 
 ## Continuation
 
-1. Publish the first-server-baseline patch (Node 240/240) as a descendant of `36ac8a7f` via GitHub Git Data API; compare exact trees.
+1. Publish the synthetic browser diagnostic (Node 240/240) as a descendant of `9e2d909a` via GitHub Git Data API, compare exact tree, then interpret the actual before/after state from CI failure or success.
 2. Review [draft PR #7](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/7) and new CI: first-screen composer must fit 1390×950 and 390×844 on both Chromium/WebKit, with saved screenshots and reload-persistence checks.
 3. Capture the last commit SHA and working-tree status, update review comments if a further patch is required. Never treat this as M7 approval.
 4. Complete genuine local semantic provider and independent Danish retrieval gate, unify memory editing, survey legacy data transactions, and verify any pending acceptance rows.
