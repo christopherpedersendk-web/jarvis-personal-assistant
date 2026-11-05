@@ -595,6 +595,10 @@ async function verifyMealLeftovers(page, label, householdDay, recipeId, recipeDr
     // the saved reviewed recipe revision, never these unsaved editor fields.
     await page.locator('#meal-start').fill(startDate); await page.locator('#meal-days').selectOption('3');
     await page.locator('#meal-use-calendar').uncheck();
+    // Create a real historical choice through the same form before testing
+    // switching between two plans with a locally edited day.
+    await uiWrite(page, 'POST', '/api/meals/plans',
+      () => page.locator('#meal-plan-form button[type="submit"]').click(), [201]);
     const created = await uiWrite(page, 'POST', '/api/meals/plans',
       () => page.locator('#meal-plan-form button[type="submit"]').click(), [201]);
     assert.equal(created.input.useCalendar, false); assert.equal(created.body.plan.days, 3);
