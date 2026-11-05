@@ -73,8 +73,10 @@ async function signIn(page) {
 
 async function uiWrite(page, method, path, action, statuses = [200]) {
   const followRequests = [];
+  const followNavigations = [];
   if (path === '/api/follow-ups') {
     page.on('request', request => {
+      if (request.isNavigationRequest()) followNavigations.push({ kind: 'navigation', method: request.method(), url: request.url() });
       if (new URL(request.url()).pathname.startsWith('/api/follow-ups'))
         followRequests.push({ path: new URL(request.url()).pathname, method: request.method() });
     });
@@ -84,12 +86,20 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
         value: control.type === 'password' ? '[redacted]' : control.value,
         disabled: control.disabled, valid: control.validity?.valid ?? true, issue: control.validity?.valid ? '' : control.validationMessage }));
       window.__jarvisFollowTrace = [];
-      form.addEventListener('click', event => window.__jarvisFollowTrace.push({ event: 'click', target: event.target.id || event.target.textContent?.trim() }), true);
+      for (const kind of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'submit']) {
+        document.addEventListener(kind, event => window.__jarvisFollowTrace?.push({ event: kind, target: event.target.id || event.target.textContent?.trim()?.slice(0, 40),
+          inFollowForm: form.contains(event.target), at: event instanceof PointerEvent ? [event.clientX, event.clientY] : null }), true);
+      }
+      form.addEventListener('click', event => window.__jarvisFollowTrace.push({ event: 'form-click', target: event.target.id || event.target.textContent?.trim() }), true);
       form.addEventListener('submit', event => {
         window.__jarvisFollowTrace.push({ event: 'submit', defaultPreventedAtCapture: event.defaultPrevented });
         queueMicrotask(() => window.__jarvisFollowTrace.push({ event: 'submit-after', defaultPrevented: event.defaultPrevented }));
       }, true);
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
       return { valid: form.matches(':valid'), buttonForm: button.form?.id, buttonDisabled: button.disabled,
+        buttonRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hit: hit?.id || hit?.outerHTML?.slice(0, 130),
+        active: document.activeElement?.id || document.activeElement?.tagName,
         controls };
     });
     assert.equal(native.valid, true, `Native follow-up form invalid before click: ${JSON.stringify(native)}`);
@@ -112,13 +122,17 @@ async function uiWrite(page, method, path, action, statuses = [200]) {
       followStatus: document.querySelector('#follow-up-status')?.textContent || '',
       focused: document.activeElement?.id || null,
       follow: (() => { const form = document.querySelector('#follow-up-form');
+        const button = form?.querySelector('[type="submit"]'), rect = button?.getBoundingClientRect(),
+          hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
         return form ? { valid: form.checkValidity(), events: window.__jarvisFollowTrace || [],
-          buttonDisabled: form.querySelector('[type="submit"]')?.disabled,
+          active: document.activeElement?.outerHTML?.slice(0, 160), documentUrl: location.href,
+          buttonDisabled: button?.disabled, buttonRect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+          hit: hit?.id || hit?.outerHTML?.slice(0, 130),
           formAction: form.action,
           controls: [...form.elements].filter(control => !control.checkValidity()).map(control => ({ id: control.id,
             type: control.type, value: control.value, issue: control.validationMessage })) } : null; })(),
     })).catch(() => ({ unavailable: true }));
-    throw new Error(`${method} ${path}: no HTTP response (${error.message}); observed follow-up requests: ${JSON.stringify(followRequests)}; browser state: ${JSON.stringify(diagnostic)}`);
+    throw new Error(`${method} ${path}: no HTTP response (${error.message}); observed follow-up requests: ${JSON.stringify(followRequests)}; navigations: ${JSON.stringify(followNavigations)}; browser state: ${JSON.stringify(diagnostic)}`);
   });
   const body = await response.json();
   assert.ok(statuses.includes(response.status()), `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`);
