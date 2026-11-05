@@ -60,6 +60,8 @@ footer { color: #a3bac8; }
 .source-target { outline: 2px solid #77d8f3; outline-offset: 5px; scroll-margin-top: 25px; }
 .v5-work-panel { margin-top: 18px; }
 .v5-fields { display: grid; grid-template-columns: minmax(140px, 0.34fr) minmax(0, 1fr); gap: 11px 16px; align-items: center; }
+.v5-fields > *, .v5-fields fieldset { min-width: 0; max-width: 100%; }
+.v5-fields .inline-check { white-space: normal; overflow-wrap: anywhere; }
 .v5-fields input, .v5-fields textarea, .v5-fields select { width: 100%; min-width: 0; }
 .v5-fields textarea { min-height: 78px; }
 .memory-editor-mode { display: block; width: min(100%, 440px); margin: 7px 0 15px; }
@@ -100,7 +102,9 @@ footer { color: #a3bac8; }
   #tab-home .hero-panel .action-row button { padding: 9px 11px; }
   #tab-home .chat-panel { min-height: 0; height: clamp(310px, 43dvh, 360px); }
   .tab-view > .panel, .system-settings-group > .panel { padding: 17px; }
-  .v5-fields { grid-template-columns: 1fr; }
+  /* A bare 1fr keeps the datetime-local/fieldset minimum-content width on
+     narrow phones, expanding the entire Plan view beyond the viewport. */
+  .v5-fields { grid-template-columns: minmax(0, 1fr); }
   .v5-fields > button { grid-column: 1; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .tab-button { transition: none; } }
