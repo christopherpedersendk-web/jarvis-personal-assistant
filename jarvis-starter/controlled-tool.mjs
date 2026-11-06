@@ -1,3 +1,4 @@
+import {enforceResearchBoundary} from './research-boundary.mjs';
 import { assertToolPolicy } from './tool-policy.mjs';
 // Capture the generation before any awaited journal write. A stop/resume
 // during durable admission must not authorize the previously queued action.
@@ -5,8 +6,10 @@ export async function invokeControlledTool({ control, journal, mutatingTools, ca
   assertToolPolicy(call.name);
   const scope = control.current();
   control.assertAllowed(scope);
+  enforceResearchBoundary(control,scope,call.name,mutatingTools.has(call.name));
   const guarded = (...parameters) => {
     control.assertAllowed(scope);
+    enforceResearchBoundary(control,scope,call.name,mutatingTools.has(call.name));
     return handler(...parameters);
   };
   if (!mutatingTools.has(call.name)) {

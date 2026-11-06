@@ -116,7 +116,8 @@ export class ProviderControl {
     const id=await this.reserve({model:'openclaw.web_search',max_output_tokens:1},scope);
     try {
       const result=await this.controlled(operation,scope);
-      await this.settle(id,{usage:{input_tokens:0,output_tokens:0}},'completed');
+      // The gateway does not report model tokens. Unknown is not measured zero.
+      await this.settle(id,null,'completed');
       return result;
     } catch(error) { await this.settle(id,null,'unknown').catch(()=>{});throw error; }
   }

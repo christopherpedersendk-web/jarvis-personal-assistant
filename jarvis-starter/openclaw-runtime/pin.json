@@ -1,0 +1,8 @@
+{
+  "version": "2026.11.1",
+  "commit": "4ffdd2047d192dd65554de3c8c46c0e0197c6e2a",
+  "integrity": "sha512-2pSbt/taBKM/ofPXsiOEmVefgUdVHYRZOmcWNDyx67WUfeGFXqtfqLvtwYOiH4NcLolDSLMUgsno2oYhTVXptw==",
+  "license": "MIT",
+  "node": ">=24.16.0 <25 || >=26.1.0",
+  "contractVersion": 1
+}

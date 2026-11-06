@@ -53,10 +53,13 @@ function assertWholeRecords(context, memories, limit) {
   }
 }
 
-function runtime(f) {
+function runtime(f, hybrid = false) {
   const calls = [], savedIds = [];
   const context = vm.createContext({ assistantTools, voiceExtraTools, Date, JSON, process: { env: {} }, persona: 'Syntetisk persona.', state: f.state,
     secretary: f.secretary, knowledge: f.knowledge, skills, organizer: { summary: () => [] }, validApiKey: true,
+    openJarvis:{status:()=>({enabled:hybrid})},
+    prepareReportResearch:async()=>({sources:[{url:'https://example.org/news',title:'News'}],text:'Public news'}),
+    researchSearch:()=>assert.fail('Preparation is injected in this isolated test'),
     planningTools: [], knowledgeTools: [], organizerTools: [], homeTools: [],
     openaiJson: async (path, options = {}) => {
       calls.push({ path, ...structuredClone(options) });
@@ -171,4 +174,14 @@ test('H2 resuming an existing model response does not start a new request or sil
   assert.equal(await h.backgroundResearch({ responseId: 'existing', prompt: 'morgenrapport', category: 'research' },
     async () => assert.fail('An existing response is not a new paid request')), 'Syntetisk eksisterende svar');
   assert.deepEqual(h.calls, [{ path: '/responses/existing' }]);
+});
+
+
+test('hybrid report preserves sources and disables hosted search rather than falling back',async()=>{
+ const h=runtime(fixture(1),true),metadata=[];
+ const answer=await h.backgroundResearch({prompt:'AI nyheder',category:'briefing',runs:[]},async(id,data)=>metadata.push(data));
+ assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0].body.tools,[]);assert.equal(h.calls[0].body.tool_choice,'none');
+ assert.match(answer,/https:\/\/example.org\/news/);assert.equal(metadata[0].sources[0].url,'https://example.org/news');
+ const resumed=await h.backgroundResearch({responseId:'existing',responseSources:metadata[0].sources,prompt:'AI nyheder',category:'briefing'},async()=>assert.fail('No replay'));
+ assert.match(resumed,/https:\/\/example.org\/news/);
 });

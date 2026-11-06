@@ -10,6 +10,7 @@ on:
     paths:
       - 'jarvis-starter/**'
       - 'docs/v5.2/**'
+      - 'docs/v5.3/**'
       - 'docs/gui/**'
       - '.github/workflows/gui-redesign.yml'
   workflow_dispatch:

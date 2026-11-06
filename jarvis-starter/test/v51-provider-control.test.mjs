@@ -77,3 +77,10 @@ test('OpenClaw search uses shared durable request admission and preserves unknow
  await assert.rejects(control.externalSearch(async()=>assert.fail('must not send')),/grænse/);
  assert.equal(control.snapshot().unresolved,1);
 });
+
+
+test('successful OpenClaw search records unknown token usage, never zero',async()=>{
+ const {control,store}=await fixture();await control.externalSearch(async()=>({text:'public'}));
+ const entry=store.state.providerControl.entries[0];assert.equal(entry.status,'completed');
+ assert.equal(entry.inputTokens,null);assert.equal(entry.outputTokens,null);
+});

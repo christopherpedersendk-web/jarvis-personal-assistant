@@ -1,3 +1,4 @@
+import {openJarvisSources} from './openjarvis.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createJobTransitions } from './job-state-transition.mjs';
 import { rejectSecrets } from './privacy.mjs';
@@ -437,7 +438,7 @@ export class TaskEngine {
     let outcome;
     let checkpointError = null;
     try {
-      const result = await this.runTask(snapshot, async responseId => {
+      const result = await this.runTask(snapshot, async (responseId, metadata = {}) => {
         if (typeof responseId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(responseId)) {
           const error = new Error('API returnerede et ugyldigt opgave-ID. Udfaldet skal kontrolleres.');
           error.unknownOutcome = true;
@@ -447,6 +448,7 @@ export class TaskEngine {
           const task = this.#task(id);
           if (task.activeRun?.id !== runId) throw new Error('Opgavens aktive kørsel er ændret.');
           task.responseId = responseId;
+          task.responseSources = openJarvisSources(metadata.sources || []);
           // If this is a later local retry, the worker was stopped by the failed
           // checkpoint. Schedule a read of the now-durable ID, not a new POST.
           if (checkpointError) { task.status = 'scheduled'; task.nextRunAt = this.now().toISOString(); }

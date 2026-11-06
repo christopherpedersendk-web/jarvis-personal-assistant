@@ -1,0 +1,25 @@
+# Review paths and Node 24.16+ installation before any manual test activation.
+[Unit]
+Description=OpenJarvis restricted public research gateway
+After=network-online.target
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/openjarvis/jarvis-starter
+ExecStart=/usr/local/bin/node /opt/openjarvis/jarvis-starter/openclaw-runtime/run.mjs
+EnvironmentFile=/etc/openjarvis-research.env
+Restart=no
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=1G
+TasksMax=128
+TimeoutStopSec=15
+[Install]
+WantedBy=multi-user.target
