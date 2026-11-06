@@ -10,6 +10,11 @@ lokal Git-historik og enkelte historiske dokumenter er forskellige og bevares.
 Udviklingsgren: `feature/v5.1.0`. Ingen produktion, merge eller release er udført.
 Pakken beholder 5.0.2 indtil en samlet 5.1.0-kandidat er klar til versionsløft.
 
+Ny ejerprioritering 6. november 2026: fortsæt med browserarbejde og sikkerhed
+først. Første N4-leverance er derfor taget ind sammen med N2. Den nye lokale
+arbejdskopi er genskabt fra `dd147f78133edfc8738b949a8c42b6f1c3f704e2`;
+alle blobs og rodtræ `e48405fca2c83fa33daf35abe9834bea9b1fad4c` er verificeret.
+
 ## Milestones
 
 | ID | Leverance | Prioritet | Status |
@@ -17,12 +22,12 @@ Pakken beholder 5.0.2 indtil en samlet 5.1.0-kandidat er klar til versionsløft.
 | N1 | Dokumenteret stabil drift: providerprøve, diagnose, svartid, fuld restore og fysisk accept | P0 | I gang |
 | N2 | Fælles værktøjspolitik, godkendelser, samlet forbrug, budget og stop | P0/P1 | I gang |
 | N3 | Opgaver/opfølgning i alle kanaler, skills, hukommelseskvalitet og overskuelig mobiloplevelse | P1 | I gang |
-| N4 | Kontrolleret browserarbejde og senere booking | P2 | Udskudt; kommer før N5 |
+| N4 | Kontrolleret webarbejde: læsning og lokale bookingkladder; senere browser med login | P1 for første læsefase | I gang sammen med N2; dynamisk browser og afsendelse er stadig åbne |
 | N5 | Afgrænsede kalenderændringer | P2 | Udskudt |
 | Home | Hue/Sonos/Nest/Home Assistant | P2 | Blokeret af manglende lokal agent; ingen udvidelse |
 
-P0 blokerer relevant release/handleevne; P1 skal med i v5.1.0; P2 aktiveres ikke
-som følge af denne instruks. Eksisterende Home-funktioner fjernes ikke lydløst.
+P0 blokerer relevant release/handleevne; P1 skal med i v5.1.0. Den nyeste
+instruks prioriterer første N4-fase. N5 og Home udvides ikke.
 
 ## Acceptregister — ingen uafprøvet kontrol markeres afsluttet
 
@@ -44,6 +49,11 @@ som følge af denne instruks. Eksisterende Home-funktioner fjernes ikke lydløst
 | N3.3 P1 | Mere præcist skillvalg og direkte valg af eksisterende fire skills | Eksisterende versionsbinding bevares; routingforbedring og evaluering mangler. |
 | N3.4 P1 | Udvidet hukommelsesprøve ≥95 % kilde@5; rettelser, udløb og ukendt svar testes særskilt | Eksisterende baseline 75/80 bevares. Nye holdout-spørgsmål og ægte lokal semantik-evaluering mangler. |
 | N3.5 P1 | Fokus i I dag, ingen gentagne afsluttede påmindelser, brugbart ugeoverblik | Read-only ugeoverblik og kanalafgrænset historik implementeret. Samlet påmindelses-/I dag-accept og brugerprøve mangler. |
+| N4.1 P0 | Læsning kun efter ejerens præcise domænevalg og engangsreview; ingen intern netværksadgang | `browser-workspace.mjs`: HTTPS, DNS-pinning pr. redirect, samme origin, ingen login/cookies/parametre, to samtidige og 50 læsninger/dag. Negative transport- og HTTP-tests består. |
+| N4.2 P0 | Websites kan ikke udvide værktøjsrettigheder eller forgifte hukommelsen | Webuddrag holdes uden for alle modelkataloger, personlig vidensindeksering og generel state-response. Kun tekstnoder i UI. Skadelige sider testes som data, ikke som pålidelige instruktioner. |
+| N4.3 P0 | Stop/tilbagetrækning af tilladelse afbryder læsning; ingen replay efter ukendt udfald | Varigt engangsforbrug før netværk, binding til ejer, URL, konfigurationsrevision, proces, generation og to minutters udløb. Restart/stop/race/ukendt udfald er testet. |
+| N4.4 P1 | En læst kilde kan bruges til en redigerbar lokal bookingkladde med versionskontrol | Planlægning → Webarbejde: review, kildeuddrag, opret/ret/slet kladde. Kildehash og læsetid gemmes; ingen kladde sendes. HTTP- og DOM-tests består; Chromium/iPhone-accept afventer. |
+| N4.5 Senere | Isoleret dynamisk browser, login-overdragelse og konkrete formularforslag | Ikke implementeret. Ingen formularafsendelse, betaling, booking eller automatisk modelnavigation kan aktiveres på baggrund af læsetilladelsen. Krav i `browser-security.md`. |
 
 ## Arkitektur og driftsgrænser
 
@@ -64,7 +74,8 @@ som følge af denne instruks. Eksisterende Home-funktioner fjernes ikke lydløst
 
 ## Næste implementeringsrækkefølge
 
-1. Færdiggør N2: fælles dispatcher for ældre stemmeværktøjer, konkret approval-
+1. Verificér N4's første læsefase i pinned browser-CI og med offentlige testkilder
+   samt fysisk iPhone. Færdiggør derefter N2: fælles dispatcher for ældre stemmeværktøjer, konkret approval-
    binding, Realtime-kontrol/forbrug og stop af relevante udbyderjobs.
 2. Færdiggør N3: skillvalg, holdout-evaluering, I dag/opfølgninger og 30 faktiske
    danske brugeropgaver, inklusive stemme. Ingen kvalitetsmål sænkes for grønt.

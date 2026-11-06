@@ -192,7 +192,7 @@
   }
   function apply(route) {
     for (const view of JarvisNavigation.mainViews) byId(`tab-${view}`)?.classList.toggle('hidden', view !== route.view);
-    for (const [section, id] of Object.entries({ tasks: 'plan-tasks', calendar: 'plan-calendar', meals: 'tab-meals', notes: 'plan-notes' }))
+    for (const [section, id] of Object.entries({ tasks: 'plan-tasks', calendar: 'plan-calendar', meals: 'tab-meals', notes: 'plan-notes', web: 'plan-web' }))
       byId(id)?.classList.toggle('hidden', route.view !== 'plan' || section !== route.section);
     for (const [kind, id] of Object.entries({ personal: 'plan-personal', agent: 'plan-agent', projects: 'tab-projects' }))
       byId(id)?.classList.toggle('hidden', route.view !== 'plan' || route.section !== 'tasks' || route.kind !== kind);

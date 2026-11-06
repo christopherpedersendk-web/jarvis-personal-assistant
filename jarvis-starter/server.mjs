@@ -1,6 +1,7 @@
 import { assistantTools, homeTools, voiceExtraTools, validateAssistantTool } from './assistant-tools.mjs';
 import { secretaryTools, secretaryWrites, createSecretaryToolHandler } from './secretary-tools.mjs';
 import { ProviderControl } from './provider-control.mjs';
+import { BrowserWorkspace } from './browser-workspace.mjs';
 import { SonosAuth, sonosCredentialKey, clearSonosCookie } from './sonos-auth.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -150,6 +151,8 @@ const actionJournal = new ActionJournal({ state, save, transact: mutateV5 });
 const recentEventIds = new Set();
 const providerControl = new ProviderControl({ state, transact: mutateV5, save, env: process.env,
   isTransactionActive: () => Boolean(stateStore.context.getStore()) });
+const browserWorkspace = new BrowserWorkspace({ state, transact: mutateV5, save, control: providerControl,
+  owner: tokenDigest.toString('hex'), secrets: knownSecrets });
 
 // All private settings updates are one serialized read-modify-write transaction.
 // Never publish a new in-memory credential or configuration before rename succeeds.
@@ -743,6 +746,16 @@ async function route(req, res) {
 
   if (path.startsWith('/api/')) {
     if (!authenticated(req)) return json(res, 401, { error: 'Forkert adgangskode.' });
+    // Owner UI only. These capabilities are deliberately absent from every
+    // model catalog and cannot submit forms or promote web content to memory.
+    if (req.method === 'GET' && path === '/api/browser') return json(res, 200, browserWorkspace.snapshot());
+    if (req.method === 'POST' && path.startsWith('/api/browser/')) {
+      const actions = { sites: 'configure', preview: 'preview', read: 'read', cancel: 'cancel', draft: 'draft', 'delete-draft': 'deleteDraft' };
+      const action = actions[path.slice('/api/browser/'.length)];
+      if (!Object.hasOwn(actions, path.slice('/api/browser/'.length))) return json(res, 404, { error: 'Ukendt webhandling.' });
+      try { return json(res, 200, await browserWorkspace[action](await bodyJson(req))); }
+      catch (error) { return json(res, 409, { error: error.message, code: error.code || 'BROWSER_FAILED' }); }
+    }
     if (req.method === 'GET' && path === '/api/assistant/control') return json(res, 200, providerControl.snapshot());
     if (req.method === 'POST' && path === '/api/assistant/control') {
       try { return json(res, 200, await providerControl.stop((await bodyJson(req)).stopped)); }
@@ -1299,7 +1312,7 @@ async function route(req, res) {
         tasks: taskEngine.list(), projects: projectAgent.list(), configured: validApiKey,
         pushEnabled: notificationsEnabled(pushConfig), voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1',
       }));
-      const { codeProposals, ...safeState } = state;
+      const { codeProposals, browserWorkspace: privateWebState, ...safeState } = state;
       return json(res, 200, { ...safeState, tasks: taskEngine.list(), codeProposals: codeAgent.list(), projects: projectAgent.list(), usage: taskEngine.currentUsage(), pushEnabled: notificationsEnabled(pushConfig), configured: validApiKey, voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1' });
     }
     if (req.method === 'GET' && path === '/api/history') {
@@ -1562,6 +1575,8 @@ async function route(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Metoden understøttes ikke.' });
   const files = { '/': 'index.html', '/app.js': 'app.js', '/v5-plan.js': 'v5-plan.js', '/v5.css': 'v5.css', '/organizer.js': 'organizer.js', '/intelligence.js': 'intelligence.js', '/intelligence.css': 'intelligence.css', '/meals.js': 'meals.js', '/meals.css': 'meals.css', '/memory-v49.js': 'memory-v49.js', '/memory-v49.css': 'memory-v49.css', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
   files['/assistant-control.js'] = 'assistant-control.js';
+  files['/browser-workspace.js'] = 'browser-workspace.js';
+  files['/browser-workspace.css'] = 'browser-workspace.css';
   files['/job-policy.js'] = 'job-policy.js';
   files['/v5-projects.js'] = 'v5-projects.js';
   files['/settings-drafts.js'] = 'settings-drafts.js';

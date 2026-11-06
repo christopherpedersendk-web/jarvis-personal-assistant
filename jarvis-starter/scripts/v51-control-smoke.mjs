@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
+import { browserNetworkFixture } from '../test/helpers/browser-network.mjs';
 const require = createRequire(import.meta.url), { chromium } = require('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dir = await mkdtemp(join(tmpdir(), 'jarvis-v51-smoke-'));
@@ -18,7 +19,7 @@ const credential = 'synthetic-v51-control-owner-token', origin = `http://127.0.0
 let child, browser, logs = '';
 const report = { at: new Date().toISOString(), playwrightVersion: require('playwright/package.json').version, status: 'running', checks: [], scope: 'Disposable server, synthetic data, Chromium. No physical iPhone, paid model, or production access.' };
 async function start() {
-  child = spawn(process.execPath, ['server.mjs'], { cwd: root, env: syntheticServerEnv({ dataDir: dir, accessToken: credential, port }), stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(browserNetworkFixture)}`, 'server.mjs'], { cwd: root, env: syntheticServerEnv({ dataDir: dir, accessToken: credential, port }), stdio: ['ignore', 'pipe', 'pipe'] });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', b => { logs = (logs + String(b)).slice(-3000); });
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(origin + '/health', { signal: AbortSignal.timeout(500) })).ok) return; } catch {}
@@ -50,6 +51,7 @@ try {
   await api('/api/assistant/tool', { name: 'complete_personal_task', callId: 'complete-once', args: { id: first.task.id, expectedRevision: 1 } });
   assert.equal((await api('/api/assistant/tool', { name: 'get_weekly_review', args: {} })).openTasks.length, 0);
   report.checks.push('completion is visible in the weekly review');
+  await api('/api/browser/sites', { origins: ['https://restaurant.example.org'], expectedRevision: 1 });
   browser = await chromium.launch({ headless: true, ...(process.env.JARVIS_TEST_CHROMIUM ? { executablePath: process.env.JARVIS_TEST_CHROMIUM } : {}) });
   report.browserVersion = browser.version();
   for (const width of [390, 1280]) {
@@ -68,6 +70,29 @@ try {
     await page.waitForFunction(() => document.getElementById('assistant-control-status').textContent.startsWith('Aktiv'));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: join(artifacts, `control-${width}.png`), fullPage: true });
+    await page.locator('a[data-tab="plan"]:visible').first().click();
+    await page.locator('[data-plan-tab="web"]').click();
+    await page.waitForFunction(() => document.getElementById('web-status').textContent.includes('1 godkendte websites'));
+    await page.locator('#web-url').fill(`https://restaurant.example.org/menu/${width}`);
+    await page.locator('#web-read-form button').click();
+    await page.locator('#web-read-confirm').click();
+    await page.waitForFunction(() => document.querySelector('#web-reads h3')?.textContent === 'Syntetisk menu');
+    await page.getByRole('button', { name: 'Forbered lokal kladde', exact: true }).first().click();
+    await page.locator('#web-draft-title').fill(`Syntetisk middag ${width}`);
+    await page.locator('#web-draft-details').fill('To personer fredag kl. 18.');
+    await page.locator('#web-draft-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.getElementById('web-draft-form').classList.contains('hidden'));
+    assert.ok((await page.locator('#web-drafts').innerText()).includes('Ikke sendt'));
+    await page.locator('#web-drafts').getByRole('button', { name: 'Redigér', exact: true }).first().click();
+    await page.locator('#web-draft-details').fill('Tre personer fredag kl. 18.');
+    await page.locator('#web-draft-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.getElementById('web-draft-form').classList.contains('hidden'));
+    assert.ok((await page.locator('#web-drafts').innerText()).includes('Tre personer'));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: join(artifacts, `web-${width}.png`), fullPage: true });
+    await page.locator('#web-drafts').getByRole('button', { name: 'Slet lokal kladde', exact: true }).first().click();
+    await page.waitForFunction(() => document.getElementById('web-drafts').children.length === 0);
+    report.checks.push(`web UI ${width}px: preview, isolated fixture read, create/edit/delete local draft, no horizontal overflow`);
     await context.close(); report.checks.push(`control UI ${width}px: read, stop, resume, no horizontal overflow`);
   }
   report.status = 'passed';

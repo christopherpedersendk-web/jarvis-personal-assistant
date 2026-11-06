@@ -84,29 +84,39 @@ function timeoutPromise(ms, code = 'unavailable') {
   return { promise, cancel: () => clearTimeout(timer) };
 }
 
-async function resolvePublic(host, lookup, remaining) {
+async function resolvePublic(host, lookup, remaining, signal) {
+  signal?.throwIfAborted();
   if (isIP(host)) return { address: host, family: isIP(host) };
   const timeout = timeoutPromise(remaining);
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
   let addresses;
-  try { addresses = await Promise.race([lookup(host, { all: true, verbatim: true }), timeout.promise]); }
+  try { addresses = await Promise.race([lookup(host, { all: true, verbatim: true }), timeout.promise, aborted]); }
   catch (error) { if (error instanceof RecipeFetchError) throw error; throw new RecipeFetchError('unavailable', 'Hjemmesiden kunne ikke findes.'); }
-  finally { timeout.cancel(); }
+  finally { timeout.cancel(); signal?.removeEventListener('abort', onAbort); }
+  signal?.throwIfAborted();
   if (!Array.isArray(addresses) || !addresses.length || addresses.some(record => !publicInternetAddress(record.address))) {
     throw new RecipeFetchError('blocked', 'Hjemmesidens netværksadresse er ikke tilladt.');
   }
   return { address: addresses[0].address, family: isIP(addresses[0].address) };
 }
 
-function requestPinned(url, address, { request, remaining, maxBytes, kind }) {
+function requestPinned(url, address, { request, remaining, maxBytes, kind, signal }) {
   return new Promise((resolve, reject) => {
     let finished = false;
     let req;
     const timer = setTimeout(() => finish(null, new RecipeFetchError('unavailable', 'Hentning tog for lang tid.')), remaining);
     const finish = (result, error) => {
       if (finished) return;
-      finished = true; clearTimeout(timer);
+      finished = true; clearTimeout(timer); signal?.removeEventListener('abort', onAbort);
       if (error) { req?.destroy(); reject(error); } else resolve(result);
     };
+    const onAbort = () => finish(null, new RecipeFetchError('cancelled', 'Hentningen blev stoppet.'));
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
     const host = url.hostname.replace(/^\[|\]$/g, '');
     const pinnedLookup = (requestedHost, options, callback) => {
       if (requestedHost !== host) return callback(new Error('Unexpected hostname'));
@@ -152,18 +162,19 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind }) {
 }
 
 export async function fetchRecipeResource(value, { kind = 'html', lookup = dnsLookup, request = httpsRequest,
-  timeoutMs = 10_000, maxBytes = kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES, allowUrl = () => true } = {}) {
+  timeoutMs = 10_000, maxBytes = kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES, allowUrl = () => true, signal } = {}) {
   if (!['html', 'image'].includes(kind)) throw new RecipeFetchError('blocked', 'Ukendt ressourcetype.');
   const deadline = Date.now() + Math.max(50, Math.min(15_000, timeoutMs));
   let url = recipeUrl(value);
   for (let redirects = 0; redirects <= 2; redirects++) {
+    signal?.throwIfAborted();
     const host = publicHost(url);
     if (!allowUrl(url)) throw new RecipeFetchError('blocked', 'Viderestillingen er ikke tilladt.');
     if (Date.now() >= deadline) throw new RecipeFetchError('unavailable', 'Hentning tog for lang tid.');
-    const address = await resolvePublic(host, lookup, Math.max(1, deadline - Date.now()));
+    const address = await resolvePublic(host, lookup, Math.max(1, deadline - Date.now()), signal);
     if (Date.now() >= deadline) throw new RecipeFetchError('unavailable', 'Hentning tog for lang tid.');
     const result = await requestPinned(url, address, { request, remaining: deadline - Date.now(),
-      maxBytes: Math.min(maxBytes, kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES), kind });
+      maxBytes: Math.min(maxBytes, kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES), kind, signal });
     if (!result.redirect) return result;
     url = recipeUrl(new URL(result.redirect, url).href);
   }

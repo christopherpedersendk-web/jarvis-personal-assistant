@@ -29,6 +29,8 @@
   <script src="/gui-shell.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/assistant-control.js" defer></script>
+  <script src="/browser-workspace.js" defer></script>
+  <link rel="stylesheet" href="/browser-workspace.css" />
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
   <script src="/system-health.js" defer></script>
@@ -92,7 +94,42 @@
           <button type="button" class="gui-subtab" data-plan-tab="calendar" aria-controls="plan-calendar" aria-pressed="false">Kalender</button>
           <button type="button" class="gui-subtab" data-plan-tab="meals" aria-controls="tab-meals" aria-pressed="false">Madplan</button>
           <button type="button" class="gui-subtab" data-plan-tab="notes" aria-controls="plan-notes" aria-pressed="false">Noter og lister</button>
+          <button type="button" class="gui-subtab" data-plan-tab="web" aria-controls="plan-web" aria-pressed="false">Webarbejde</button>
         </nav>
+        <section id="plan-web" class="plan-subview hidden" aria-label="Webarbejde">
+          <section class="panel web-workspace" aria-labelledby="web-title">
+            <h2 id="web-title">Læs en side, forbered en booking</h2>
+            <p>Læs offentlige sider og gem dine ønsker i en lokal kladde. Login, JavaScript og afsendelse af formularer understøttes endnu ikke.</p>
+            <p id="web-status" role="status" aria-live="polite">Hent status for at begynde.</p>
+            <button id="web-refresh" type="button" class="secondary">Hent status</button>
+            <details class="gui-disclosure"><summary>Godkendte websites</summary>
+              <p class="muted">Du vælger de præcise websites. Underdomæner kræver deres egen godkendelse. Fjernelse stopper aktive læsninger.</p>
+              <ul id="web-sites"></ul>
+              <form id="web-site-form" class="v5-fields">
+                <label for="web-site">Website</label><input id="web-site" type="url" required maxlength="2048" placeholder="https://restaurant.dk" />
+                <button type="submit" class="secondary">Godkend website til læsning</button>
+              </form>
+            </details>
+            <form id="web-read-form" class="v5-fields">
+              <label for="web-url">Offentligt link uden søgeparametre</label><input id="web-url" type="url" required maxlength="2048" placeholder="https://restaurant.dk/menu" />
+              <button type="submit" class="primary">Gennemgå link</button>
+            </form>
+            <div id="web-preview" class="hidden" aria-live="polite">
+              <p id="web-preview-url"></p><p id="web-preview-effect"></p>
+              <button id="web-read-confirm" type="button" class="primary">Læs denne side én gang</button>
+            </div>
+            <div id="web-reads"></div>
+            <form id="web-draft-form" class="v5-fields hidden">
+              <h3 id="web-draft-heading">Lokal bookingkladde</h3>
+              <p id="web-draft-source" class="muted"></p>
+              <label for="web-draft-title">Titel</label><input id="web-draft-title" required maxlength="160" placeholder="Middag for to" />
+              <label for="web-draft-details">Dine ønsker</label><textarea id="web-draft-details" required maxlength="2000" placeholder="Dato, tidspunkt, antal personer og spørgsmål. Gem ikke betalings- eller loginoplysninger."></textarea>
+              <button type="submit" class="primary">Gem lokal kladde</button><button id="web-draft-cancel" type="button" class="secondary">Luk redigering</button>
+            </form>
+            <h3>Dine kladder</h3><p class="muted">Ingen kladder er sendt. Åbn selv websitet for at aftale eller reservere.</p>
+            <div id="web-drafts"></div>
+          </section>
+        </section>
         <section id="plan-tasks" class="plan-subview" aria-label="Opgaver">
           <nav class="gui-filterbar" aria-label="Opgavetype">
             <button type="button" class="gui-filter active" data-task-filter="personal" aria-controls="plan-personal" aria-pressed="true">Personlige</button>

@@ -67,3 +67,25 @@ fortsat åbne. Denne arbejdsgren må ikke markeres som en færdig release.
   `server.test.mjs` forventer app-mappen som cwd. Den korrekte kommando ovenfor
   køres fra `jarvis-starter`; ingen assertion er fjernet.
 - Live API, fysisk iPhone, fuld serverrestore og faktisk driftsmåling er ukørte.
+
+## Anden implementeringspakke: webarbejde og sikkerhed
+
+- Afsluttende fuld kørsel: **1.094/1.094 Node-tests bestået**, ingen skipped eller
+  cancelled, Node 24.22.1, fra `jarvis-starter`. Dette omfatter den ekstra
+  restart/ukendt-udfald-prøve og den monotone HTML-scanner.
+- Baseline genskabt bytepræcist fra remote `dd147f7`; rodtræet matcher
+  `e48405fca2c83fa33daf35abe9834bea9b1fad4c`. Andre lokale arbejdsgrene er bevaret.
+- 28 nye adfærdstests i tre testfiler: 22 domæne-/transporttests, én faktisk
+  HTTP-test med isoleret server og fem DOM-tests. Desuden en delt netværksfixture.
+- Første fulde kørsel fandt kun den hårdkodede optælling af server-testfixtures
+  (nu syv frem for seks). Optællingen er opdateret; alle assertions om isoleret
+  miljø og udelukkelse af nedarvede secrets er bevaret.
+- Den udvidede smoke passerer fortsat sine eksisterende HTTP-prøver, men stopper
+  før visuel kontrol: lokal Playwright 1.62.1 mangler sin Chromium-binær. Ingen
+  nye screenshots eller visuel accept påstås. Den samme smoke i eksisterende CI
+  omfatter nu også review → læsning → opret/ret/slet kladde ved 390 og 1280 px.
+- Browser-HTTP og visuel smoke bruger en eksplicit syntetisk HTTPS-transport i en
+  separat proces. Ingen virkelige websites, login, formularafsendelser eller køb
+  er udført. Ingen API-model er brugt til webarbejdet.
+- Se `browser-security.md` for arkitekturgrænser og krav før dynamisk browser,
+  login eller afsendelse kan aktiveres. N4 er delvist implementeret, ikke afsluttet.

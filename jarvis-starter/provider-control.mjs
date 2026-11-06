@@ -34,6 +34,17 @@ export class ProviderControl {
     if (this.settings().stopped || scope.generation !== this.settings().generation)
       throw fail('ASSISTANT_STOPPED', 'Assistenten er stoppet. Gennemgå igangværende handlinger før genoptagelse.');
   }
+  // Shared stop boundary for non-model reads. An old operation cannot publish
+  // a result after stop/resume, even if its transport ignores cancellation.
+  async controlled(operation, scope = this.current()) {
+    this.assertAllowed(scope);
+    const controller = new AbortController(); this.active.add(controller);
+    try {
+      const result = await operation(controller.signal);
+      this.assertAllowed(scope);
+      return result;
+    } finally { this.active.delete(controller); }
+  }
   async stop(stopped) {
     if (typeof stopped !== 'boolean') throw new Error('Angiv stop eller genoptagelse.');
     await this.transact(['providerControl'], async () => {
