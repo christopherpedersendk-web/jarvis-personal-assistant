@@ -38,8 +38,9 @@ mutationsspærre. Den endelige kandidats træbinding registreres i evidence.json
 Installeret OpenClaw validerede config og afviste exec/browser/web_fetch/cron/
 sessions_spawn med 404 samt forkert credential med 401. Offentlig søgning gav
 provider_error; ingen kilder og ingen researchaccept. Fejlen er bevaret i evidens.
-CI afprøver også offentlig søgning uden credentials; dette er en reel acceptprøve,
-ikke en mock eller automatisk godkendt skip.
+CI afprøvede derefter samme runtime med rigtig offentlig søgning: **5 kilder og
+bestået policy** på `4d9f376b05f41a6da8e92b66585450226279cebd`, run 42298434948.
+Den lokale fejl er bevaret; CI-resultatet beviser ikke ejerens netværk eller opsætning.
 
 Der er ingen OpenAI-testcredential, live Discord-adgang, fysisk iPhone eller faktisk
 installationsbackup i dette miljø. De to 30-opgavekørsler er `not_run`, uden score.

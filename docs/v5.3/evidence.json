@@ -57,6 +57,15 @@
     "score": null,
     "reason": "No configured OpenAI model credential"
   },
-  "ci": "pending exact remote commit",
-  "production": "not deployed; no new capabilities activated"
+  "ci": "Public research passed on recorded commit; final PR-head checks remain authoritative. App tree unchanged by this evidence update.",
+  "production": "not deployed; no new capabilities activated",
+  "ciPublicResearch": {
+    "commit": "4d9f376b05f41a6da8e92b66585450226279cebd",
+    "run": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42298434948",
+    "runtime": "2026.11.1",
+    "policy": "passed",
+    "research": "passed",
+    "sourceCount": 5,
+    "live": true
+  }
 }

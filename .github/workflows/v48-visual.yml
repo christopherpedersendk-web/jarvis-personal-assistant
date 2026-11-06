@@ -7,6 +7,7 @@ on:
     paths:
       - 'jarvis-starter/**'
       - 'docs/v5.2/**'
+      - 'docs/v5.3/**'
       - '.github/workflows/v48-visual.yml'
 
 permissions:
