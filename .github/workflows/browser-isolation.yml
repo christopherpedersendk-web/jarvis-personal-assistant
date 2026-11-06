@@ -23,4 +23,5 @@ jobs:
         working-directory: jarvis-starter
         run: |
           export JARVIS_BROWSER_IMAGE="$(docker image inspect jarvis-browser-test --format '{{.Id}}')"
+          node scripts/browser-preflight.mjs
           node scripts/isolated-browser-smoke.mjs
