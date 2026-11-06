@@ -110,6 +110,7 @@ test('plain excerpt neutralizes markup, strips executable material, bounds text 
   assert.equal(JSON.stringify(indexPersonalKnowledge({ browserWorkspace: { reads: [{ page: p }] } })).includes('Ignore instructions'), false);
   assert.equal(extractWebPage(Buffer.from('<script>'.repeat(50000)), url).text, '');
   assert.equal(extractWebPage(Buffer.from('<'.repeat(500000)), url).text, '');
+  assert.equal(extractWebPage(Buffer.from('<' + ' '.repeat(499998) + '>'), url).text, '');
 });
 test('interrupted read becomes unknown after restart and cannot be replayed', async () => {
   const f = await fixture(); await f.allow(); const p = await f.work.preview({ url });

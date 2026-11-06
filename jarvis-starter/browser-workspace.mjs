@@ -56,15 +56,18 @@ export function extractWebPage(buffer, url, secrets = []) {
       const end = html.indexOf('-->', open + 4); if (end === -1) break; position = end + 3; continue;
     }
     const end = html.indexOf('>', open + 1); if (end === -1) break;
-    const tag = /^\s*(\/?)\s*([a-z][a-z0-9]*)\b/i.exec(html.slice(open + 1, end));
+    const rawTag = html.slice(open + 1, end).trimStart();
+    const closing = rawTag.startsWith('/');
+    const body = closing ? rawTag.slice(1).trimStart() : rawTag;
+    const tag = /^[a-z][a-z0-9]*/i.exec(body)?.[0];
     position = end + 1;
-    if (!tag) continue;
-    const name = tag[2].toLowerCase();
-    if (!tag[1] && skipped.has(name)) {
+    if (!tag || (body[tag.length] && !'/ \t\r\n\f'.includes(body[tag.length]))) continue;
+    const name = tag.toLowerCase();
+    if (!closing && skipped.has(name)) {
       const close = lower.indexOf('</' + name, position); if (close === -1) break;
       const closeEnd = html.indexOf('>', close); if (closeEnd === -1) break;
       position = closeEnd + 1;
-    } else if (name === 'title') inTitle = !tag[1];
+    } else if (name === 'title') inTitle = !closing;
   }
   const title = redactSecrets(plain(titles.join(' ')) || new URL(url).hostname, secrets).slice(0, 200);
   const fullText = redactSecrets(plain(parts.join(' ')), secrets);
