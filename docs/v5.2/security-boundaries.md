@@ -19,7 +19,7 @@ Dato: 6. november 2026. Dokumentet supplerer v5.1 og angiver faktisk kodeadfærd
 | Requestinput | 512.000 bytes/kald | Størrelsesgrænse; ikke målt tokenpris. |
 | Hosted tools | 100 reserverede toolkald/dag; research reserverer normalt 2/kald | Providerrequest skal have eksplicit `max_tool_calls` på 1–10. Dette måler/afgrænser kald, ikke deres aktuelle pris. |
 | Web-Realtime | 600 sekunder/session, 3.600 sekunder/dag | Hele maksimumperioden reserveres før oprettelse, ingen refundering. Server forsøger hangup ved udløb/stop/restart. Ingen faktisk måling af audiotokens. |
-| Discord-stemme | 300 sekunder/session, 1.800 sekunder/dag | Én valgt kanal, én ejer; ingen autojoin. Højst 20 sekunders input, 60 sekunders TTS-output og 1.600 tegn til tale pr. tur. |
+| Discord-stemme | 300 sekunder/session, 1.800 sekunder/dag | Én valgt kanal, én ejer; ingen autojoin. Højst 20 sekunders input, 60 sekunders TTS-output og 1.600 tegn til tale pr. tur. Oplæsning: én Realtime-response uden værktøjer/historik, 30 sekunders timeout og `max_output_tokens=4096`. |
 | Dynamisk browser | 20 sekunder; 25 ressourcer; 500 KB/ressource; 4 MB samlet; 768 MB RAM, 1 CPU, 128 processer | Ingen eget netværk. Samme-origin GET via eksisterende DNS-pinned HTTPS-transport. Browserworkspace har også antal-/samtidighedsgrænser. |
 
 Providergrænser bruger Europe/Copenhagen-dag. Fuld reservation gør korte afbrudte stemmesessioner dyrere i kvoten med vilje. Dagsskifte frigiver ikke uafklarede providerrequestreservationer. **Ingen af disse tal er en samlet økonomisk budgetgrænse.** Brug et selvstændigt udbyderloft; der er ikke implementeret komplet multi-provider-fakturaregnskab.
@@ -49,6 +49,7 @@ Parentprocessen kontrollerer hver ressource, offentlig DNS, TLS-pinning og redir
 ## Officielle kontrakter gennemgået 2026-11-06
 
 - [OpenAI Realtime hangup](https://developers.openai.com/api/reference/resources/realtime/subresources/calls/methods/hangup)
+- [OpenAI WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc), [WebSockets](https://developers.openai.com/api/docs/guides/voice-websockets) og [modeludfasninger](https://developers.openai.com/api/docs/deprecations). Nye standarder bruger `gpt-live-transcribe` til WebRTC, `gpt-transcribe` til optaget Discord-lyd og `gpt-realtime-2.1-mini` til oplæsning. Den nye oplæsning bruger ikke `/v1/audio/speech`.
 - [OpenAI speech to text](https://developers.openai.com/api/docs/guides/speech-to-text) og [text to speech](https://developers.openai.com/api/docs/guides/text-to-speech)
 - [OpenClaw HTTP Tools Invoke](https://docs.openclaw.ai/gateway/tools-invoke-http-api)
 - [Discord Voice Connections](https://docs.discord.com/developers/topics/voice-connections)

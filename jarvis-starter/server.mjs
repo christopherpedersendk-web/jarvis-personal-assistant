@@ -760,7 +760,7 @@ discordVoice=new DiscordVoice({state,transact:mutateV5,save,control:providerCont
  connect:async options=>{
   let adapter;try{adapter=await import('./discord-voice-runtime/adapter.mjs');}catch{throw new Error('Discord-stemmemodulet er ikke installeret. Se driftsvejledningen.');}
   return adapter.connectDiscordVoice({gateway:discord,...options});
- },...discordAudio,reply:message=>processTextMessage(message,'discord'),notify:(channel,text)=>discord.sendReply(channel,text)});
+ },...discordAudio,reply:message=>processTextMessage(message,'discord'),notify:discord.sendVoiceReply.bind(discord)});
 await stateStore.initialize();
 // Finish constructor migrations before transactions freeze the state. Revoke
 // previous sessions before opening HTTP or starting the Discord gateway.
@@ -1647,7 +1647,7 @@ async function route(req, res) {
           'Brug værktøjet ved eksplicitte ønsker om at arbejde senere eller i baggrunden. Tider sendes som ISO 8601 i UTC.',
           'Du kan ikke selv booke, betale eller kontakte andre. Foreslå handlinger, men påstå aldrig at de er udført. Push-notifikationer kræver separat Pushover-opsætning.'].join('\n\n'),
         // Voice and text share the same organizer in data/state.json.
-        audio: { input: { transcription: { model: 'gpt-transcribe' } }, output: { voice: 'marin' } },
+        audio: { input: { transcription: { model: 'gpt-live-transcribe' } }, output: { voice: 'marin' } },
         tools: [...assistantTools, ...voiceExtraTools],
         tool_choice: 'auto',
       };

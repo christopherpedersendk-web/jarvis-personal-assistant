@@ -26,5 +26,5 @@ jobs:
         working-directory: jarvis-starter/discord-voice-runtime
       - run: node discord-voice-runtime/probe.mjs
         working-directory: jarvis-starter
-      - run: node --test test/discord-voice.test.mjs test/discord-voice-gateway.test.mjs test/voice-sessions.test.mjs
+      - run: node --test test/discord-voice.test.mjs test/discord-voice-gateway.test.mjs test/voice-sessions.test.mjs test/realtime-speech.test.mjs
         working-directory: jarvis-starter

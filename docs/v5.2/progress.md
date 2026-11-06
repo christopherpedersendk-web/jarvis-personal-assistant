@@ -13,15 +13,19 @@ Ejerens bekræftelse står ved magt: v5.1.1 er released, Discord-tekst virker, o
 - **M5:** valgfri Discord-stemme i én valgt serverkanal, kun ejeren, tydelig lyttemeddelelse, eksplicit start/stop, tids- og kaldgrænser. Den eksisterende bot genbruges. Funktionen er deaktiveret som standard.
 - **M6:** mere præcist dansk skillvalg, tydelige integrationsfejl og en evaluator til 30 reelle dansksprogede modelopgaver med menneskelig bedømmelse, kildefingerprint og alle kritiske sikkerhedsprøver som krav.
 
+Seneste lydrettelser binder Discord-lyttemeddelelsen til gatewayens generation og afbryder før lytning ved leveringsfejl. WebRTC bruger `gpt-live-transcribe`; Discord-filtransskription bruger `gpt-transcribe` og `languages[]`; oplæsning bruger en bounded Realtime-WebSocket med `gpt-realtime-2.1-mini`, uden tools eller historik. De udfasede Speech API-modeller er ikke standard i den nye funktion.
+
 Ingen hel milestone er erklæret færdig. De resterende acceptprøver kræver faktisk installation, en fysisk telefon, en konfigureret OpenClaw-gateway eller model-/Discord-adgang. Se [acceptregister](acceptance-register.md), [test- og driftsvejledning](operations-and-acceptance.md) og [sikkerhedsgrænser](security-boundaries.md).
 
 ## Evidens og begrænsninger
 
-Kodecheckpoint `e0ecdaee0a68fa4d5c734d2a4005ebffb158f6f3`: **1.169 lokale Node-tests bestod**. Derefter er HTTP-/browserprøven og hukommelsesproveniens udvidet; den samlede lokale suite består nu **1.172/1.172**. Se [træbundet lokal testregistrering](local-test-result.json). Historiske 1.134/1.166/1.167-tal er ikke evidens for senere ændringer. Den aktuelle PRs commitbundne CI og artefakter er det autoritative grundlag for den udleverede kandidat.
+Kodecheckpoint `e0ecdaee0a68fa4d5c734d2a4005ebffb158f6f3`: **1.169 lokale Node-tests bestod**. Derefter er HTTP-/browserprøven og hukommelsesproveniens udvidet; den samlede lokale suite består efter de seneste lydrettelser nu **1.177/1.177**. Se [træbundet lokal testregistrering](local-test-result.json). Historiske 1.134/1.166/1.167-tal er ikke evidens for senere ændringer. Den aktuelle PRs commitbundne CI og artefakter er det autoritative grundlag for den udleverede kandidat.
 
 På `fa2ffe902365f7d6b235cd0da5c089d9bd25c2d8` bestod containerisolation, Discord-stemmens Node 22/24-afhængigheder, 36 Chromium/WebKit-layoutcases og fire dybe desktop/mobilforløb. GUI-workflowets separate kontrolsmoke fejlede, fordi den stadig brugte den gamle stemmerute uden session. Denne prøve er ændret til en ægte lokal HTTP-session med syntetisk udbyder: afvisning uden session, deduplikering på tværs af ruter, stop/genstart og ugyldig gammel session efter genoptagelse. Kravet er bevaret og udvidet, ikke omgået.
 
 Browseren kunne ikke startes i det lokale værktøjsmiljø: browserdownload fejlede, og den installerede Chromium ramte OS-restriktioner. Den blev derfor bygget og testet i CI med Docker og sandbox aktiveret. Kandidaten tilføjer også en særskilt prøve af faktiske offentlige sider gennem samme isolerede browser og DNS-pinned HTTPS-transport; prøven bestod på `855243e4983989467caf449374cf33f590e7994c` for Example Domain og Playwright. Se [CI-resultatet](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42281985572). Live modeltest og OpenClaw-probe er kun kørt i `not_run`-tilstand; der findes ingen API-/gatewayadgang her.
+
+Alle fire CI-workflows bestod på `6676a81affbc9fc27ac86500f9bea57658c282d0`. Den seneste lydrettelse skal have sin egen grønne CI; tidligere grøn status må ikke genbruges som bevis.
 
 ## Stoppunkt og næste ejerprøve
 

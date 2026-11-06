@@ -507,6 +507,13 @@ export class DiscordGateway {
     this.checkpointGap({ ...gap, status: 'recovered', reason: 'resumed' }, this.generation);
   }
 
+  sendVoiceReply(channelId, text) {
+    if (!this.voiceEnabled) throw new Error('Discord-stemme er ikke aktiveret.');
+    // Bind this delivery to the current gateway before the first async send.
+    // Reuse the same guarded/redacted sender as ordinary Discord replies.
+    return this.sendReply(channelId, text, this.generation);
+  }
+
   async sendReply(channelId, text, generation) {
     if (!SNOWFLAKE.test(String(channelId || '')))
       throw discordError('DISCORD_CHANNEL_INVALID', 'Ugyldig Discord-kanal.', { deliveryNotAttempted: true });

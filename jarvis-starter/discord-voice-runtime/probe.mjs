@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import WebSocket from 'ws';
+assert.equal(typeof WebSocket,'function');
 import OpusScript from 'opusscript';
 import * as dave from '@snazzah/davey';
 import {generateDependencyReport} from '@discordjs/voice';

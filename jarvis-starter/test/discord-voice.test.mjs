@@ -66,3 +66,12 @@ test('audio provider reserves before transport, aborts on stop and never retries
  await assert.rejects(audio.transcribe(Buffer.alloc(38400),new AbortController().signal));assert.equal(calls,1);assert.equal(f.control.snapshot().unresolved,1);
  await f.control.stop(true);await assert.rejects(audio.speak('Hej',new AbortController().signal));assert.equal(calls,1);
 });
+test('Discord audio follows current file-transcription fields and shares stop control with Realtime speech',async()=>{
+ const f=await fixture();let form,spoken;
+ const audio=createDiscordAudio({apiKey:'synthetic',control:f.control,fetcher:async(_url,options)=>{form=options.body;return Response.json({text:'Hej'});},
+  speechRenderer:async input=>{spoken=input;assert.equal(f.control.snapshot().calls,2);return Buffer.from([1,0,2,0]);}});
+ assert.equal(await audio.transcribe(Buffer.alloc(38400),new AbortController().signal),'Hej');
+ assert.equal(form.get('model'),'gpt-transcribe');assert.equal(form.get('languages[]'),'da');assert.equal(form.has('language'),false);
+ assert.equal((await audio.speak('Hej',new AbortController().signal)).length,16);assert.equal(spoken.model,'gpt-realtime-2.1-mini');
+ assert.equal(f.control.snapshot().calls,2);assert.equal(f.control.snapshot().reservedOrUsedOutputTokens,0,'request accounting is not an invented audio token measurement');
+});

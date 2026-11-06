@@ -1,3 +1,4 @@
+import {renderRealtimeSpeech} from './realtime-speech.mjs';
 // Discord decoder: signed 16-bit 48 kHz stereo. Transcription: 16 kHz mono WAV.
 export function discordPcmToWav(pcm) {
  if(!Buffer.isBuffer(pcm)||pcm.length<12||pcm.length>3840000||pcm.length%4)throw new Error('Ugyldigt lydformat.');
@@ -15,7 +16,7 @@ export function speechPcmToDiscord(pcm) {
  return result;
 }
 async function boundedBody(response,maxBytes){let size=0,chunks=[];for await(const chunk of response.body){size+=chunk.length;if(size>maxBytes)throw new Error('Lydsvaret oversteg grænsen.');chunks.push(Buffer.from(chunk));}return Buffer.concat(chunks);}
-export function createDiscordAudio({apiKey,control,fetcher=fetch,env={}}) {
+export function createDiscordAudio({apiKey,control,fetcher=fetch,speechRenderer=renderRealtimeSpeech,env={}}) {
  const request=async(path,body,headers,signal,maxBytes,model)=>{
   const scope=control.current(),id=await control.reserve({model,max_output_tokens:1},scope);
   try {
@@ -29,14 +30,17 @@ export function createDiscordAudio({apiKey,control,fetcher=fetch,env={}}) {
   }catch(error){await control.settle(id,null,'unknown').catch(()=>{});throw error;}
  };
  return {
-  async transcribe(pcm,signal){const form=new FormData(),model=env.OPENAI_DISCORD_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe';
-   form.set('model',model);form.set('language','da');form.set('file',new Blob([discordPcmToWav(pcm)],{type:'audio/wav'}),'speech.wav');
+  async transcribe(pcm,signal){const form=new FormData(),model=env.OPENAI_DISCORD_TRANSCRIBE_MODEL||'gpt-transcribe';
+   form.set('model',model);form.set(model.startsWith('gpt-transcribe')?'languages[]':'language','da');form.set('file',new Blob([discordPcmToWav(pcm)],{type:'audio/wav'}),'speech.wav');
    const data=JSON.parse((await request('transcriptions',form,{},signal,16000,model)).toString());
    if(typeof data.text!=='string'||data.text.length>5000)throw new Error('Transskriptionen er ugyldig.');return data.text;
   },
   async speak(text,signal){if(typeof text!=='string'||!text.trim()||text.length>1600)throw new Error('Talesvaret er for langt.');
-   const model=env.OPENAI_DISCORD_TTS_MODEL||'gpt-4o-mini-tts';
-   return speechPcmToDiscord(await request('speech',JSON.stringify({model,voice:'coral',input:text,response_format:'pcm'}),{'Content-Type':'application/json'},signal,2880000,model));
+   const model=env.OPENAI_DISCORD_TTS_MODEL||'gpt-realtime-2.1-mini',scope=control.current(),id=await control.reserve({model,max_output_tokens:1},scope);
+   try{
+    const pcm=await control.controlled(stopped=>speechRenderer({text,apiKey,model,signal:AbortSignal.any([stopped,signal])}),scope);
+    const audio=speechPcmToDiscord(pcm);await control.settle(id,{usage:{output_tokens:0}},'completed');return audio;
+   }catch(error){await control.settle(id,null,'unknown').catch(()=>{});throw error;}
   }
  };
 }
