@@ -1,5 +1,22 @@
 # Verifikation af v5.1.0-arbejdet
 
+## Dagsrapporter: lange instruktioner og lokal fejlstatus
+
+Den automatiske hukommelsessøgning bruger nu højst 240 tegn af instruktionen;
+hele rapportprompten bevares til modellen. Den eksplicitte søgevalidering er
+uændret. Lokal forberedelse ligger før provider-POST, så lokale fejl markeres
+som ingen handling udført frem for ukendt providerudfald.
+
+To regressionstests bruger serverens faktiske funktioner og PersonalKnowledge:
+lang prompt accepteres til automatisk kontekst, og lokal fejl giver nul
+providerkald. Fuld lokal regression: 1.103/1.103 tests bestået, 6. november 2026.
+Remote CI og produktion er ikke verificeret for denne ændring.
+
+Afvisning af jobkategori/rettigheder omgås ikke. Fejlbeskeden forklarer nu,
+hvordan et pauset job gennemgås, gemmes og aktiveres med en ny revision.
+Screenshot dokumenterer afvisningen, men viser ikke de underliggende gemte
+felter. Produktionsjobbet er ikke ændret, og der er ikke givet nye rettigheder.
+
 ## Fortsættelse: stop under journalføring
 
 `controlled-tool.mjs` fastholder anmodningens stopgeneration og kontrollerer

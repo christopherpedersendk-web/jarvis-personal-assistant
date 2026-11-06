@@ -202,7 +202,7 @@ export class TaskEngine {
       if (task.skillContentHash && skillHash(skill) !== task.skillContentHash) throw new Error('Skill-indholdet er ændret uden en ny version. Opgaven skal gennemgås.');
     }
     if (!READ_CATEGORIES.includes(task.category) || task.permissions &&
-        (task.permissions.length !== 1 || task.permissions[0] !== 'web.search')) throw new Error('Opgaven må kun udføre godkendt læsebaseret research.');
+        (task.permissions.length !== 1 || task.permissions[0] !== 'web.search')) throw new Error('Opgaven må kun udføre godkendt læsebaseret research. Redigér det pausede job, vælg Research, Morgenrapport eller Overvågning, og gennemgå læsetilladelsen web.search. Gem og aktivér derefter den nye revision.');
     const binding = { skillId: task.skillId || null, skillVersion: task.skillVersion || null,
       skillContentHash: skill ? skillHash(skill) : null, parameters: checkedParameters(task.parameters),
       permissions: [...READ_PERMISSIONS], budget: checkedBudget(task.budget),
