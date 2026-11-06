@@ -27,7 +27,7 @@ export async function offlineSnapshot(source, destination, { quiescent = false, 
       const a = join(from, name), b = join(to, name), st = await lstat(a);
       if (st.isSymbolicLink()) throw new Error('Kilden ændrede sig; kopiering afbrudt.');
       if (st.isDirectory()) { await mkdir(b, { mode: 0o700 }); await copy(a, b); }
-      else if (st.isFile()) { await copyFile(a, b, constants.COPYFILE_EXCL); await chmod(b, st.mode & 0o600); }
+      else if (st.isFile()) { await copyFile(a, b, constants.COPYFILE_EXCL); await chmod(b, st.mode & 0o700); }
       else throw new Error('Uventet filtype.');
     }
   }

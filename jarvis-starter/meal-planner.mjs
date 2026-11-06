@@ -1,3 +1,4 @@
+import { activeMealPlan } from './meal-plan-selection.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { canonicalIngredientAmount, ingredientAmountKey, ingredientConstraints } from './food-identity.mjs';
@@ -443,13 +444,14 @@ export class MealPlanner {
   }
 
   profile() { return clone(this.state.mealProfile); }
+  activePlanId() { return activeMealPlan(this.state.mealPlans)?.id || null; }
   plans() {
     const quotes = observedMealPrices(this.state, this.now());
     return this.state.mealPlans.slice(0, 12).map(plan => {
       const priceEstimate = this.estimatePlanPrices(plan, quotes);
       const pricingStale = Boolean(plan.priceEstimate && plan.priceEstimate.basisFingerprint !== priceEstimate.basisFingerprint);
       const { shoppingReview, shoppingNeedsReview } = this.shoppingProjection(plan);
-      return { ...clone(plan), shoppingReview, shoppingNeedsReview, priceEstimate, priceStatus: priceEstimate.status, pricingStale,
+      return { ...clone(plan), isActive:plan.id===this.activePlanId(), shoppingReview, shoppingNeedsReview, priceEstimate, priceStatus: priceEstimate.status, pricingStale,
         needsReview: plan.needsReview || pricingStale || shoppingNeedsReview };
     });
   }

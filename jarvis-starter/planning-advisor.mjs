@@ -1,3 +1,4 @@
+import { activeMealPlan } from './meal-plan-selection.mjs';
 // Evidence-backed local suggestions. No network access, external writes, calendar
 // title interpretation, or implicit approvals are performed by this module.
 import { personalTaskRecords } from './personal-tasks.mjs';
@@ -21,19 +22,14 @@ function suggestion(id, priority, title, detail, source, tab, { date = null, sou
   return { id, priority, title, detail, reason: detail, source, sourceRefs: [source, ...sourceRefs].slice(0, 8), tab, date };
 }
 
-// Plans are stored newest first. Retain historical records, but let only the
-// newest non-archived plan contribute a meal or reminder for a given date.
+// Only the current plan drives Today/reminders. Historical plans remain editable.
 export function effectiveMealPlans(state) {
-  const seen = new Set(), result = [];
-  for (const plan of state.mealPlans || []) {
-    if (!plan || !plan.id || plan.archived || !Array.isArray(plan.dishes)) continue;
-    const dishes = plan.dishes.filter(dish => {
-      if (!dish || dayNumber(dish.date) === null || seen.has(dish.date)) return false;
-      seen.add(dish.date); return true;
-    });
-    if (dishes.length) result.push({...plan,dishes});
-  }
-  return result;
+  const plan=activeMealPlan(state.mealPlans);if(!plan)return [];
+  const seen=new Set(),dishes=plan.dishes.filter(dish=>{
+    if(!dish||dayNumber(dish.date)===null||seen.has(dish.date))return false;
+    seen.add(dish.date);return true;
+  });
+  return dishes.length?[{...plan,dishes}]:[];
 }
 
 export function buildPlanningSuggestions({ state, now = new Date() }) {

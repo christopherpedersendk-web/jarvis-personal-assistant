@@ -1148,6 +1148,7 @@ function showMealPlans(plans) {
     card.append(mealNode('p', 'Version ' + (plan.revision || 1) + ' · ' + (ready
       ? 'Listen er beregnet fra den gemte plan. Retter du planen, skal listen laves igen.'
       : 'Ret forslaget, gem dine ændringer, og opret derefter indkøbslisten.'), 'muted small-text'));
+    if(plan.isActive===false) card.append(mealNode('p','Historisk madplan · indgår ikke i I dag eller nye påmindelser.','muted micro'));
     if (plan.calendarAware) card.append(mealNode('p', 'Kalenderen påvirker forslag til tilberedningstid — ikke hvem der er hjemme.', 'muted micro'));
     if (plan.householdStale || plan.profileStale || plan.recipeStale) card.append(mealNode('p',
       plan.staleReason || 'Grundlaget er ændret. Opdatér husstand eller gennemgå og gem planen igen før indkøb.', 'meal-warning'));

@@ -2,14 +2,14 @@ import { readdir, readFile, lstat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-async function manifest(root, prefix = '') {
+export async function dataManifest(root, prefix = '') {
   const info = await lstat(root);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Datamappen skal være en almindelig mappe.');
   const entries = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const name = prefix + entry.name, path = join(root, entry.name);
     if (entry.isSymbolicLink()) throw new Error('Symlinks kræver særskilt restore-review.');
-    if (entry.isDirectory()) entries.push(...await manifest(path, name + '/'));
+    if (entry.isDirectory()) entries.push(...await dataManifest(path, name + '/'));
     else if (entry.isFile()) {
       const stat = await lstat(path);
       entries.push({ path: name, bytes: stat.size, mode: stat.mode & 0o777,
@@ -24,7 +24,7 @@ async function manifest(root, prefix = '') {
 export async function verifyRestoredData(source, restored, { required = ['state.json', 'private-settings.json'] } = {}) {
   source = resolve(source); restored = resolve(restored);
   if (source === restored || source.startsWith(restored + '/') || restored.startsWith(source + '/')) throw new Error('Brug adskilte backup- og restore-mapper.');
-  const [before, after] = await Promise.all([manifest(source), manifest(restored)]);
+  const [before, after] = await Promise.all([dataManifest(source), dataManifest(restored)]);
   const problems = [];
   for (const path of required) if (!before.some(e => e.path === path) || !after.some(e => e.path === path)) problems.push({ path, reason: 'required-file-missing' });
   const b = new Map(after.map(e => [e.path, e]));

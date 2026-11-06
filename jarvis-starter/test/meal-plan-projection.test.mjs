@@ -9,8 +9,8 @@ test('overlapping historical meal plans produce one attendance reminder and pres
  const reminders=buildPlanningSuggestions({state,now:new Date('2026-11-06T12:00:00Z')}).filter(s=>s.id.endsWith(':attendance'));
  assert.equal(reminders.length,1);assert.equal(reminders[0].source.id,'new');assert.equal(JSON.stringify(state),before);
 });
-test('explicit skipped day overrides old food while non-overlapping dates stay available',()=>{
+test('explicit skipped day overrides old food and older plans stay historical',()=>{
  const plans=effectiveMealPlans({mealPlans:[{id:'new',dishes:[{date:'2026-11-06',skip:true}]},
  {id:'old',dishes:[{date:'2026-11-06'},{date:'2026-11-07'}]}]});
- assert.equal(plans[0].dishes[0].skip,true);assert.deepEqual(plans[1].dishes.map(d=>d.date),['2026-11-07']);
+ assert.equal(plans[0].dishes[0].skip,true);assert.equal(plans.length,1);
 });

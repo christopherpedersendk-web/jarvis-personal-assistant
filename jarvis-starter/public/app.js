@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem('jarvisAccessToken') || '';
 let peer = null;
 let voiceLease = null;
+let voiceGeneration = 0;
 let voicePoll = null;
 let microphone = null;
 let remoteAudio = null;
@@ -237,8 +238,9 @@ function toast(message) {
 }
 
 async function api(path, options = {}) {
+  const { responseMeta, ...requestOptions } = options;
   const response = await fetch(path, {
-    ...options,
+    ...requestOptions,
     headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     cache: 'no-store',
   });
@@ -254,7 +256,7 @@ async function api(path, options = {}) {
     throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();
-  if (path === '/api/realtime') voiceLease = response.headers.get('X-Jarvis-Voice-Lease');
+  if (path === '/api/realtime' && responseMeta) responseMeta.leaseId = response.headers.get('X-Jarvis-Voice-Lease');
   return response.text();
 }
 
@@ -625,6 +627,7 @@ async function handleVoiceTool(channel, call) {
 }
 
 function stopVoice() {
+  voiceGeneration++; startingVoice=false; $('voice-toggle').disabled=false;
   clearInterval(voicePoll); voicePoll = null;
   const leaseId = voiceLease; voiceLease = null;
   if (leaseId && token) api('/api/voice/close', {method:'POST',keepalive:true,
@@ -643,22 +646,29 @@ async function startVoice() {
   if (startingVoice) return;
   if (!aiReady) { toast('AI mangler opsætning. Se OpenAI-forbindelsen på serveren.'); openAiSetup(); return; }
   startingVoice = true;
-  $('voice-toggle').disabled = true;
+  const generation=++voiceGeneration, credential=token, responseMeta={};
+  const current=()=>generation===voiceGeneration && token===credential;
+  $('voice-toggle').disabled = false;
+  $('voice-toggle').textContent = '■ Annuller stemmestart';
   $('voice-status').textContent = 'Opretter sikker stemmeforbindelse …';
   try {
     if (!window.isSecureContext) throw new Error('Mikrofonen kræver HTTPS eller localhost.');
-    microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
-    peer = new RTCPeerConnection();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if(!current()){stream.getTracks().forEach(track=>track.stop());return;}
+    microphone=stream;
+    const sessionPeer=new RTCPeerConnection();peer=sessionPeer;
     remoteAudio = document.createElement('audio');
     remoteAudio.autoplay = true;
     remoteAudio.playsInline = true;
     peer.ontrack = event => {
+      if(!current() || peer!==sessionPeer)return;
       remoteAudio.srcObject = event.streams[0];
       remoteAudio.play().catch(() => {});
     };
     microphone.getTracks().forEach(track => peer.addTrack(track, microphone));
     const channel = peer.createDataChannel('oai-events');
     channel.onmessage = event => {
+      if(!current() || peer!==sessionPeer)return;
       let message;
       try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'conversation.item.input_audio_transcription.completed') {
@@ -671,14 +681,22 @@ async function startVoice() {
         toast(`Stemmefejl: ${message.error?.message || 'Ukendt fejl'}`);
       }
     };
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
+    const offer = await sessionPeer.createOffer();
+    if(!current())return;
+    await sessionPeer.setLocalDescription(offer);
+    if(!current())return;
     const sdp = await api('/api/realtime', {
       method: 'POST', headers: { 'Content-Type': 'application/sdp' },
-      body: offer.sdp,
+      body: offer.sdp, responseMeta,
     });
+    if(!current()) {
+      if(responseMeta.leaseId) await fetch('/api/voice/close',{method:'POST',keepalive:true,headers:{Authorization:`Bearer ${credential}`,'Content-Type':'application/json'},body:JSON.stringify({leaseId:responseMeta.leaseId})}).catch(()=>{});
+      return;
+    }
+    voiceLease=responseMeta.leaseId;
     if (!voiceLease || !peer) throw new Error('Stemmesessionen kunne ikke bekræftes.');
-    await peer.setRemoteDescription({ type: 'answer', sdp });
+    await sessionPeer.setRemoteDescription({ type: 'answer', sdp });
+    if(!current())return;
     const pollingLease = voiceLease;
     voicePoll = setInterval(async () => {
       if (voiceLease !== pollingLease) return;
@@ -690,18 +708,17 @@ async function startVoice() {
     $('voice-toggle').textContent = '■ Afslut stemmesamtale';
     $('voice-status').textContent = 'Du kan tale nu. Samtalen gemmes som tekst, når transskription er tilgængelig.';
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(peer?.connectionState)) stopVoice();
+      if (current() && peer===sessionPeer && ['failed', 'closed', 'disconnected'].includes(sessionPeer.connectionState)) stopVoice();
     };
   } catch (error) {
-    stopVoice();
-    toast(error.message);
+    if(responseMeta.leaseId && voiceLease!==responseMeta.leaseId)await fetch('/api/voice/close',{method:'POST',keepalive:true,headers:{Authorization:`Bearer ${credential}`,'Content-Type':'application/json'},body:JSON.stringify({leaseId:responseMeta.leaseId})}).catch(()=>{});
+    if(current()){stopVoice();toast(error.message);}
   } finally {
-    startingVoice = false;
-    $('voice-toggle').disabled = false;
+    if(current()){startingVoice = false;$('voice-toggle').disabled = false;}
   }
 }
 
-$('voice-toggle').addEventListener('click', () => peer ? stopVoice() : startVoice());
+$('voice-toggle').addEventListener('click', () => peer || startingVoice ? stopVoice() : startVoice());
 window.addEventListener('pagehide', stopVoice);
 
 // All deferred domain modules must register their refresh/source listeners
