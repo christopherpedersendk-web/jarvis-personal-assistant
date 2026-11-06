@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
 import { browserNetworkFixture } from '../test/helpers/browser-network.mjs';
+import { renderedAccessibilityReport } from './ui-accessibility.mjs';
 const require = createRequire(import.meta.url), { chromium } = require('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dir = await mkdtemp(join(tmpdir(), 'jarvis-v51-smoke-'));
@@ -76,7 +77,12 @@ try {
     await page.locator('#web-url').fill(`https://restaurant.example.org/menu/${width}`);
     await page.locator('#web-read-form button').click();
     await page.locator('#web-read-confirm').click();
-    await page.waitForFunction(() => document.querySelector('#web-reads h3')?.textContent === 'Syntetisk menu');
+    await page.waitForFunction(expected => document.querySelector('#web-reads article')?.textContent.includes(expected)
+      && document.querySelector('#web-reads article .web-excerpt'), `/menu/${width}`);
+    await page.locator('#web-reads details summary').first().click();
+    const contrast = await page.evaluate(renderedAccessibilityReport, [{ name: 'Web excerpt', selector: '.web-excerpt', kind: 'text' }]);
+    for (const check of contrast.checks) { assert.equal(check.visible, true); assert.equal(check.requiresManualReview, undefined); assert.ok(check.textRatio >= 4.5, JSON.stringify(check)); }
+    report.checks.push(`web excerpt ${width}px: measured text contrast at least 4.5:1`);
     await page.getByRole('button', { name: 'Forbered lokal kladde', exact: true }).first().click();
     await page.locator('#web-draft-title').fill(`Syntetisk middag ${width}`);
     await page.locator('#web-draft-details').fill('To personer fredag kl. 18.');

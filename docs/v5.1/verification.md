@@ -89,3 +89,18 @@ fortsat åbne. Denne arbejdsgren må ikke markeres som en færdig release.
   er udført. Ingen API-model er brugt til webarbejdet.
 - Se `browser-security.md` for arkitekturgrænser og krav før dynamisk browser,
   login eller afsendelse kan aktiveres. N4 er delvist implementeret, ikke afsluttet.
+
+## Remote CI for den første webpakke
+
+Commit `3200d4c012da42ef5346d8b8c8967e0d0bb1a263`, PR #13:
+[GUI exact-candidate](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42181071647)
+og [v5 regression](https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42181071648)
+bestod begge. Den præcise commit blev kontrolleret i GUI-jobbet: 1.094 Node-tests,
+36/36 GUI-cases i Chromium/WebKit, dybe v5-flows og det nye webflow ved 390/1280 px.
+Playwright 1.64.1. Semantik-, dependency- og performancegates bestod også; de
+eksisterende semantikkrav er ikke det nye udvidede N3-holdout-mål.
+
+Efter denne kørsel er kildeuddragets mørke tema rettet, central stoptekst
+præciseret og smoke udvidet med målt tekstkontrast ≥4,5:1. Den efterfølgende
+commits egne checks skal kontrolleres i PR'en; ovenstående SHA er ikke bevis for
+en nyere commit. Fysisk iPhone og faktiske offentlige kildeprøver er stadig åbne.
