@@ -9,6 +9,9 @@ Implementeringsstatus 6. november 2026. Første afgrænsede N4-fase på
 `https://restaurant.dk`. Angiv en offentlig sidesti og gennemgå det normaliserede
 link. Bekræft én læsning inden to minutter. Se kildeuddraget, og opret eventuelt
 en lokal bookingkladde med egne ønsker. Kladden kan redigeres eller slettes.
+Uddraget viser nu op til 20 unikke links til offentlige undersider på samme origin.
+Et valg udfylder kun URL-feltet; hver ny hentning kræver et nyt engangsreview.
+Eksterne links, søgeparametre, fragmenter og executable URLs medtages ikke.
 Den er altid **Ikke sendt**. Åbn selv kilden for at kontakte stedet.
 
 Der er ingen forudgodkendte websites og ingen netværkskald ved forhåndsvisning.

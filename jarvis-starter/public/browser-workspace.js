@@ -47,6 +47,16 @@
         const excerpt = node('p', read.page.text); excerpt.className = 'web-excerpt';
         detail.append(node('p', `${read.page.notice} Læst ${new Date(read.completedAt).toLocaleString('da-DK')}.${read.page.truncated ? ' Uddraget er forkortet.' : ''}`), excerpt);
         article.append(detail, button('Forbered lokal kladde', () => edit(read)), link(read.page.url));
+        if (read.page.links?.length) {
+          const navigation = node('details'); navigation.append(node('summary', 'Undersider på samme website'));
+          navigation.append(node('p', 'Vælg et link, og gennemgå det før en ny læsning. Intet hentes ved valg.'));
+          for (const url of read.page.links) navigation.append(button(url, () => {
+            if (busy) return;
+            invalidatePreview(); el('web-url').value = url; el('web-url').focus();
+            el('web-status').textContent = 'Link valgt. Vælg Gennemgå link før hentning.';
+          }));
+          article.append(navigation);
+        }
       } else if (read.status === 'completed') article.append(node('p', 'Uddraget er udløbet eller ryddet. Læs siden igen for at oprette en kladde.'));
       return article;
     }));

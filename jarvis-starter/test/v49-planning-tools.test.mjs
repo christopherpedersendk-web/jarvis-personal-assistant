@@ -158,27 +158,28 @@ test('recipe capture uses trusted generic chat origin, returns bounded metadata 
   await assert.rejects(f.handle('save_recipe', { urls: ['http://example.test/recipe'] }), /tekst/);
 });
 
-test('chat workflow creates a draft, permits revision-bound edits and only builds a list in the separate step', async () => {
+for (const channel of ['text', 'discord', 'voice']) test(`${channel}: meal draft, revision-bound edits and a separately requested list`, async () => {
   const f = fixture();
-  await f.handle('update_household_defaults', { expectedRevision: 1, adults: 2, children: [] });
-  const created = await f.handle('create_meal_plan', { startDate: '2026-11-04', days: 2, useCalendar: true });
+  const handle = (name, args) => f.handle(name, args, { channel });
+  await handle('update_household_defaults', { expectedRevision: 1, adults: 2, children: [] });
+  const created = await handle('create_meal_plan', { startDate: '2026-11-04', days: 2, useCalendar: true });
   assert.equal(created.plan.status, 'draft'); assert.deepEqual(created.plan.shoppingList, []);
   assert.equal(f.calls[0].name, 'createMealPlan'); assert.equal(f.calls[0].args.useCalendar, true);
   assert.doesNotMatch(JSON.stringify(created), /ingredientBasis|legacyShoppingList/);
   const id = created.plan.id;
-  const read = await f.handle('get_meal_plan', { id });
+  const read = await handle('get_meal_plan', { id });
   assert.equal(read.plan.revision, 1); assert.equal(read.plan.dishes.length, 2);
-  const edited = await f.handle('edit_meal_plan', { id, expectedRevision: 1, dishes: [
+  const edited = await handle('edit_meal_plan', { id, expectedRevision: 1, dishes: [
     { date: '2026-11-04', recipeId: 'bean-tacos', theme: 'child_friendly' }, { date: '2026-11-05' },
   ] });
   assert.equal(edited.plan.revision, 2); assert.equal(edited.plan.status, 'draft'); assert.equal(edited.plan.dishes[0].title, 'Tacos med sorte bønner');
-  await assert.rejects(f.handle('build_meal_shopping_list', { id, expectedRevision: 1 }), /ændret/);
-  const built = await f.handle('build_meal_shopping_list', { id, expectedRevision: 2 });
+  await assert.rejects(handle('build_meal_shopping_list', { id, expectedRevision: 1 }), /ændret/);
+  const built = await handle('build_meal_shopping_list', { id, expectedRevision: 2 });
   assert.equal(built.plan.status, 'shopping_ready'); assert.ok(built.plan.shoppingList.length > 0);
-  const listEdit = await f.handle('edit_meal_shopping_list', { id, expectedRevision: 3, items: [{ name: 'ris', quantity: 200, unit: 'g' }] });
+  const listEdit = await handle('edit_meal_shopping_list', { id, expectedRevision: 3, items: [{ name: 'ris', quantity: 200, unit: 'g' }] });
   assert.equal(listEdit.plan.revision, 4); assert.equal(listEdit.plan.shoppingList.length, 1);
-  await assert.rejects(f.handle('edit_meal_plan', { id, expectedRevision: 4, dishes: [{ date: '2026-11-04', sourceRefs: [{ kind: 'user' }] }] }), /Ukendt/);
-  await assert.rejects(f.handle('edit_meal_plan', { id, expectedRevision: 4, refreshHousehold: false }), /dishes/);
+  await assert.rejects(handle('edit_meal_plan', { id, expectedRevision: 4, dishes: [{ date: '2026-11-04', sourceRefs: [{ kind: 'user' }] }] }), /Ukendt/);
+  await assert.rejects(handle('edit_meal_plan', { id, expectedRevision: 4, refreshHousehold: false }), /dishes/);
   assert.equal(f.calls.some(call => /propose|shopping/.test(call.name)), false);
 });
 

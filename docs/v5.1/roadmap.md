@@ -94,3 +94,13 @@ Brugeren ønsker desuden Discord-serverens stemmekanal. Denne lydintegration er
 synlig lytteindikator, ingen optagelse af andre deltagere, korte lydsegmenter,
 stop/forbrugsgrænser og en DAVE-kompatibel transport skal implementeres og
 verificeres. Ingen baggrundslytning eller fuld stemmeparitet er leveret endnu.
+
+
+## Merge- og releaseinstruks
+
+Ejeren har 6. november bedt om merge, når alt er færdigt, og klargøring til
+v5.1.0 samme aften. Autorisation til merge er givet; betingelsen om alle P0/P1
+og N1/N2 er ikke ophævet. Der oprettes ikke et færdigt release-tag, mens de
+åbne krav ovenfor eller kandidatens CI fejler. Kanalopsætning, live
+provider-/Discord-/mikrofonprøve og serverrestore kræver adgang til den
+faktiske installation. En fremtidig release eller deployment er ikke udført.

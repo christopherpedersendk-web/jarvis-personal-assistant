@@ -397,7 +397,7 @@
             <label for="max-runs">Maksimalt antal nye baggrundskørsler pr. UTC-døgn</label>
             <input id="max-runs" type="number" min="1" max="100" required />
             <label class="inline-check" for="reminders-enabled"><input id="reminders-enabled" type="checkbox" checked /> Vis proaktive påmindelser om kommende datoer i JARVIS-indbakken</label>
-            <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send opgave- og datopåmindelser til mig via Discord DM</label>
+            <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send rapporter til valgt Discord-kanal og øvrige påmindelser via DM</label>
             <label for="https-url">JARVIS' HTTPS-adresse</label>
             <input id="https-url" type="url" placeholder="https://din-enhed.tailnet.ts.net" />
             <label for="push-user">Pushover User Key</label>
@@ -421,6 +421,10 @@
             <input id="discord-user-id" inputmode="numeric" placeholder="Dit bruger-ID fra Discord" />
             <label for="discord-guild-id">Privat Discord Server ID (valgfrit)</label>
             <input id="discord-guild-id" inputmode="numeric" placeholder="Lad stå tomt for kun at tillade DM" />
+            <label for="discord-report-channel-id">Rapportkanal ID (valgfrit; ellers DM)</label>
+            <input id="discord-report-channel-id" inputmode="numeric" placeholder="Kanal til planlagte rapporter" />
+            <button id="discord-create-report-channel" type="button">Opret privat #jarvis-rapporter og aktivér rapportlevering</button>
+            <p class="muted small-text">Bruger den gemte bot og server. Botten skal kunne administrere kanaler. Kanalen skjules for @everyone; du, botten og serveradministratorer kan se den. En eksisterende kanal skal gennemgås og vælges med ID.</p>
             <p id="discord-status" class="muted small-text" aria-live="polite">Discord er ikke konfigureret.</p>
             <p id="discord-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
             <p class="muted small-text">Kun Gem anvender dine ændringer. Hvis Discord-bot aktiv vælges, kan den gemte forbindelse startes. Nye nøgler holdes kun i denne åbne fane og gemmes aldrig som browserkladde.</p>

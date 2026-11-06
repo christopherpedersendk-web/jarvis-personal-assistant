@@ -1,5 +1,39 @@
 # Verifikation af v5.1.0-arbejdet
 
+## Rapportkanal, madplanparitet og webnavigation
+
+Lokal fuld regression: 1.124/1.124 bestået fra app-mappen. Efter tilføjelse
+af navigationens DOM-regression bestod alle seks browser-UI-tests. Den første
+fulde genkørsel fra repo-roden havde én cwd-afhængig serveropstartfejl; den
+korrekte app-kørsel ovenfor er grundlaget. Ny kandidat-CI afventer.
+
+Discord-indstillinger har nu et særskilt reportChannelId med samme
+feltbaserede revisionskontrol som øvrige indstillinger. Planlagte rapporter
+og proaktive dags-/ugeoverblik bruger kanalen, mens almindelige påmindelser
+beholder DM. Uden kanal bevares DM-adfærd. Før levering kontrolleres kanaltype
+og server-ID. Længere rapporter opdeles via den eksisterende kontrollerede
+levering uden mentions, højst 12.000 tegn; yderligere tekst findes i JARVIS.
+En manglende Discord-levering tæller ikke længere stiltiende som bekræftet.
+
+En særskilt ejerknap kan oprette #jarvis-rapporter på den gemte server og
+aktivere rapportlevering. Kanalen oprettes med deny VIEW_CHANNEL til @everyone
+og allow til ejer/bot; administratorer kan stadig se den. Oprettelsen bruger
+varig ActionJournal med stabil reference pr. server/ejer, så uafklaret POST
+ikke gentages. Eksisterende navnematch kræver manuel gennemgang af kanal-ID.
+Ingen modelværktøjer må oprette kanaler eller ændre leveringsindstillinger.
+Ingen kanal er oprettet i produktion herfra; serveradgang mangler.
+
+Madplanens reelle handler er nu testet gennem tekst, Discord og stemme med
+samme plan, revision, redigering og særskilt indkøbsliste. Browseruddrag viser
+op til 20 samme-origin undersider; valg henter intet og kræver nyt review.
+Ingen dynamisk browser, login eller formularafsendelse er tilføjet.
+
+CI på forrige head 7a85d8d: unit/browser/performance og v5 regression bestod,
+men local-semantic-acceptance fejlede på den normale 1.500 ms deadline med
+local-lexical fallback. Dette er en åben releasegate; den er ikke fjernet,
+og tidligere grøn CI må ikke bruges som evidens for denne kandidat.
+
+
 ## Samtaler: offentlig research, links og rapportstart
 
 Chat og Discord-tekst manglede webresearch og start af eksisterende rapportjobs.

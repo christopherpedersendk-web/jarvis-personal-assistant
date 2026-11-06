@@ -44,6 +44,7 @@ function plain(html) {
 }
 export function extractWebPage(buffer, url, secrets = []) {
   const html = buffer.toString('utf8'), lower = html.toLowerCase();
+  const links = new Set();
   const parts = [], titles = [], skipped = new Set(['script', 'style', 'template', 'svg', 'noscript', 'iframe']);
   let position = 0, inTitle = false;
   // Advance monotonically. Repeated unclosed tags must not trigger quadratic
@@ -63,6 +64,18 @@ export function extractWebPage(buffer, url, secrets = []) {
     position = end + 1;
     if (!tag || (body[tag.length] && !'/ \t\r\n\f'.includes(body[tag.length]))) continue;
     const name = tag.toLowerCase();
+    if (!closing && name === 'a' && body.length <= 4096 && links.size < 20) {
+      const attributes = body.slice(tag.length).matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g);
+      for (const attr of attributes) {
+        if (attr[1].toLowerCase() !== 'href') continue;
+        try {
+          const target = browserUrl(new URL(plain(attr[2] ?? attr[3] ?? attr[4] ?? ''), url).href);
+          if (target.origin === new URL(url).origin && target.href !== url &&
+              !secrets.some(secret => secret && decodeURIComponent(target.href).includes(secret))) links.add(target.href);
+        } catch { /* Unsupported/unsafe links are never navigation candidates. */ }
+        break;
+      }
+    }
     if (!closing && skipped.has(name)) {
       const close = lower.indexOf('</' + name, position); if (close === -1) break;
       const closeEnd = html.indexOf('>', close); if (closeEnd === -1) break;
@@ -71,7 +84,7 @@ export function extractWebPage(buffer, url, secrets = []) {
   }
   const title = redactSecrets(plain(titles.join(' ')) || new URL(url).hostname, secrets).slice(0, 200);
   const fullText = redactSecrets(plain(parts.join(' ')), secrets);
-  return { url, title, text: fullText.slice(0, browserLimits.text), truncated: fullText.length > browserLimits.text,
+  return { url, title, links: [...links], text: fullText.slice(0, browserLimits.text), truncated: fullText.length > browserLimits.text,
     contentHash: digest(buffer), trust: 'untrusted-web-content', format: 'static-html-excerpt',
     notice: 'Uddrag af sidens HTML. JavaScript og login er ikke kørt; indhold og tilgængelighed er ikke verificeret.' };
 }

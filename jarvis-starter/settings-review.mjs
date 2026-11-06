@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const FIELDS = Object.freeze({
   settings: ['maxRunsPerDay', 'remindersEnabled', 'discordAlertsEnabled', 'httpsUrl', 'pushToken', 'pushUser'],
-  discord: ['enabled', 'token', 'userId', 'guildId'],
+  discord: ['enabled', 'token', 'userId', 'guildId', 'reportChannelId'],
   proactive: ['dailyEnabled', 'weeklyEnabled', 'discordEnabled', 'dailyTime', 'weeklyTime', 'quietStart', 'quietEnd'],
 });
 const object = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));

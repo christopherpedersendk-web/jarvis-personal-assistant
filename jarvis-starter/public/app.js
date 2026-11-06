@@ -751,3 +751,14 @@ setInterval(() => {
     if (route.view === 'home') { api('/api/overview').then(renderOverview).catch(() => {}); refreshSecretary().catch(() => {}); }
   }
 }, 20_000);
+
+$('discord-create-report-channel').addEventListener('click', async () => {
+  const button = $('discord-create-report-channel'); button.disabled = true;
+  try {
+    const settings = await api('/api/discord/settings');
+    if (!confirm('Opret privat #jarvis-rapporter på den GEMTE server og aktivér rapportlevering? Serveradministratorer kan også se kanalen.')) return;
+    await api('/api/discord/report-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedBasis: settings.basis }) });
+    $('discord-status').textContent = 'Rapportkanalen er oprettet. Hent gemte Discord-indstillinger for at se kanal-ID.';
+  } catch (error) { $('discord-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});

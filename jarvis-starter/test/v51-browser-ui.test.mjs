@@ -76,3 +76,17 @@ test('failed draft save preserves text and never retries or submits externally',
   assert.equal(h.calls.filter(c => c.path === '/api/browser/draft').length, 1);
   assert.equal(h.calls.at(-1).body.expectedRevision, 2);
 });
+
+test('choosing an extracted subpage invalidates the old intent and sends no request', async () => {
+  const h = harness(), url = 'https://restaurant.example.org/menu';
+  h.snapshot.reads = [{ id: 'read', status: 'completed', url: 'https://restaurant.example.org/', completedAt: '2026-11-06T12:00:00Z', page: { title: 'Restaurant', url: 'https://restaurant.example.org/', text: 'Menu', notice: 'Uverificeret', links: [url] } }];
+  await h.click('web-refresh');
+  h.field('web-url').value = 'https://restaurant.example.org/'; await h.submit('web-read-form');
+  const before = h.calls.length;
+  const choose = h.field('web-reads').querySelectorAll('button').find(b => b.textContent === url);
+  await choose.emit('click'); await tick();
+  assert.equal(h.calls.length, before); assert.equal(h.field('web-url').value, url);
+  assert.equal(h.field('web-preview').classList.contains('hidden'), true);
+  await h.click('web-read-confirm'); assert.equal(h.calls.length, before);
+  await h.submit('web-read-form'); assert.equal(h.calls.at(-1).body.url, url);
+});

@@ -165,7 +165,7 @@ let privateSettings = {
 const settingsReview = new SettingsReview();
 function currentSettingsValues(scope, next = privateSettings) {
   if (scope === 'discord') return { enabled: Boolean(next.discord.enabled), token: next.discord.token || '',
-    userId: next.discord.userId || '', guildId: next.discord.guildId || '' };
+    userId: next.discord.userId || '', guildId: next.discord.guildId || '', reportChannelId: next.discord.reportChannelId || '' };
   return { maxRunsPerDay: state.settings.maxRunsPerDay ?? taskEngine.maxRunsPerDay,
     remindersEnabled: state.settings.remindersEnabled !== false, discordAlertsEnabled: state.settings.discordAlertsEnabled === true,
     httpsUrl: next.push.url || '', pushToken: next.push.token || '', pushUser: next.push.user || '' };
@@ -173,7 +173,7 @@ function currentSettingsValues(scope, next = privateSettings) {
 function settingsSnapshot(scope) {
   const values = currentSettingsValues(scope);
   const basis = settingsReview.basis(scope, values);
-  if (scope === 'discord') return { enabled: values.enabled, userId: values.userId, guildId: values.guildId,
+  if (scope === 'discord') return { enabled: values.enabled, userId: values.userId, guildId: values.guildId, reportChannelId: values.reportChannelId,
     hasToken: Boolean(values.token), ...discord.snapshot(), basis };
   const { pushToken, pushUser, ...visible } = values;
   return { ...visible, proactive: proactive.settings(), pushConfigured: notificationsEnabled(pushConfig),
@@ -353,9 +353,9 @@ protectLocalMutations(smartHome, { event: ['homeEvents'] });
 const hue = new HueBridge();
 boundIntegration(hue, ['resources', 'control', 'scene', 'pair']);
 boundIntegration(smartHome, ['sonos', 'sonosGroups']);
-async function notifyDiscord(title, detail) {
+async function notifyDiscord(title, detail, report = false) {
   if (state.settings.discordAlertsEnabled !== true) return false;
-  return discord.notifyOwner(`${title}\n${String(detail || '').slice(0, 1700)}`);
+  return report ? discord.notifyReport(`**${title}**\n${String(detail || '')}`) : discord.notifyOwner(`${title}\n${String(detail || '').slice(0, 1700)}`);
 }
 
 const reminders = new ProactiveReminders({ state, organizer, save, transact: mutateV5, notify: async item => {
@@ -363,7 +363,7 @@ const reminders = new ProactiveReminders({ state, organizer, save, transact: mut
   await notifyDiscord(item.title, item.text);
 },
   enabled: () => state.settings.remindersEnabled !== false });
-const proactive = new ProactivePlanner({ state, organizer, save, transact: mutateV5, notify: notifyDiscord });
+const proactive = new ProactivePlanner({ state, organizer, save, transact: mutateV5, notify: (title, detail) => notifyDiscord(title, detail, true) });
 
 function addMessage(role, text, channel = 'text') {
   return mutateV5(['history'], async () => {
@@ -477,8 +477,9 @@ const taskEngine = new TaskEngine({
     await secretary.addInbox({ title: `${task.title}: ${outcomeLabel}`,
       text: ['completed','unknown'].includes(status) ? latest.slice(0, 1800) : 'Opgaven fejlede. Åbn opgaven for detaljer.',
       kind: task.category || 'research', taskId: task.id });
-    await notifyDiscord(`JARVIS · ${task.title}: ${outcomeLabel}`,
-      ['completed','unknown'].includes(status) ? latest.slice(0, 1400) : 'Åbn opgaven i Command Center for detaljer.');
+    const delivered = await notifyDiscord(`JARVIS · ${task.title}: ${outcomeLabel}`,
+      ['completed','unknown'].includes(status) ? latest : 'Åbn opgaven i Command Center for detaljer.', true);
+    if (state.settings.discordAlertsEnabled === true && !delivered) throw new Error('Rapporten er gemt i indbakken, men Discord-levering kunne ikke bekræftes.');
     if (notificationsEnabled(pushConfig)) await sendPushover(pushConfig, taskNotification(task, status));
   },
   maxRunsPerDay: state.settings.maxRunsPerDay || process.env.JARVIS_MAX_RUNS_PER_DAY || 10,
@@ -1290,6 +1291,26 @@ async function route(req, res) {
         return json(res, 200, { ok: true });
       } catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code }); }
     }
+    if (req.method === 'POST' && path === '/api/discord/report-channel') {
+      try {
+        const input = await bodyJson(req), config = { ...discordConfig };
+        const values = currentSettingsValues('discord');
+        settingsReview.patch('discord', values, { patch: { guildId: values.guildId, userId: values.userId, reportChannelId: values.reportChannelId, enabled: values.enabled }, expectedBasis: input.expectedBasis });
+        if (!config.enabled || !config.guildId || !config.userId || config.reportChannelId) throw new Error('Gem en aktiv bot og Server ID først. En eksisterende rapportkanal overskrives ikke.');
+        await actionJournal.invoke({ name: 'create_discord_report_channel', call_id: `reports:${config.guildId}:${config.userId}` },
+          { guildId: config.guildId, userId: config.userId }, async () => {
+            const channel = await discord.createReportChannel(config);
+            await persistPrivateSettings(next => {
+              if (next.discord.token !== config.token || next.discord.guildId !== config.guildId || next.discord.userId !== config.userId || next.discord.reportChannelId)
+                throw new Error('Opsætningen blev ændret under oprettelsen. Kanalen kan være oprettet; gennemgå Discord.');
+              next.discord.reportChannelId = channel.id;
+            }, () => { state.settings.discordAlertsEnabled = true; });
+            discord.start(discordConfig);
+            return { channel: { id: channel.id } };
+          }, 'owner-settings');
+        return json(res, 200, { ok: true, settings: settingsSnapshot('discord') });
+      } catch (error) { return json(res, 409, { error: error.message }); }
+    }
     if (req.method === 'GET' && path === '/api/discord/settings') return json(res, 200, settingsSnapshot('discord'));
     if (req.method === 'POST' && path === '/api/discord/settings') {
       try {
@@ -1307,7 +1328,7 @@ async function route(req, res) {
         }
         if (typeof input.enabled !== 'boolean') throw new Error('Ugyldig tilstand for Discord.');
         if (input.token !== undefined && (typeof input.token !== 'string' || input.token.length > 300)) throw new Error('Ugyldigt Discord Bot Token.');
-        const ids = validateDiscordConfig(input);
+        const ids = validateDiscordConfig({ ...discordConfig, ...input });
         await persistPrivateSettings(next => {
           const configured = { enabled: input.enabled, token: input.token?.trim() || next.discord.token, ...ids };
           if (configured.enabled && (!configured.token || !configured.userId))

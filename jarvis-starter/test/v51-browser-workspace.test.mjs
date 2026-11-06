@@ -182,3 +182,10 @@ test('abort interrupts pending DNS and an active HTTPS request without a retry',
   } });
   const rejected = assert.rejects(pending, { code: 'cancelled' }); await ready; controller.abort(); await rejected; assert.equal(destroyed, true);
 });
+
+test('navigation extracts at most 20 unique same-origin public paths without fetching', () => {
+  const page = extractWebPage(Buffer.from(`<a href="/menu">Menu</a><a href='/menu'>Duplicate</a><a href="https://evil.com/">External</a><a href="/login?token=secret">Query</a><a href="javascript:alert(1)">JS</a><script><a href="/hidden">Hidden</a></script><a data-href="/wrong" href="/kontakt">Contact</a>`), 'https://restaurant.dk/');
+  assert.deepEqual(page.links, ['https://restaurant.dk/menu', 'https://restaurant.dk/kontakt']);
+  const many = extractWebPage(Buffer.from(Array.from({length:50}, (_,i)=>`<a href="/page-${i}">Page</a>`).join('')), 'https://restaurant.dk/');
+  assert.equal(many.links.length, 20);
+});
