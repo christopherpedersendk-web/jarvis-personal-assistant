@@ -1,3 +1,4 @@
+import { VoiceSessions } from './voice-sessions.mjs';
 import { createOpenJarvis } from './openjarvis.mjs';
 import { createWebResearch } from './web-research.mjs';
 import { assistantTools, homeTools, voiceExtraTools, validateAssistantTool } from './assistant-tools.mjs';
@@ -156,6 +157,17 @@ const providerControl = new ProviderControl({ state, transact: mutateV5, save, e
   isTransactionActive: () => Boolean(stateStore.context.getStore()) });
 const browserWorkspace = new BrowserWorkspace({ state, transact: mutateV5, save, control: providerControl,
   owner: tokenDigest.toString('hex'), secrets: knownSecrets });
+
+const voiceSessions = new VoiceSessions({ state, transact: mutateV5, save, control: providerControl, env: process.env,
+  hangup: async callId => {
+    const response = await fetch(`https://api.openai.com/v1/realtime/calls/${callId}/hangup`, {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(10000),
+    });
+    await response.body?.cancel(); return response.ok;
+  },
+});
+// Restart revokes all previous sessions before accepting new voice work.
+await voiceSessions.closeAll();
 
 // All private settings updates are one serialized read-modify-write transaction.
 // Never publish a new in-memory credential or configuration before rename succeeds.
@@ -593,8 +605,21 @@ const handleSecretaryTool = createSecretaryToolHandler({ personalTasks, followUp
   searchWeb: openJarvis.status().enabled ? query => openJarvis.search(query) : createWebResearch({ request: openaiJson, model: () => process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol' }),
 });
 
+async function handleVoiceExtraTool(name, args) {
+  switch(name) {
+    case 'create_research_task': return {task:await taskEngine.create({...args,activation:'paused'})};
+    case 'list_research_tasks': return {tasks:taskEngine.list().slice(0,15)};
+    case 'remember_preference': return handlePlanningTool('remember_personal_fact',args);
+    case 'prepare_action': return {action:await secretary.proposeAction(args)};
+    case 'create_code_project': return {project:await projectAgent.create(args)};
+    case 'list_code_projects': return {projects:projectAgent.list()};
+    case 'develop_code_project': throw Object.assign(new Error('Kodeændringer kræver særskilt gennemgang i Projekter. Ingen ændring udført.'),{noActionTaken:true});
+    default: throw Object.assign(new Error('Ukendt stemmeværktøj.'),{noActionTaken:true});
+  }
+}
+
 const mutatingTools = new Set([
-  ...secretaryWrites,
+  ...secretaryWrites, 'create_research_task', 'remember_preference', 'prepare_action', 'create_code_project',
   'set_hue_light', 'activate_hue_scene', 'sonos_control',
   'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item',
   'remember_personal_fact', 'update_meal_profile', 'create_meal_plan', 'propose_nemlig_basket',
@@ -772,10 +797,31 @@ async function route(req, res) {
       try { return json(res, 200, await browserWorkspace[action](await bodyJson(req))); }
       catch (error) { return json(res, 409, { error: error.message, code: error.code || 'BROWSER_FAILED' }); }
     }
-    if (req.method === 'GET' && path === '/api/assistant/control') return json(res, 200, providerControl.snapshot());
+    if (req.method === 'GET' && path === '/api/assistant/control') return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot() });
     if (req.method === 'POST' && path === '/api/assistant/control') {
-      try { return json(res, 200, await providerControl.stop((await bodyJson(req)).stopped)); }
+      try { const stopped = (await bodyJson(req)).stopped;
+        await providerControl.stop(stopped);
+        if (stopped) await voiceSessions.closeAll();
+        return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot() }); }
       catch (error) { return json(res, 409, { error: error.message }); }
+    }
+    if (req.method === 'POST' && path === '/api/voice/close') {
+      try { await voiceSessions.close((await bodyJson(req)).leaseId, tokenDigest.toString('hex'));
+        return json(res,200,voiceSessions.snapshot()); }
+      catch(error) { return json(res,409,{error:error.message}); }
+    }
+    if (req.method === 'POST' && path === '/api/voice/tool') {
+      try { const input = await bodyJson(req);
+        const scope = voiceSessions.authorize(input.leaseId, tokenDigest.toString('hex'));
+        validateAssistantTool(input.name,input.args,{voice:true});
+        if (typeof input.callId !== 'string' || !input.callId || input.callId.length > 200) throw new Error('Ugyldig kaldreference.');
+        const handler = voiceExtraTools.some(t=>t.name===input.name) ? handleVoiceExtraTool
+          : secretaryTools.some(t=>t.name===input.name) ? handleSecretaryTool
+          : homeTools.some(t=>t.name===input.name) ? handleHomeTool
+          : planningTools.some(t=>t.name===input.name) ? handlePlanningTool : handleOrganizerTool;
+        const call = {name:input.name,call_id:createHash('sha256').update(input.leaseId + ':' + input.callId).digest('hex')};
+        return json(res,200,await providerControl.run(()=>invokeToolWithJournal(call,input.args,handler,'voice'),scope));
+      } catch(error) { return json(res,409,{error:error.message}); }
     }
     if (req.method === 'POST' && path === '/api/assistant/tool') {
       try { const input = await bodyJson(req);
@@ -1590,6 +1636,7 @@ async function route(req, res) {
       const form = new FormData();
       form.set('sdp', offer);
       form.set('session', JSON.stringify(redactSecrets(session, knownSecrets())));
+      const leaseId = await voiceSessions.reserve(voiceScope, tokenDigest.toString('hex'));
       const { upstream, answer } = await providerControl.controlled(async signal => {
       const upstream = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
@@ -1600,6 +1647,7 @@ async function route(req, res) {
         body: form,
         signal: AbortSignal.any([signal, AbortSignal.timeout(25_000)]),
       });
+      if (upstream.ok) await voiceSessions.attach(leaseId, upstream.headers.get('location'));
       const answer = await upstream.text();
       return { upstream, answer };
       }, voiceScope);
@@ -1607,7 +1655,7 @@ async function route(req, res) {
         logError(`OpenAI stemmefejl ${upstream.status}:`, answer.slice(0, 500));
         return json(res, 502, { error: `Stemmeforbindelsen kunne ikke startes (${upstream.status}).` });
       }
-      res.writeHead(201, headers({ 'Content-Type': 'application/sdp' }));
+      res.writeHead(201, headers({ 'Content-Type': 'application/sdp', 'X-Jarvis-Voice-Lease': leaseId }));
       return res.end(answer);
     }
     return json(res, 404, { error: 'Ukendt API-adresse.' });

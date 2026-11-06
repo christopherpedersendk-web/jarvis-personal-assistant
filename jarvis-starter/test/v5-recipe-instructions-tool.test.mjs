@@ -256,7 +256,11 @@ test('F2 actual voice browser dispatcher and authenticated HTTP route read only 
   const begin = appSource.indexOf('async function handleVoiceTool('), end = appSource.indexOf('\nfunction stopVoice()', begin);
   assert.ok(begin >= 0 && end > begin);
   const voice = vm.runInNewContext(`${appSource.slice(begin, end)}\nhandleVoiceTool;`, {
-    JSON, handledCalls: new Set(), api: async (path, options) => { requests.push({ path, options }); return f.api(path, options); },
+    JSON, voiceLease:'synthetic-lease', handledCalls: new Set(), api: async (path, options) => {
+      requests.push({ path, options }); assert.equal(path,'/api/voice/tool');
+      const {name,args,leaseId}=JSON.parse(options.body);assert.equal(leaseId,'synthetic-lease');
+      // Lease/stop admission is covered separately. Exercise the real reviewed-only domain endpoint here.
+      return f.api('/api/planning/tool',{...options,body:JSON.stringify({name,args})}); },
   });
   const channel = { readyState: 'open', send: value => messages.push(JSON.parse(value)) };
   await voice(channel, { name: TOOL, call_id: 'reviewed-voice', arguments: JSON.stringify({ id: RECIPE, expectedRevision: 4 }) });

@@ -96,16 +96,15 @@ test('R03 explicit pre-processing rejection preserves text without falsely claim
   assert.equal(f.review.hidden, true); assert.equal(f.send.disabled, false);
 });
 
-test('I4 voice task tools cannot choose activation even with injected additional arguments', async () => {
-  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  const begin = app.indexOf("if (call.name === 'create_research_task') {") + "if (call.name === 'create_research_task') {".length;
-  const end = app.indexOf("} else if (call.name === 'list_research_tasks')", begin);
-  const calls = [];
-  const run = vm.runInNewContext(`(async () => { ${app.slice(begin, end)}; return output; })`, {
-    args: { title: 'Syntetisk', prompt: 'Forslag', activation: 'scheduled' }, JSON,
-    api: async (path, options) => { calls.push(JSON.parse(options.body)); return { task: { id: 'synthetic', status: 'paused' } }; }, refreshTasks: async () => {} });
-  const output = await run(); assert.equal(calls[0].activation, 'paused'); assert.equal(output.status, 'paused');
-  assert.match(output.note, /intet baggrundsarbejde er startet/);
+test('I4 server voice task proposal always forces paused activation', async () => {
+ const server = await readFile(new URL('../server.mjs', import.meta.url), 'utf8');
+ const begin=server.indexOf('async function handleVoiceExtraTool('), end=server.indexOf('\nconst mutatingTools',begin);
+ const calls=[];
+ const run=vm.runInNewContext(server.slice(begin,end)+';handleVoiceExtraTool;',{
+   taskEngine:{create:async args=>{calls.push(args);return {status:args.activation};}}
+ });
+ const result=await run('create_research_task',{title:'Syntetisk',prompt:'Forslag',activation:'scheduled'});
+ assert.equal(calls[0].activation,'paused');assert.equal(result.task.status,'paused');
 });
 
 test('GUI-T10 outgoing context is captured before a delayed response while newer typing survives', async () => {

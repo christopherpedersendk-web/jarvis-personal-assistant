@@ -43,7 +43,7 @@ export function createOpenJarvis({ env = process.env, fetcher = fetch, control }
       if (typeof query !== 'string' || !query.trim() || query.length > 240) throw new Error('Søgningen skal være 1–240 tegn.');
       rejectSecrets(query);
       if (query.includes(token)) throw new Error('Søgningen indeholder en hemmelighed.');
-      return control.controlled(async signal => {
+      return control.externalSearch(async signal => {
         let response;
         try {
           response = await fetcher(new URL('/tools/invoke', endpoint), { method: 'POST', redirect: 'error',

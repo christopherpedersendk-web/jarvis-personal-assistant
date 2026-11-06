@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOpenJarvis, openJarvisSources } from '../openjarvis.mjs';
 const env = { OPENJARVIS_ENABLED: 'yes', OPENJARVIS_GATEWAY_TOKEN: 'synthetic-secret' };
-const control = { controlled: fn => fn(new AbortController().signal) };
+const control = { externalSearch: fn => fn(new AbortController().signal) };
 test('disabled bridge has no external capability', async () => {
  const bridge = createOpenJarvis({ env: {}, control });
  assert.equal(bridge.status().enabled, false); await assert.rejects(bridge.search('test'));

@@ -1,3 +1,4 @@
+import { offlineSnapshot } from '../scripts/offline-snapshot.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -380,4 +381,23 @@ test('v5 HTTP: Nemlig direct approvals lack one-use revision-bound owner-click i
   await f.api('POST', `/api/nemlig/proposals/${id}/approve`, {
     approved: true, expectedRevision: 3, intentToken: intent.intentToken }, 409);
   assert.equal((await f.api('GET', '/api/nemlig/status')).data.proposals[0].status, 'pending');
+});
+
+test('M1 offline snapshot restores notes, media and settings and boots a separate service', {timeout: 30000}, async t => {
+ const f = await fixture(t);
+ const collection = (await f.api('POST', '/api/organizer', {title:'Restore fixture',type:'notes'},201)).data.collection;
+ await f.stop();
+ await writeFile(join(f.dir, 'private-settings.json'), '{}', {mode:0o600});
+ await writeFile(join(f.dir, 'synthetic-media.bin'), Buffer.from([1,4,9]), {mode:0o600});
+ const backup = f.dir + '-backup';
+ t.after(() => rm(backup, {recursive:true,force:true}));
+ await offlineSnapshot(f.dir, backup, {quiescent:true});
+ await assert.rejects(offlineSnapshot(f.dir, backup, {quiescent:true}));
+ // Restore into the now absent fixture directory, never overwrite a live tree.
+ await rm(f.dir, {recursive:true});
+ await offlineSnapshot(backup, f.dir, {quiescent:true});
+ await f.start();
+ assert.equal((await f.api('GET','/ready')).data.storage.ready,true);
+ assert.equal((await f.api('GET','/api/organizer/' + collection.id)).data.collection.title,'Restore fixture');
+ assert.deepEqual(await readFile(join(f.dir,'synthetic-media.bin')),Buffer.from([1,4,9]));
 });
