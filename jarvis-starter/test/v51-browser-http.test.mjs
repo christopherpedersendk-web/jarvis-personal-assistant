@@ -35,6 +35,15 @@ test('authenticated HTTP browser flow: assets, review, one read, draft revision,
     assert.equal(r.status, expected, path); return r.json();
   }
   await start();
+  for (const path of ['/api/voice/tool','/api/assistant/tool']) {
+    const call={name:'create_personal_task',args:{title:'Unauthorized',purpose:'Lease check',durationMinutes:10},callId:'old-client'};
+    await request(path,call,401,false);
+    await request(path,call,409);
+  }
+  for(const path of ['/api/smart-home/hue/control','/api/smart-home/sonos/action']) {
+    await request(path,{},401,false);
+    assert.equal((await request(path,{},409)).code,'CAPABILITY_DEFERRED');
+  }
   for (const path of ['/browser-workspace.js', '/browser-workspace.css']) assert.equal((await fetch(base + path)).status, 200);
   for (const [path, body] of [['/api/browser', undefined], ['/api/browser/sites', {}], ['/api/browser/preview', {}], ['/api/browser/read', {}], ['/api/browser/draft', {}]]) await request(path, body, 401, false);
   assert.deepEqual((await request('/api/browser')).origins, []);

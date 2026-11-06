@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
 import { browserUrl } from './browser-workspace.mjs';
 import { fetchRecipeResource } from './recipe-fetch.mjs';
 import { dockerProcessEnvironment, localDockerEndpoint, runBoundedProcess } from './subprocess-safety.mjs';
@@ -8,7 +9,8 @@ import { dockerProcessEnvironment, localDockerEndpoint, runBoundedProcess } from
 export function browserContainerArgs(image, name) {
   if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Browseren kræver et lokalt image med præcist SHA256-ID.');
   return ['run','--rm','--init','--pull=never','--name',name,'--network=none','--read-only',
-    '--cap-drop=ALL','--security-opt=no-new-privileges','--user=1000:1000','--pids-limit=128',
+    '--cap-drop=ALL','--security-opt=no-new-privileges',
+    '--security-opt=seccomp='+fileURLToPath(new URL('./browser-runtime/seccomp.json',import.meta.url)),'--user=1000:1000','--pids-limit=128',
     '--memory=768m','--cpus=1','--shm-size=128m','--ipc=private',
     '--tmpfs=/tmp:rw,nosuid,nodev,size=128m','-i',image];
 }

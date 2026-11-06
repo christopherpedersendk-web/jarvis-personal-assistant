@@ -1,3 +1,4 @@
+import { availableAssistantTools } from './tool-policy.mjs';
 import { planningTools, validate } from './planning-tools.mjs';
 import { secretaryTools } from './secretary-tools.mjs';
 export const organizerTools = [
@@ -20,7 +21,7 @@ export const homeTools = [
   { type: 'function', name: 'set_hue_light', description: 'Tænd/sluk eller juster lysstyrke på Hue-lys eller lysgruppe efter brugerens konkrete ønske. Ændr ikke låse eller alarmer.', parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['light','grouped_light'] }, id: { type: 'string' }, on: { type: 'boolean' }, brightness: { type: 'number' } }, required: ['kind','id'], additionalProperties: false } },
   { type: 'function', name: 'activate_hue_scene', description: 'Aktivér en eksisterende Hue-scene efter brugerens udtrykkelige ønske. Brug ID fra list_hue_devices.', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false } },
 ];
-export const voiceExtraTools = [
+export const voiceExtraTools = availableAssistantTools([
           {
             type: 'function', name: 'create_research_task',
             description: 'Forbered et pauset forslag til en read-only research- eller opfølgningsopgave efter brugerens ønske. Aktivering foretages særskilt i Plan; dette værktøj kan ikke aktivere et job og udfører ingen køb, kontakt eller filændringer.',
@@ -52,7 +53,7 @@ export const voiceExtraTools = [
           },
           {
             type: 'function', name: 'create_code_project',
-            description: 'Opret en ny isoleret lokal projektmappe efter udtrykkeligt ønske. Projektet bygges derefter med develop_code_project.',
+            description: 'Opret en ny isoleret lokal projektmappe efter udtrykkeligt ønske. Kodeændringer kræver efterfølgende gennemgang i Projekter.',
             parameters: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' } }, required: ['title', 'description'], additionalProperties: false },
           },
           {
@@ -65,9 +66,9 @@ export const voiceExtraTools = [
             description: 'Skriv eller videreudvikl kode automatisk i en allerede oprettet dedikeret projektmappe. Ændrer ikke JARVIS-serveren eller andre mapper.',
             parameters: { type: 'object', properties: { id: { type: 'string' }, request: { type: 'string' } }, required: ['id', 'request'], additionalProperties: false },
           },
-];
+]);
 
-export const assistantTools = Object.freeze([...knowledgeTools, ...organizerTools, ...homeTools, ...planningTools, ...secretaryTools]);
+export const assistantTools = Object.freeze(availableAssistantTools([...knowledgeTools, ...organizerTools, ...homeTools, ...planningTools, ...secretaryTools]));
 export function validateAssistantTool(name, args, { voice = false } = {}) {
   const definition = [...assistantTools, ...(voice ? voiceExtraTools : [])].find(t => t.name === name);
   if (!definition) throw Object.assign(new Error('Værktøjet er ikke tilladt i denne kanal.'), { noActionTaken: true });
