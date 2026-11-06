@@ -3,8 +3,9 @@
 Baseline kontrolleret 6. november 2026: main og tag `v5.2.1` peger på
 `a991408da3ab505f3ce3c18c04c4858350086849`, pakke 5.2.1, schema 1/readableFrom 0.
 PR #15 er merged; PR #16 rettede versionsmetadata. Den separate GUI-PR #9 er ikke ændret.
-Historiske v5.2-testtal er ikke evidens for denne gren. Pakken forbliver 5.2.1;
-der oprettes ikke release/tag/deployment eller produktionsaktivering her.
+Historiske v5.2-testtal er ikke evidens for denne gren. Pakken er nu klargjort som 5.3.0 efter ejerens ønske om merge-/deployforberedelse.
+Der er endnu ikke merget, tagget, deployet eller aktiveret nye produktionsfunktioner.
+Se release-candidate.md og next-development-prompt.md.
 
 ## Implementeret
 
@@ -33,8 +34,10 @@ der oprettes ikke release/tag/deployment eller produktionsaktivering her.
 
 ## Evidens og begrænsninger
 
-Se acceptregister, operations.md og evidence.json. Lokal komplet suite bestod 1.206 prøver, inklusive researchens serverstyrede
-mutationsspærre. Den endelige kandidats træbinding registreres i evidence.json.
+Se acceptregister og operations.md. evidence.json bevarer den tidligere kodekandidats
+prøver. release-preparation-evidence.json binder en ny komplet kørsel med 1.206
+beståede tests til app-træet med pakkeversion 5.3.0. PR-hovedets CI er autoritativ
+for den endelige kandidat; historiske resultater overføres ikke til nye ændringer.
 Installeret OpenClaw validerede config og afviste exec/browser/web_fetch/cron/
 sessions_spawn med 404 samt forkert credential med 401. Offentlig søgning gav
 provider_error; ingen kilder og ingen researchaccept. Fejlen er bevaret i evidens.

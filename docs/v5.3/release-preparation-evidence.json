@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-06T22:07:32.797814+00:00",
+  "releaseTarget": "v5.3.0",
+  "packageVersion": "5.3.0",
+  "schema": {
+    "version": 1,
+    "readableFrom": 0
+  },
+  "baselineCommit": "a991408da3ab505f3ce3c18c04c4858350086849",
+  "previousCandidate": "48acd3962d1ea5443cdfe7f2c6de351ce3e1331f",
+  "appTree": "4994ce3bafebda7ec5099b96875c487171c02173",
+  "commitBinding": "Candidate whose jarvis-starter Git tree equals appTree; final SHA and CI in PR #17",
+  "localTests": {
+    "command": "node --test --test-concurrency=2",
+    "cwd": "jarvis-starter",
+    "node": "v24.22.1",
+    "passed": 1206,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "durationMs": 25957.224066
+  },
+  "versionChecks": {
+    "command": "node jarvis-starter/scripts/check-release-version.mjs <tag>",
+    "v5.3.0": "accepted",
+    "v5.2.1": "rejected with package mismatch"
+  },
+  "ciAtRecordCreation": "pending push; require all five workflows on exact PR head before merge",
+  "ciAuthority": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/17/checks",
+  "scope": "Package version and documentation only since previousCandidate; historical runtime/model evidence retained separately",
+  "production": {
+    "merged": false,
+    "tagCreated": false,
+    "deployed": false,
+    "newCapabilitiesActivated": false,
+    "actualInstallationAcceptance": "not performed"
+  },
+  "openAcceptance": "docs/v5.3/acceptance-register.md; model runs, owner host isolation and live acceptance remain open"
+}
