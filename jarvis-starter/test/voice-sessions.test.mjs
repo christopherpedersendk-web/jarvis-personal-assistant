@@ -47,3 +47,10 @@ test('malicious provider Location cannot direct hangup to a different URL',async
  await assert.rejects(voice.attach(id,url));
  assert.throws(()=>voice.authorize(id,'owner'));
 });
+
+test('known provider rejection closes reservation; ambiguous server failure remains blocked',async()=>{
+ const f=await fixture();const id=await f.voice.reserve(f.control.current(),'owner');
+ await f.voice.rejected(id,500);await assert.rejects(f.voice.reserve(f.control.current(),'owner'));
+ await f.voice.rejected(id,400);const next=await f.voice.reserve(f.control.current(),'owner');assert.notEqual(next,id);
+ await f.voice.rejected(next,429);
+});

@@ -160,7 +160,7 @@ test('F2 reviewed text that claims tool authority stays inert source data and do
 // unchanged. Only the model/network boundary is synthetic, never a live call.
 function textDispatcher(f, recipeId) {
   const begin = serverSource.indexOf('const mutatingTools = new Set(');
-  const end = serverSource.indexOf('\nawait stateStore.initialize();', begin);
+  const end = serverSource.indexOf('\nconst discordAudio=', begin);
   assert.ok(begin >= 0 && end > begin);
   const requests = [], history = [], channels = [];
   const forbidden = () => { throw new Error('A recipe read must not invoke a mutation or unrelated dispatcher.'); };

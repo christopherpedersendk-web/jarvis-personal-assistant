@@ -18,7 +18,7 @@ export class ProviderControl {
   constructor({ state, transact, save, now = () => new Date(), env = {}, isTransactionActive = () => false }) {
     this.state = state; this.transact = transact; this.save = save; this.now = now;
     this.isTransactionActive = isTransactionActive;
-    this.context = new AsyncLocalStorage(); this.active = new Set();
+    this.context = new AsyncLocalStorage(); this.active = new Set(); this.activeScopes = new Map(); this.revokedScopes = new Set();
     this.limits = {
       hostedToolCallsPerDay: limit(env.JARVIS_HOSTED_TOOL_CALLS_PER_DAY, 100, 10000),
       callsPerDay: limit(env.JARVIS_API_CALLS_PER_DAY, 200, 10000),
@@ -32,19 +32,23 @@ export class ProviderControl {
   run(fn, scope = this.scope()) { return this.context.run(scope, fn); }
   current() { return this.context.getStore() || this.scope(); }
   assertAllowed(scope = this.current()) {
-    if (this.settings().stopped || scope.generation !== this.settings().generation)
+    if (this.revokedScopes.has(scope.requestId) || this.settings().stopped || scope.generation !== this.settings().generation)
       throw fail('ASSISTANT_STOPPED', 'Assistenten er stoppet. Gennemgå igangværende handlinger før genoptagelse.');
+  }
+  revoke(scope) {
+    this.revokedScopes.add(scope.requestId);
+    for(const [controller,id] of this.activeScopes) if(id===scope.requestId)controller.abort();
   }
   // Shared stop boundary for non-model reads. An old operation cannot publish
   // a result after stop/resume, even if its transport ignores cancellation.
   async controlled(operation, scope = this.current()) {
     this.assertAllowed(scope);
-    const controller = new AbortController(); this.active.add(controller);
+    const controller = new AbortController(); this.active.add(controller); this.activeScopes.set(controller,scope.requestId);
     try {
       const result = await operation(controller.signal);
       this.assertAllowed(scope);
       return result;
-    } finally { this.active.delete(controller); }
+    } finally { this.active.delete(controller); this.activeScopes.delete(controller); }
   }
   async stop(stopped) {
     if (typeof stopped !== 'boolean') throw new Error('Angiv stop eller genoptagelse.');
@@ -63,7 +67,7 @@ export class ProviderControl {
     return { stopped: s.stopped, day: today, limits: this.limits,
       calls: entries.length, reservedHostedToolCalls: entries.reduce((n,e)=>n+(e.reservedHostedToolCalls||0),0), reservedOrUsedOutputTokens: entries.reduce((n, e) => n + charge(e), 0),
       unresolved: entries.filter(e => unresolved(e)).length,
-      coverage: 'Responses and OpenClaw request admission; hosted tools use reserved invocation limits. Realtime has separate wall-clock reservations. No measured audio tokens or currency budget.',
+      coverage: 'Responses and OpenClaw request admission; hosted tools use reserved invocation limits. Realtime and Discord voice have separate wall-clock reservations; Discord audio requests consume request slots. No measured audio tokens or currency budget.',
       recent: s.entries.slice(-30).map(e => ({ ...e })) };
   }
   async reserve(body, scope = this.current()) {
@@ -122,17 +126,19 @@ export class ProviderControl {
     const body = creates ? { ...options.body, max_output_tokens: options.body?.max_output_tokens ?? 3500 } : options.body;
     if (creates && (body.tools || []).some(t=>t.type !== 'function') && body.max_tool_calls === undefined) body.max_tool_calls=2;
     const id = creates ? await this.reserve(body, scope) : null;
-    const controller = new AbortController(); this.active.add(controller);
+    const controller = new AbortController(); this.active.add(controller); this.activeScopes.set(controller,scope.requestId);
+    let settled=false;
     try {
       this.assertAllowed(scope);
       const result = await send(path, { ...options, body, signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal });
       const recordId = id || this.settings().entries.find(e => e.responseId && path === `/responses/${e.responseId}`)?.id;
       if (recordId) await this.settle(recordId, result, ['queued', 'in_progress'].includes(result.status) ? 'pending' : result.status || 'completed');
+      settled=true;this.assertAllowed(scope);
       return result;
     } catch (error) {
-      if (id) await this.settle(id, null, 'unknown').catch(() => {});
+      if (id && !settled) await this.settle(id, null, 'unknown').catch(() => {});
       error.requestId = scope.requestId;
       throw error;
-    } finally { this.active.delete(controller); }
+    } finally { this.active.delete(controller); this.activeScopes.delete(controller); }
   }
 }

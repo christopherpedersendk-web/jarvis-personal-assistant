@@ -9,6 +9,7 @@
   function render(data) {
     status.textContent = `${data.stopped ? 'Stoppet' : 'Aktiv'} · ${data.calls} af ${data.limits.callsPerDay} modelkald · ${data.reservedOrUsedOutputTokens} af ${data.limits.outputTokensPerDay} outputtokens brugt eller reserveret · ${data.unresolved} uafklarede kald.`;
     if (data.voice) status.textContent += ` Stemme: ${data.voice.active} aktive, ${data.voice.unresolved} uafklarede, ${data.voice.reservedSecondsToday}/${data.voice.secondsPerDay} sekunder reserveret i dag.`;
+    if(data.discordVoice?.enabled) status.textContent += ` Discord-stemme: ${data.discordVoice.status}, ${data.discordVoice.reservedSecondsToday}/${data.discordVoice.secondsPerDay} sekunder reserveret.`;
     status.textContent += ` Hosted tools: ${data.reservedHostedToolCalls || 0}/${data.limits.hostedToolCallsPerDay || '—'} kald reserveret. Grænserne er ikke et kronebudget.`;
     stopButton.disabled = data.stopped; resumeButton.disabled = !data.stopped;
   }

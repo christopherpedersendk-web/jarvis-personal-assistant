@@ -24,6 +24,13 @@ export class VoiceSessions {
       await this.save(); return entry.id;
     });
   }
+  async rejected(id,status) {
+    if(![400,401,403,404,422,429].includes(status))return; // 5xx/timeouts may have created a call.
+    await this.transact(['voiceSessions'],async()=>{
+      const e=this.entries().find(e=>e.id===id);if(!e||e.callId)throw new Error('Stemmeafvisningen er ikke entydig.');
+      e.status='closed';e.reason='provider_rejected';await this.save();
+    });
+  }
   async attach(id, location) {
     const url = new URL(location || '', 'https://api.openai.com');
     const match = /^\/v1\/realtime\/calls\/([A-Za-z0-9_-]{1,200})$/.exec(url.pathname);
@@ -46,6 +53,7 @@ export class VoiceSessions {
     const entry=this.entries().find(e=>e.id===id);
     if (!entry || (owner && entry.owner!==owner)) throw new Error('Ukendt stemmesession.');
     if (!live(entry)) return;
+    this.control.revoke(entry.scope);
     clearTimeout(this.timers.get(id)); this.timers.delete(id);
     await this.transact(['voiceSessions'],async()=>{this.entries().find(e=>e.id===id).status='closing';await this.save();});
     let closed=false;

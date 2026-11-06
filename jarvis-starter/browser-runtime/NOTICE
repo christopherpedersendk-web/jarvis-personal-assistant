@@ -3,3 +3,5 @@ https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profil
 Copyright Microsoft Corporation. Licensed under Apache License 2.0.
 See LICENSE-Playwright. The profile permits Chromium's nested user namespaces;
 network=none, capability dropping and no-new-privileges remain mandatory.
+
+Jarvis modification: allow the chroot syscall for Chromium's nested user-namespace sandbox. The kernel still checks namespace-local privileges; --cap-drop=ALL grants no host capabilities.
