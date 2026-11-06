@@ -86,6 +86,8 @@ export class BrowserWorkspace {
   validSource(read) { return read?.status === 'completed' && read.page && Date.parse(read.completedAt) + browserLimits.sourceMs > this.now().getTime(); }
   check(read) {
     this.control.assertAllowed(read.scope);
+    if (this.data().reads.find(r => r.id === read.id)?.status === 'cancelled')
+      throw fail('BROWSER_CANCELLED', 'Læsningen blev stoppet.');
     if (read.owner !== this.owner || read.bootId !== this.bootId || read.configRevision !== this.data().revision || !this.data().origins.includes(new URL(read.url).origin))
       throw fail('BROWSER_PERMISSION', 'Tilladelsen er ændret eller udløbet. Gennemgå linket igen.');
   }
@@ -168,7 +170,7 @@ export class BrowserWorkspace {
         await this.save(); return { id: r.id, page, completedAt: r.completedAt };
       });
     } catch (error) {
-      const cancelled = controller.signal.aborted || this.control.snapshot().stopped || error.code === 'ASSISTANT_STOPPED';
+      const cancelled = controller.signal.aborted || this.control.snapshot().stopped || ['ASSISTANT_STOPPED', 'BROWSER_CANCELLED'].includes(error.code);
       await this.transact(['browserWorkspace'], async () => {
         const r = this.data().reads.find(r => r.id === read.id);
         r.status = cancelled ? 'cancelled' : 'failed'; r.code = cancelled ? 'BROWSER_CANCELLED' : 'BROWSER_READ_FAILED';
@@ -179,9 +181,15 @@ export class BrowserWorkspace {
   }
   async cancel(input) {
     shape(input, ['id']); string(input.id, 36);
-    const active = this.active.get(input.id);
-    if (!active) throw fail('BROWSER_NOT_ACTIVE', 'Læsningen er ikke aktiv. Hent status for det gemte udfald.');
-    active.abort(); return { cancellationRequested: true };
+    // Persist cancellation even before the read's admission commit returns and
+    // a transport controller exists. Otherwise a fast click could miss it.
+    await this.transact(['browserWorkspace'], async () => {
+      const read = this.data().reads.find(r => r.id === input.id);
+      if (!read || read.owner !== this.owner || read.bootId !== this.bootId || !['ready', 'reading'].includes(read.status))
+        throw fail('BROWSER_NOT_ACTIVE', 'Læsningen er ikke aktiv. Hent status for det gemte udfald.');
+      read.status = 'cancelled'; read.code = 'BROWSER_CANCELLED'; await this.save();
+    });
+    this.active.get(input.id)?.abort(); return { cancellationRequested: true };
   }
   async draft(input) {
     shape(input, ['id', 'expectedRevision', 'readId', 'contentHash', 'title', 'details']);

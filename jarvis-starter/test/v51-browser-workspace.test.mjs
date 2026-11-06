@@ -63,6 +63,13 @@ test('disk failure before durable consumption sends nothing; nested transactions
   await assert.rejects(f.store.transact([], () => f.work.read({ intentId: p.intentId })), { code: 'BROWSER_TRANSACTION' });
   broken = true; await assert.rejects(f.work.read({ intentId: p.intentId }), /full/); assert.equal(sends, 0);
 });
+test('cancel before transport registration consumes the intent and prevents later network access', async () => {
+  let sends = 0; const f = await fixture({ fetchResource: async () => { sends++; throw new Error('must not send'); } }); await f.allow();
+  const p = await f.work.preview({ url });
+  assert.deepEqual(await f.work.cancel({ id: p.intentId }), { cancellationRequested: true });
+  await assert.rejects(f.work.read({ intentId: p.intentId }), { code: 'BROWSER_USED' });
+  assert.equal(sends, 0); assert.equal(f.work.data().reads[0].status, 'cancelled');
+});
 test('timeout is fixed public text, counted once, and never automatically retried', async () => {
   let sends = 0; const f = await fixture({ fetchResource: async () => { sends++; throw new Error('synthetic-private-credential'); } }); await f.allow();
   const p = await f.work.preview({ url }); await assert.rejects(f.work.read({ intentId: p.intentId }), { code: 'BROWSER_READ_FAILED' });

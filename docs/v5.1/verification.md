@@ -70,13 +70,15 @@ fortsat åbne. Denne arbejdsgren må ikke markeres som en færdig release.
 
 ## Anden implementeringspakke: webarbejde og sikkerhed
 
-- Afsluttende fuld kørsel: **1.094/1.094 Node-tests bestået**, ingen skipped eller
+- Afsluttende fuld kørsel: **1.095/1.095 Node-tests bestået**, ingen skipped eller
   cancelled, Node 24.22.1, fra `jarvis-starter`. Dette omfatter den ekstra
   restart/ukendt-udfald-prøve og den monotone HTML-scanner.
 - Baseline genskabt bytepræcist fra remote `dd147f7`; rodtræet matcher
   `e48405fca2c83fa33daf35abe9834bea9b1fad4c`. Andre lokale arbejdsgrene er bevaret.
-- 28 nye adfærdstests i tre testfiler: 22 domæne-/transporttests, én faktisk
+- 29 nye adfærdstests i tre testfiler: 23 domæne-/transporttests, én faktisk
   HTTP-test med isoleret server og fem DOM-tests. Desuden en delt netværksfixture.
+- Tidlig annullering gemmes også før transportcontrolleren findes. Et hurtigt
+  stopklik må ikke miste sin virkning eller efterlade en genbrugelig tilladelse.
 - Første fulde kørsel fandt kun den hårdkodede optælling af server-testfixtures
   (nu syv frem for seks). Optællingen er opdateret; alle assertions om isoleret
   miljø og udelukkelse af nedarvede secrets er bevaret.
