@@ -38,6 +38,17 @@ test('voice stop aborts pending transcription and cannot dispatch a late answer'
  await f.voice.join(identity);const receiving=f.voice.receive(f.voice.active.id,ownerId,Buffer.alloc(38400));const signal=await ready;
  await f.voice.stop();assert.equal(signal.aborted,true);release();await receiving;assert.equal(f.seen.includes('reply'),false);
 });
+test('late join failure and disconnect from an old session cannot close its replacement',async()=>{
+ let release,entered,oldOptions,calls=0;
+ const ready=new Promise(r=>entered=r),pending=new Promise(r=>release=r);
+ const f=await fixture({connect:async options=>{if(calls++===0){oldOptions=options;entered();return pending;}return f.connection;}});
+ const joining=f.voice.join(identity),rejected=assert.rejects(joining);
+ await ready;await f.voice.stop();await f.voice.join(identity);const replacement=f.voice.active.id;
+ let oldClosed=false;release({close(){oldClosed=true;}});await rejected;
+ await oldOptions.onDisconnect();
+ assert.equal(oldClosed,true);assert.equal(f.voice.active.id,replacement);assert.equal(f.voice.snapshot().status,'listening');
+ await f.voice.stop();
+});
 test('voice day reservations survive recovery and do not reconnect sessions',async()=>{
  const f=await fixture({secondsPerSession:5,secondsPerDay:5});await f.voice.join(identity);await f.voice.stop();await f.voice.recover();
  await assert.rejects(f.voice.join(identity),/opbrugt/);assert.equal(f.voice.snapshot().reservedSecondsToday,5);assert.equal(f.voice.active,null);

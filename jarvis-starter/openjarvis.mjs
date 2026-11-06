@@ -1,4 +1,4 @@
-import { rejectSecrets, redactSecrets } from './privacy.mjs';
+import { rejectSecrets, redactSecrets, containsSecret } from './privacy.mjs';
 
 export function openJarvisSources(result, secrets = []) {
   const sources = [], seen = new Set();
@@ -8,8 +8,11 @@ export function openJarvisSources(result, secrets = []) {
     if (typeof value.url === 'string') {
       try {
         const url = new URL(value.url);
+        const decoded = decodeURIComponent(url.href);
+        const sensitiveParameter = [...url.searchParams.keys()].some(key => /^(?:token|auth|secret|signature|x-amz-signature|x-amz-credential|api[_-]?key|access[_-]?token|refresh[_-]?token|password)$/i.test(key));
         if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password &&
-            !secrets.some(secret => secret && value.url.includes(secret)) && !seen.has(url.href)) {
+            url.href.length <= 4096 && !sensitiveParameter && !containsSecret(decoded) &&
+            !secrets.some(secret => secret && decoded.includes(secret)) && !seen.has(url.href)) {
           seen.add(url.href);
           sources.push({ url: url.href, title: redactSecrets(String(value.title || url.hostname), secrets).slice(0, 240) });
         }

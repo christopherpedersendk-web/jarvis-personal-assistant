@@ -31,7 +31,7 @@ export class DiscordVoice {
     if(this.snapshot().reservedSecondsToday+this.secondsPerSession>this.secondsPerDay)throw new Error('Dagens reserverede Discord-stemmetid er opbrugt.');
     this.state.discordVoiceSessions=[...(this.state.discordVoiceSessions||[]).filter(e=>e.day===session.day),{...session}];await this.save();
    });
-   const connection=await this.connect({...session,onAudio:pcm=>this.receive(session.id,ownerId,pcm),onDisconnect:()=>this.stop('connection_lost')});
+   const connection=await this.connect({...session,onAudio:pcm=>this.receive(session.id,ownerId,pcm),onDisconnect:()=>this.active===session?this.stop('connection_lost'):Promise.resolve()});
    if(this.active!==session){connection.close();throw new Error('Tilslutningen blev stoppet.');}
    session.connection=connection;this.assertActive(session.id);
    await this.notify(session.textChannelId,`JARVIS er forbundet til <#${session.channelId}>. Jeg lytter kun til <@${ownerId}>; kun dig og botten må være i kanalen. Svarstemmen er AI-genereret. Skriv !stemme stop for at afbryde.`);
@@ -41,7 +41,7 @@ export class DiscordVoice {
    session.timer=setTimeout(()=>this.stop('time_limit').catch(()=>{}),Math.max(1,session.expiresAt-this.now())).unref();
    connection.listen();
    return 'Stemmeforbindelsen er klar. Brug korte beskeder på højst 20 sekunder.';
-  }catch(error){await this.stop('join_failed');throw error;}
+  }catch(error){if(this.active===session)await this.stop('join_failed');throw error;}
  }
  async receive(id,userId,pcm){
   if(!this.active||this.active.id!==id||userId!==this.active.ownerId||this.active.status!=='listening'||this.busy)return;

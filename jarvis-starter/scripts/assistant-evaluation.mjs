@@ -1,6 +1,6 @@
 // Real-language evaluation against the real HTTP conversation and local domain
 // handlers. Each scenario gets an empty disposable installation, no owner data.
-import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm,readdir} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -10,16 +10,30 @@ import {randomBytes,createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {syntheticServerEnv} from '../test/helpers/synthetic-env.mjs';
 const root=dirname(dirname(fileURLToPath(import.meta.url)));
+const dataset=await readFile(new URL('./fixtures/danish-assistant-tasks.json',import.meta.url));
+const tasks=JSON.parse(dataset),datasetSha256=createHash('sha256').update(dataset).digest('hex');
+async function coreSourceFingerprint() {
+ const hash=createHash('sha256');
+ const files=(await readdir(root)).filter(name=>name.endsWith('.mjs')).sort();
+ files.push('package.json','scripts/assistant-evaluation.mjs','scripts/fixtures/danish-assistant-tasks.json');
+ for(const name of files)hash.update(name+'\0').update(await readFile(join(root,name)));
+ return hash.digest('hex');
+}
 export function gradeEvaluation(report) {
  const results=report.results||[],reviewed=results.filter(x=>typeof x.passed==='boolean'&&x.reviewedBy&&x.reviewNote);
- const passed=reviewed.filter(x=>x.passed).length,critical=results.filter(x=>x.critical);
- const criticalPassed=critical.length>0&&critical.every(x=>reviewed.includes(x)&&x.passed);
+ const executionComplete=result=>{
+  const task=tasks.find(t=>t.id===result.id);
+  return task&&JSON.stringify(task.turns)===JSON.stringify(result.turns)&&result.status==='awaiting_human_review'&&
+   Array.isArray(result.answers)&&result.answers.length===task.turns.length&&result.answers.every(a=>a.status===200&&typeof a.body?.answer==='string'&&a.body.answer.trim());
+ };
+ const passed=reviewed.filter(x=>x.passed&&executionComplete(x)).length;
+ const criticalPassed=tasks.filter(x=>x.critical).every(task=>reviewed.some(x=>x.id===task.id&&x.passed&&executionComplete(x)));
+ const provenance=report.datasetSha256===datasetSha256&&typeof report.model==='string'&&Boolean(report.model.trim())&&/^[a-f0-9]{64}$/.test(report.coreSourceSha256||'');
  return {reviewed:reviewed.length,passed,total:results.length,criticalPassed,
-  accepted:report.live===true&&results.length===30&&new Set(results.map(x=>x.id)).size===30&&reviewed.length===30&&passed>=27&&criticalPassed};
+  accepted:report.live===true&&provenance&&results.length===30&&new Set(results.map(x=>x.id)).size===30&&results.every(x=>tasks.some(t=>t.id===x.id))&&reviewed.length===30&&passed>=27&&criticalPassed};
 }
 export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,apiKey=process.env.OPENAI_API_KEY,output}={}) {
- const dataset=await readFile(new URL('./fixtures/danish-assistant-tasks.json',import.meta.url)),tasks=JSON.parse(dataset);
- const report={at:new Date().toISOString(),live,model:model||null,datasetSha256:createHash('sha256').update(dataset).digest('hex'),status:'not_run',
+ const report={at:new Date().toISOString(),live,model:model||null,datasetSha256,coreSourceSha256:await coreSourceFingerprint(),nodeVersion:process.version,status:'not_run',
   scope:'Real model + isolated front-page HTTP conversation. Not microphone/Discord gateway acceptance. Human grading of final text and actual state required.',results:[]};
  if(!live){report.plannedTasks=tasks.length;return report;}
  if(!output||typeof model!=='string'||!model||!apiKey?.startsWith('sk-')||apiKey.includes('synthetic'))throw new Error('Angiv output, model og API-adgang via lokalt miljø.');

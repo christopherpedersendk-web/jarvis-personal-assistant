@@ -401,3 +401,22 @@ test('M1 offline snapshot restores notes, media and settings and boots a separat
  assert.equal((await f.api('GET','/api/organizer/' + collection.id)).data.collection.title,'Restore fixture');
  assert.deepEqual(await readFile(join(f.dir,'synthetic-media.bin')),Buffer.from([1,4,9]));
 });
+
+test('M2 restart normalizes saved data before revoking interrupted voice sessions', {timeout: 30000}, async t => {
+ const f = await fixture(t, {legacy: {
+  mealPlans: [{id:'legacy-meal', dishes:[], shoppingList:[]}],
+  providerControl:{stopped:true,generation:3,entries:[]},
+  voiceSessions:[{id:'interrupted',owner:'synthetic-owner',scope:{requestId:'old-request',generation:2},
+   day:'2026-01-01',status:'creating',callId:null,reservedSeconds:600,expiresAt:1}],
+ }});
+ assert.equal((await f.api('GET','/ready')).data.storage.ready,true);
+ let persisted=JSON.parse(await readFile(join(f.dir,'state.json')));
+ assert.equal(persisted.mealPlans[0].schemaVersion,2);
+ assert.equal(persisted.voiceSessions[0].status,'unknown');
+ assert.equal(persisted.providerControl.stopped,true);
+ await f.stop(); await f.start();
+ persisted=JSON.parse(await readFile(join(f.dir,'state.json')));
+ assert.equal(persisted.voiceSessions[0].status,'unknown');
+ assert.equal(persisted.providerControl.stopped,true);
+ assert.equal(persisted.providerControl.generation,3);
+});

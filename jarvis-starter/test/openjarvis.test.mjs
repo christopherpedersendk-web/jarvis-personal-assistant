@@ -35,3 +35,13 @@ test('structured sources reject unsafe URLs, deduplicate and redact secrets', ()
  assert.equal(sources.length, 2); assert.equal(sources[0].url, 'https://example.org/menu');
  assert.doesNotMatch(JSON.stringify(sources), /SECRET|javascript:|user:pass/);
 });
+test('unknown and encoded credentials are not exposed as structured source links',()=>{
+ const sources=openJarvisSources({results:[
+  {url:'https://example.org/?access_token=synthetic-unknown'},
+  {url:'https://example.org/?token=synthetic-unknown'},
+  {url:'https://example.org/?password%3Dsynthetic-unknown'},
+  {url:'https://example.org/%53ECRET'},
+  {url:'https://example.org/?article=123',title:'Public article'},
+ ]},['SECRET']);
+ assert.deepEqual(sources,[{url:'https://example.org/?article=123',title:'Public article'}]);
+});

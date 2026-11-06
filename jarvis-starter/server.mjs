@@ -170,8 +170,6 @@ const voiceSessions = new VoiceSessions({ state, transact: mutateV5, save, contr
     await response.body?.cancel(); return response.ok;
   },
 });
-// Restart revokes all previous sessions before accepting new voice work.
-await voiceSessions.closeAll();
 
 // All private settings updates are one serialized read-modify-write transaction.
 // Never publish a new in-memory credential or configuration before rename succeeds.
@@ -764,6 +762,9 @@ discordVoice=new DiscordVoice({state,transact:mutateV5,save,control:providerCont
   return adapter.connectDiscordVoice({gateway:discord,...options});
  },...discordAudio,reply:message=>processTextMessage(message,'discord'),notify:(channel,text)=>discord.sendReply(channel,text)});
 await stateStore.initialize();
+// Finish constructor migrations before transactions freeze the state. Revoke
+// previous sessions before opening HTTP or starting the Discord gateway.
+await voiceSessions.closeAll();
 await discordVoice.recover();
 discord.start(discordConfig);
 
