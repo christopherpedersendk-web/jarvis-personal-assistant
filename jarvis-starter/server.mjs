@@ -1,3 +1,5 @@
+import { DiscordChannels } from './discord-channels.mjs';
+import { BrowserResearch } from './browser-research.mjs';
 import { DiscordVoice } from './discord-voice.mjs';
 import { createDiscordAudio } from './discord-audio.mjs';
 import { deferredHomeRoute } from './tool-policy.mjs';
@@ -603,9 +605,15 @@ async function handleOrganizerTool(name, args) {
 }
 
 const openJarvis = createOpenJarvis({ control: providerControl });
+const browserResearch = new BrowserResearch({ workspace: browserWorkspace, control: providerControl, request: openaiJson,
+  enabled: process.env.JARVIS_BROWSER_RESEARCH === 'yes', model: () => process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol' });
 const handleSecretaryTool = createSecretaryToolHandler({ personalTasks, followUps, transact: mutateV5, state, taskEngine,
+  proposeBrowser: args => browserResearch.propose(args),
   searchWeb: openJarvis.status().enabled ? query => openJarvis.search(query) : createWebResearch({ request: openaiJson, model: () => process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol' }),
 });
+
+const discordChannels = new DiscordChannels({ state, transact: mutateV5, save, control: providerControl, config: () => discordConfig,
+  enabled: process.env.JARVIS_DISCORD_CHANNELS === 'yes', voiceChannelId: process.env.JARVIS_DISCORD_VOICE_CHANNEL_ID || '' });
 
 async function handleVoiceExtraTool(name, args) {
   switch(name) {
@@ -719,6 +727,12 @@ async function textReply(message, channel = 'text', progress = {}) {
 }
 
 function processTextMessage(message, channel = 'text') {
+  // Explicit owner input only, before any model call. Public page text/results
+  // never enter general assistant history, tools or personal memory.
+  if (/^!web(?:\s|$)/iu.test(message)) return browserResearch.command(message).catch(error => {
+    error.chatFailure = { code: error.code || 'BROWSER_RESEARCH_FAILED', message: error.message, outcome: 'no_actions' };
+    throw error;
+  });
   const progress = { effectsPossible: false };
   const scope = providerControl.current();
   try {
@@ -738,6 +752,7 @@ function processTextMessage(message, channel = 'text') {
 let discordVoice;
 const discordVoiceEnabled=process.env.JARVIS_DISCORD_VOICE==='yes';
 const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUnavailable:()=>discordVoice?.stop('gateway_unavailable'), onMessage: async (message, metadata = {}) => {
+  if (/^!kanal(?:\s|$)/iu.test(message)) return discordChannels.command(message, metadata);
   if(/^!stemme(?:\s|$)/i.test(message)) {
     const command=message.trim().toLocaleLowerCase('da');
     if(command==='!stemme stop'){await discordVoice.stop();return 'Discord-stemmen er stoppet.';}
@@ -1412,7 +1427,7 @@ async function route(req, res) {
         tasks: taskEngine.list(), projects: projectAgent.list(), configured: validApiKey,
         pushEnabled: notificationsEnabled(pushConfig), voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1',
       }));
-      const { codeProposals, browserWorkspace: privateWebState, ...safeState } = state;
+      const { codeProposals, browserWorkspace: privateWebState, discordChannelActions: privateChannelActions, ...safeState } = state;
       return json(res, 200, { ...safeState, tasks: taskEngine.list(), codeProposals: codeAgent.list(), projects: projectAgent.list(), usage: taskEngine.currentUsage(), pushEnabled: notificationsEnabled(pushConfig), configured: validApiKey, voiceModel: process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1' });
     }
     if (req.method === 'GET' && path === '/api/history') {

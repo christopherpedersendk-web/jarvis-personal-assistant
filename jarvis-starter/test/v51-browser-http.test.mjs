@@ -18,11 +18,17 @@ test('authenticated HTTP browser flow: assets, review, one read, draft revision,
   let child, base, logs = '';
   async function stop() { if (child && child.exitCode === null) { const end = new Promise(r => child.once('exit', r)); child.kill(); await end; } }
   t.after(async () => { await stop(); await rm(dir, { recursive: true, force: true }); });
-  async function start() {
+  async function start(research = false) {
     const probe = createServer(); await new Promise(r => probe.listen(0, '127.0.0.1', r)); const port = probe.address().port; await new Promise(r => probe.close(r));
     base = `http://127.0.0.1:${port}`;
-    child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(networkFixture)}`, 'server.mjs'], {
-      cwd: root, env: syntheticServerEnv({ dataDir: dir, port, accessToken: credential }), stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(networkFixture + `
+globalThis.fetch = async (url, options) => {
+ if(String(url)!=='https://api.openai.com/v1/responses')throw new Error('Unexpected provider');
+ const body=JSON.parse(options.body);
+ if(body.tool_choice!=='none'||body.tools.length||body.input.length!==1)throw new Error('Unsafe summary contract');
+ return new Response(JSON.stringify({id:'resp_synthetic',output:[{content:[{type:'output_text',text:'Syntetisk resumé: to retter.'}]}],usage:{input_tokens:20,output_tokens:10}}),{status:200});
+};`)}`, 'server.mjs'], {
+      cwd: root, env: syntheticServerEnv({ dataDir: dir, port, accessToken: credential, modelKey: 'sk-synthetic-browser-test', browserResearch: research }), stdio: ['ignore', 'pipe', 'pipe'] });
     for (const stream of [child.stdout, child.stderr]) stream.on('data', b => { logs = (logs + b).slice(-3000); });
     for (let i = 0; i < 100; i++) {
       try { if ((await fetch(base + '/health', { signal: AbortSignal.timeout(300) })).ok) return; } catch {}
@@ -35,6 +41,9 @@ test('authenticated HTTP browser flow: assets, review, one read, draft revision,
     assert.equal(r.status, expected, path); return r.json();
   }
   await start();
+  const disabled = await request('/api/message', {message:'!web læs 00000000-0000-0000-0000-000000000000'}, 502);
+  assert.match(disabled.error, /ikke aktiveret/);
+  await request('/api/message', {message:'!web læs 00000000-0000-0000-0000-000000000000'}, 401, false);
   for (const path of ['/api/voice/tool','/api/assistant/tool']) {
     const call={name:'create_personal_task',args:{title:'Unauthorized',purpose:'Lease check',durationMinutes:10},callId:'old-client'};
     await request(path,call,401,false);
@@ -68,4 +77,12 @@ test('authenticated HTTP browser flow: assets, review, one read, draft revision,
   await request('/api/browser/draft', { id: draft.id, expectedRevision: 1, title: 'Middag', details: 'Forældet' }, 409);
   await request('/api/browser/delete-draft', { id: draft.id, expectedRevision: 2 });
   assert.equal((await request('/api/browser')).drafts.length, 0);
+  await stop(); await start(true);
+  const review = await request('/api/browser/preview', { url: 'https://restaurant.example.org/menu' });
+  const before = (await request('/api/state')).history;
+  const research = await request('/api/message', {message:'!web læs '+review.intentId});
+  assert.match(research.answer, /Syntetisk resumé/); assert.match(research.answer, /Kilde: https:\/\/restaurant.example.org\/menu/);
+  assert.deepEqual((await request('/api/state')).history, before, 'isolated summary does not poison assistant history');
+  await request('/api/message', {message:'!web læs '+review.intentId}, 502);
+
 });

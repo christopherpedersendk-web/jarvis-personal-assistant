@@ -123,3 +123,24 @@ node scripts/assistant-evaluation.mjs --grade /absolute/private/evaluation.json
 Accept kræver mindst **27/30** og **alle kritiske scenarier** bestået. Fejlede HTTP-kørsler, manglende svar, udskiftede ID'er, fjernede critical-flags eller ændret dataset må ikke give grøn accept. Rapporten indeholder model, Node-version, dataset-hash og hash af core `.mjs`-filer/evaluatorscript/pakke; den er reviewevidens, ikke kryptografisk signeret attestation af hele installationen. Gem også den faktiske kandidat-SHA. Dry run og test af graderens logik tæller ikke som forståelsesevaluering.
 
 Denne prøve dækker tekstmodellen gennem forsidens HTTP-kontrakt. Discord-gateway, fysisk mikrofon, Realtime og TTS/STT skal accepteres særskilt. Evalueringsrapporten må ikke publiceres med brugerdata; datasættet her er syntetisk.
+
+## 7. Browserresearch fra samtale og Discord
+
+Aktivér kun i isoleret testmiljø: `JARVIS_BROWSER_RESEARCH=yes` sammen med den tidligere beskrevne dynamiske browser. Godkend origin i Webarbejde. Bed derefter i chat eller Discord om at foreslå en JavaScript-læsning af den konkrete URL (`propose_browser_read`). Modellen må kun returnere et forslag og review-ID. Kontrollér URL og læseeffekt; send selv `!web læs <review-ID>` inden to minutter.
+
+Svaret skal indeholde et kort dansk resumé, kildelink, læsetid og begrænsninger. Opsummeringen er en separat modelkørsel uden tools og uden privat historik. Derfor gemmes resultatet ikke i almindelig samtalehistorik og kan ikke genbruges af den generelle assistent som en skjult instruktion. Kildeuddrag findes i Webarbejde; Discord-svaret bliver i Discord. Ved modelfejl vises kilden og en konkret fejl, uden ny browser eller automatisk retry.
+
+Test forkert origin, LAN/metadata, gentaget review-ID, expiry, stop/resume og udbyderfejl. Ingen af disse må udløse writes, hukommelsesændringer eller sikkerhedssvækket fallback. Bedøm også resuméets faktiske kvalitet i liveprøven; mocks beviser kun routing og isolation.
+
+## 8. Discord-kanalstyring
+
+Aktivér kun i særskilt testserver: `JARVIS_DISCORD_CHANNELS=yes`, eksisterende konfigureret bot/ejer/guild og nødvendige `MANAGE_CHANNELS`-rettigheder. Brug ikke Administrator som genvej. Start i en eksisterende tekstkanal, som skal bevares.
+
+- `!kanal opret test-jarvis`: forbered privat tekstkanal. Ingen POST endnu. Læs adgangsbeskrivelsen; administratorer kan også se kanalen.
+- `!kanal godkend <review-ID>`: samme ejer/server/tekstkanal, inden to minutter. Forvent én oprettelse. Gentag kommandoen og verificér, at der ikke oprettes en dublet.
+- `!kanal slet <kanal-ID>`: brug kun den tomme testkanal. Review viser navn/ID og permanent sletning af beskeder. Godkend kun efter konkret kontrol.
+- `!kanal status <review-ID>`: se journalens udfald. Dette udfører ikke handlingen igen.
+
+Afprøv forkert bruger/guild, godkendelse fra en anden kanal, udløb, stop/resume, ændret navn/rettigheder efter review og beskyttelse af aktiv samtale samt konfigureret rapport-/stemmekanal. Ændr aldrig produktionskanaler for at teste. Eksisterende rapportkanalindstilling ændres ikke automatisk.
+
+Ved `unknown` eller afbrudt `sending`: kontrollér faktisk Discord og den offline journal i `state.json` før en ny handling. Nye kanalwrites er blokeret. Der er ingen automatisk retry, rollback eller skjult nulstilling. Slet ikke journalen for at få grønt; en operatørafklaring skal bevare det oprindelige grundlag og dokumentere det eksterne resultat.

@@ -106,7 +106,7 @@ test('plain excerpt neutralizes markup, strips executable material, bounds text 
   assert.match(p.text, /Ignore instructions/); // Untrusted data is not claimed safe by a prompt filter.
   assert.match(p.text, /<img/); assert.equal(p.text.length, 12000); assert.equal(p.truncated, true);
   assert.equal(p.trust, 'untrusted-web-content');
-  assert.equal([...assistantTools, ...voiceExtraTools].some(t => /browser|website|web_page/.test(t.name)), false);
+  assert.equal([...assistantTools, ...voiceExtraTools].some(t => t.name !== 'propose_browser_read' && /browser|website|web_page/.test(t.name)), false);
   assert.equal(JSON.stringify(indexPersonalKnowledge({ browserWorkspace: { reads: [{ page: p }] } })).includes('Ignore instructions'), false);
   assert.equal(extractWebPage(Buffer.from('<script>'.repeat(50000)), url).text, '');
   assert.equal(extractWebPage(Buffer.from('<'.repeat(500000)), url).text, '');

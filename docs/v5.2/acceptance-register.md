@@ -47,6 +47,18 @@ Alle filstier nedenfor er under `jarvis-starter/`, medmindre andet er angivet.
 | M6.2 / 2 | Hukommelse bevarer kilde/revision, rettelser, arkiv og udløb | verificeret | `personal-knowledge.mjs`, memory-boundarytests, `scripts/v5-semantic-eval.mjs`; eksisterende basis + G/C6 | Eksisterende 80 relevante/16 sikkerhedsqueries med rigtig lokal embedding; kilde@5, rettelse, forgetting og fallback. Det er retrieval, ikke genererede svar. | Kandidaten mærker nu aktuelle/historiske madplaner eksplicit i modelkontekst og forhindrer en usikker aktuel plan i at promovere en gammel. Eksisterende benchmark: 75/80 (93,75 %) på C4; der loves ikke en ny 95 %-score eller et uafhængigt holdout. |
 | M6.3 / 2 | Mindst 27/30 reelle danske modelopgaver og alle kritiske prøver består | blokeret | `scripts/assistant-evaluation.mjs`, `scripts/fixtures/danish-assistant-tasks.json`; C4/C5 | Harness og negativ grading-test bestået. Liveevaluering har status `not_run`; ingen 27/30-score foreligger. | Mangler lokal API-adgang/modelvalg. Kør isolerede scenarier, bedøm tekst OG gemt state; failures og ændret dataset kan ikke godkendes som beståede. |
 
+## Supplerende accept — næste udviklingsrunde efter d4cc25b
+
+Filer og tests nedenfor indgår i den nye PR-kandidat; præcis remote-SHA og CI fremgår af PR #15. De tidligere evidensnøgler gælder kun deres egne checkpoints.
+
+| ID / prioritet | Acceptkriterium | Status | Filer og test | Begrænsning / næste handling |
+|---|---|---|---|---|
+| M3.6 / 1 | Samtale/Discord kan foreslå og ejerbekræfte offentlig browserresearch | verificeret | `browser-research.mjs`, `secretary-tools.mjs`, `server.mjs`; `browser-research.test.mjs`, `v51-browser-http.test.mjs` | Syntetisk renderer/model og rigtig HTTP-service. Faktisk browserindeslutning dækkes særskilt i CI. Live resumé og Discord-transport kræver testadgang. |
+| M2.6 / 1 | Webindhold kan ikke få skriveværktøjer eller forgifte almindelig samtalehistorik | verificeret | Samme filer/tests; separat model med `tools:[]`, `tool_choice:none`, én offentlig kilde, ingen gemning i historie | Modellen kan stadig fejlfortolke tekst; ikke universel prompt-injection-detektion. Kun kildeuddrag gemmes i Webarbejde. |
+| M3.7 / 1 | Discord-kanaler kan oprettes/slettes efter konkret ejerreview | verificeret | `discord-channels.mjs`, `server.mjs`, `discord-channels.test.mjs` | Mock af officiel Discord REST-kontrakt; ingen faktisk kanal oprettet/slettet. Kun tekstkanaler. OFF som standard. |
+| M2.7 / 1 | Kanalreview afviser genbrug, ændret kanal, forkert ejer/server/kanal, expiry, restart, stop og usikker lagring | verificeret | `discord-channels.test.mjs`; varig journal før POST/DELETE | Discord har ingen atomisk revisionsbetingelse for DELETE. Kanalændringer efter sidste GET kan ikke udelukkes; testserver og konkret ejerreview påkrævet. Ukendt write spærrer nye mutationsforsøg. |
+| M3.8 / 1 | Faktisk Discord-kanalstyring og sammenhængende browserresearch | blokeret | Driftsvejledning afsnit 7–8 | Mangler særskilt godkendt testserver, botrettigheder/modeladgang og browser-runtime på målhost. Funktionerne aktiveres ikke i produktion. |
+
 ## Udskudt ved ejerbeslutning
 
 Smart Home uden lokal netværksagent; kalenderwrites; browserlogin; formularafsendelse; køb/booking. OpenClaw får ingen kopi af Jarvis' lager, planlægger eller Discord-bot. En samlet økonomisk budgetgrænse kræver prisgrundlag og fuld udbydermåling; de implementerede tekniske lofter må ikke omdøbes til dette.

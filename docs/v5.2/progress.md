@@ -34,3 +34,15 @@ Alle fire CI-workflows bestod på `6676a81affbc9fc27ac86500f9bea57658c282d0`. De
 3. Efter særskilt aktivering i testmiljø: kør OpenClaw-kontraktproben, offentlige browserlæsninger og Discord-stemmeprøven. Kør og bedøm de 30 modelopgaver med lokalt konfigureret API-adgang.
 
 Smart Home afventer lokal agent. Kalenderændringer, browserlogin, formularafsendelse, køb og booking er fortsat udskudt. Jarvis ejer fortsat madplan, hukommelse, rapportplanlægning og Discord-bot.
+
+## Næste udviklingsrunde — browserresearch og Discord-kanaler
+
+Baseline `d4cc25be6e6e74d060d3946119db417e8f6d350b` er kontrolleret remote: PR #15 er åben/draft, alle fire CI-workflows bestod, main er uændret. PR #9 er en separat GUI-gren og er ikke overskrevet.
+
+- Ny `BrowserResearch` forbinder fælles researchforslag med Webarbejdets eksisterende review. Modellen kan kun foreslå en URL. Ejeren sender selv `!web læs <review-ID>` gennem forsiden eller Discord. Den separate opsummeringsmodel har ingen værktøjer eller privat historik. Sideindhold og resultat gemmes ikke i almindelig modelhistorik/hukommelse. Kilde og begrænsning følger svaret. OFF: `JARVIS_BROWSER_RESEARCH`.
+- Ny `DiscordChannels` bruger den eksisterende bot og direkte ejerkommandoer. Privat tekstkanal kan oprettes, eller en konkret tekstkanal slettes efter særskilt engangsreview. Ejer/server/samtalekanal, parametre, kanalgrundlag, credential-konfiguration, stopgeneration, proces og to minutters udløb bindes. Aktiv samtale og konfigureret rapport/stemme er beskyttet. OFF: `JARVIS_DISCORD_CHANNELS`.
+- Ingen produktionsaktivering. Faktisk backup/telefon, model-/gateway-/Discord-adgang er fortsat utilgængelig. Den reelle 30-opgaveevaluering og OpenClaw-kontraktprøve viser fortsat `not_run`.
+
+Tests og præcis efterfølgende kandidat fremgår af den opdaterede PR og `local-test-result.json`. Ingen hel milestone er lukket. Næste ejerprøve skal ud over de tidligere trin afprøve nedenstående nye opt-in-forløb i en isoleret testinstallation.
+
+Den nye lokale fulde suite består: **1.187/1.187**, 0 fejl/skipped/cancelled. App-træ: `e6dd9a34bb762eff61b682c0af97589294cb0f3f`. CI for den nye remote-SHA skal kontrolleres særskilt; baseline-checks erstatter den ikke.

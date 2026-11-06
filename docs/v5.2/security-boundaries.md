@@ -5,7 +5,7 @@ Dato: 6. november 2026. Dokumentet supplerer v5.1 og angiver faktisk kodeadfærd
 ## Rettigheder og tillid
 
 - Jarvis er single-owner. HTTP-bearer og Discord-ejer/server kontrolleres på serveren. Modellen vælger blandt et fast katalog, men tildeler ikke sig selv rettigheder. Webstemme skal også have en aktiv ejerbundet serverlease. Den gamle `/api/assistant/tool` er nu samme leasebeskyttede rute som `/api/voice/tool`.
-- Lokale, reversible domæneændringer har fælles validering/journal/revision. Website-/værktøjsindhold er data. Den dynamiske browser har ingen model-tool, hukommelseswrite eller ekstern handlingsdispatcher.
+- Lokale, reversible domæneændringer har fælles validering/journal/revision. Website-/værktøjsindhold er data. Modellen kan foreslå en browserlæsning, men har intet værktøj til godkendelse eller udførelse. Den separate browseropsummering har ingen tools, privat kontekst eller hukommelseswrite.
 - Nemlig-kurvforslag kræver konkret ejerreview af handling, parametre/indhold, revision, stopgeneration, engangstoken og udløb; checkout/betaling er ikke tilgængelig. Kodeudvikling/installering er ikke stemme-/chatcapability og kræver eksisterende projektgennemgang. Browserreview giver kun en konkret læsning.
 - Smart Home er også blokeret på gamle direkte styringsruter. Kalenderwrite, login, booking, betaling og formularafsendelse er ikke aktiveret.
 - OpenClaw-tokenet skal behandles som en bred operatørcredential. Jarvis' faste adapter begrænser hvad Jarvis sender, men reducerer ikke tokenets rettigheder i OpenClaw. Brug en isoleret gateway med kun `web_search` og uden parallel bot/scheduler/dataejerskab.
@@ -57,3 +57,15 @@ Parentprocessen kontrollerer hver ressource, offentlig DNS, TLS-pinning og redir
 - [Playwright Docker](https://playwright.dev/docs/docker) og [seccomp v1.64.1](https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profile.json)
 
 Pinning, audit og kompatibilitetsprobe reducerer afhængighedsrisiko; de beviser ikke fravær af ukendte sårbarheder. Versionsløft kræver ny containment-/lydprøve.
+
+## Nye opt-in-forløb efter d4cc25b
+
+`JARVIS_BROWSER_RESEARCH=yes` giver kun adgang til forslag og den eksplicitte ejerkommando `!web læs`. `JARVIS_DYNAMIC_BROWSER=yes` med pinned image-ID og godkendt origin kræves fortsat for JavaScript. URL-/DNS-/sandboxkontroller genbruges uden fallback. Opsummering er én separat Responses-kørsel, højst 1.000 outputtokens og 30 sekunder, under fælles providerkontrol. Ingen sideindhold/resultater føres tilbage til den generelle assistents historik eller værktøjsloop. Browseruddrag opbevares efter Webarbejdets eksisterende retention; ejerens svar kan stadig indeholde vildledende tekst og skal læses kritisk.
+
+`JARVIS_DISCORD_CHANNELS=yes` tillader eksplicitte ejerkommandoer i konfigureret guild. Nye tekstkanaler tildeler kun ejer/bot View/Send/History; serveradministratorer har fortsat adgang. Der anmodes ikke om Administrator. Botten skal allerede have Discords nødvendige kanalrettigheder; Jarvis opgraderer dem aldrig selv. Ingen kategorier, roller, voicekanaler eller massehandlinger styres.
+
+Hvert review udløber efter 120 sekunder og er bundet til identitet, konkret indhold, konfigurationens hash, kanalgrundlag, proces og stopgeneration. Før mutation gemmes `sending`; timeout/ugyldigt svar/savefejl bliver `unknown` og genforsøges ikke. Ved restart vises `sending` som unknown, og gamle reviews er ugyldige. Højst 100 journalposter (ingen automatisk trimning af uafklarede poster), 10 sekunders timeout pr. REST-kald, højst 1 MB svar, ingen redirects eller automatiske 429-retries. Dette er ikke del af OpenAI-tokenregnskabet.
+
+DELETE har ingen leverandørunderstøttet atomisk revisionslås. Vi sammenholder kanalgrundlaget umiddelbart før afsendelse, men kan ikke garantere mod en samtidig administratorændring derefter. Beskeder/tabte kanaler kan ikke gendannes af Jarvis. Et ukendt udfald kræver offline operatørgennemgang af faktisk Discord og journal; der findes bevidst ingen modelkommando til at nulstille det.
+
+Officielle Discord-kontrakter kontrolleret 2026-11-06: [Create Guild Channel](https://docs.discord.com/developers/resources/guild#create-guild-channel) og [Delete/Close Channel](https://docs.discord.com/developers/resources/channel#deleteclose-channel). Syntetiske kontrakttests er ikke en live Discord-accept.
