@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOpenJarvis } from '../openjarvis.mjs';
+import { createOpenJarvis, openJarvisSources } from '../openjarvis.mjs';
 const env = { OPENJARVIS_ENABLED: 'yes', OPENJARVIS_GATEWAY_TOKEN: 'synthetic-secret' };
 const control = { controlled: fn => fn(new AbortController().signal) };
 test('disabled bridge has no external capability', async () => {
@@ -25,4 +25,13 @@ test('upstream errors are not echoed or retried', async () => {
  let calls=0;
  const bridge = createOpenJarvis({env, control, fetcher:async()=>{calls++;return new Response('private secret', {status:403});}});
  await assert.rejects(bridge.search('test'), /403/);assert.equal(calls,1);
+});
+
+test('structured sources reject unsafe URLs, deduplicate and redact secrets', () => {
+ const sources = openJarvisSources({content: [{text: JSON.stringify({results: [
+ {url: 'https://example.org/menu', title: 'Menu'}, {url: 'https://example.org/menu'},
+ {url: 'javascript:alert(1)'}, {url: 'https://user:pass@example.org/'},
+ {url: 'https://example.org/SECRET'}, {url: 'https://example.org/map', title: 'SECRET'}]})}]}, ['SECRET']);
+ assert.equal(sources.length, 2); assert.equal(sources[0].url, 'https://example.org/menu');
+ assert.doesNotMatch(JSON.stringify(sources), /SECRET|javascript:|user:pass/);
 });

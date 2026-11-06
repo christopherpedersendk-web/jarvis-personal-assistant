@@ -221,3 +221,16 @@ test('F1/K5 explicit resume cannot overwrite an incomplete dirty recipe draft', 
   assert.equal(h.calls(), 0); assert.equal(title.value, 'Min ugemte rettelse');
   assert.match(card.querySelector('[data-edit-status]').textContent, /lokale rettelser er bevaret/);
 });
+
+test('source highlight survives replacement of the same recipe revision', () => {
+ const h = ui(), root = h.node('div'); h.document.body.append(root);
+ const render = (r, k) => simpleCard(h, r, k);
+ h.sync(root, [{id:'one',revision:1,title:'Old'}], 'recipe', render, 'Empty');
+ root.children[0].classList.toggle('source-target', true);
+ const old = root.children[0];
+ h.sync(root, [{id:'one',revision:2,title:'New'}], 'recipe', render, 'Empty');
+ assert.notEqual(root.children[0], old);
+ assert.equal(root.children[0].classList.contains('source-target'), true);
+ h.sync(root, [{id:'two',revision:1,title:'Other'}], 'recipe', render, 'Empty');
+ assert.equal(root.children[0].classList.contains('source-target'), false);
+});

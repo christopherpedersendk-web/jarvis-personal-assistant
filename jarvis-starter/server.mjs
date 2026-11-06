@@ -1557,7 +1557,8 @@ async function route(req, res) {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/realtime') {
-      try { providerControl.assertAllowed(); }
+      const voiceScope = providerControl.current();
+      try { providerControl.assertAllowed(voiceScope); }
       catch (error) { return json(res, 409, { error: error.message, code: error.code }); }
       if (!validApiKey) return json(res, 503, { error: 'API-nøglen mangler.' });
       if (req.headers['content-type'] !== 'application/sdp') return json(res, 415, { error: 'Forventede en WebRTC SDP-besked.' });
@@ -1589,6 +1590,7 @@ async function route(req, res) {
       const form = new FormData();
       form.set('sdp', offer);
       form.set('session', JSON.stringify(redactSecrets(session, knownSecrets())));
+      const { upstream, answer } = await providerControl.controlled(async signal => {
       const upstream = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         headers: {
@@ -1596,9 +1598,11 @@ async function route(req, res) {
           'OpenAI-Safety-Identifier': createHash('sha256').update(accessToken).digest('hex'),
         },
         body: form,
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(25_000)]),
       });
       const answer = await upstream.text();
+      return { upstream, answer };
+      }, voiceScope);
       if (!upstream.ok) {
         logError(`OpenAI stemmefejl ${upstream.status}:`, answer.slice(0, 500));
         return json(res, 502, { error: `Stemmeforbindelsen kunne ikke startes (${upstream.status}).` });

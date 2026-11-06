@@ -698,7 +698,9 @@ function mealSyncCards(root, records, prefix, render, emptyText) {
     if (!card || (!mealDirty.has(key) && !focusedEditor && mealServerSignatures.get(card) !== signature)) {
       const recovered = mealRecoveredDrafts[key];
       const baseline = recovered?.record?.id === record.id ? recovered.record : record;
+      const wasSourceTarget = card?.classList.contains('source-target');
       card = render(baseline, key);
+      if (wasSourceTarget) card.classList.toggle('source-target', true);
       card.dataset.recordKey = key;
       card.dataset.revision = String(baseline.revision || 1);
       mealServerSignatures.set(card, JSON.stringify(baseline));
