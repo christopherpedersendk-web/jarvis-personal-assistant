@@ -1,3 +1,4 @@
+import { createOpenJarvis } from './openjarvis.mjs';
 import { createWebResearch } from './web-research.mjs';
 import { assistantTools, homeTools, voiceExtraTools, validateAssistantTool } from './assistant-tools.mjs';
 import { secretaryTools, secretaryWrites, createSecretaryToolHandler } from './secretary-tools.mjs';
@@ -587,8 +588,9 @@ async function handleOrganizerTool(name, args) {
   }
 }
 
+const openJarvis = createOpenJarvis({ control: providerControl });
 const handleSecretaryTool = createSecretaryToolHandler({ personalTasks, followUps, transact: mutateV5, state, taskEngine,
-  searchWeb: createWebResearch({ request: openaiJson, model: () => process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol' }),
+  searchWeb: openJarvis.status().enabled ? query => openJarvis.search(query) : createWebResearch({ request: openaiJson, model: () => process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol' }),
 });
 
 const mutatingTools = new Set([
@@ -761,6 +763,7 @@ async function route(req, res) {
     if (!authenticated(req)) return json(res, 401, { error: 'Forkert adgangskode.' });
     // Owner UI only. These capabilities are deliberately absent from every
     // model catalog and cannot submit forms or promote web content to memory.
+    if (req.method === 'GET' && path === '/api/openjarvis') return json(res, 200, openJarvis.status());
     if (req.method === 'GET' && path === '/api/browser') return json(res, 200, browserWorkspace.snapshot());
     if (req.method === 'POST' && path.startsWith('/api/browser/')) {
       const actions = { sites: 'configure', preview: 'preview', read: 'read', cancel: 'cancel', draft: 'draft', 'delete-draft': 'deleteDraft' };
