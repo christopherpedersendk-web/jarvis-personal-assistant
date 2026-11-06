@@ -10,9 +10,10 @@ lines.on('line',line=>{
 });
 const send=value=>process.stdout.write(JSON.stringify(value)+'\n');
 const {url}=await initialized;
-let browser;
+let browser, stage='launch';
 try {
  browser=await chromium.launch({headless:true,chromiumSandbox:true});
+ stage='context';
  const context=await browser.newContext({serviceWorkers:'block',acceptDownloads:false,permissions:[],javaScriptEnabled:true});
  await context.routeWebSocket('**/*',socket=>socket.close());
  let page;
@@ -28,10 +29,15 @@ try {
  page=await context.newPage();
  context.on('page',popup=>{if(popup!==page)popup.close().catch(()=>{});});
  page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));
+ stage='navigation';
  await page.goto(url,{waitUntil:'domcontentloaded',timeout:10000});
  await page.waitForLoadState('networkidle',{timeout:2500}).catch(()=>{});
+ stage='extract';
  const html=await page.content();
  if(Buffer.byteLength(html)>500000) throw new Error('Page too large');
  send({type:'result',html});
-} catch {send({type:'error'});process.exitCode=1;}
+} catch(error) {
+ const reason=/sandbox|namespace|Operation not permitted/i.test(error.message)?'sandbox':/Executable doesn.t exist/i.test(error.message)?'executable':'runtime';
+ send({type:'error',stage,reason});process.exitCode=1;
+}
 finally{await browser?.close();lines.close();process.stdin.destroy();}

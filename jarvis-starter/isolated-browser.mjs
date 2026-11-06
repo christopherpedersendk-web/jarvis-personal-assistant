@@ -45,6 +45,7 @@ export function createIsolatedBrowser({ env=process.env, fetchResource=fetchReci
           let end;while((end=buffer.indexOf('\n'))>=0){
             const line=buffer.slice(0,end);buffer=buffer.slice(end+1);
             let message;try{message=JSON.parse(line);}catch{return finish(new Error('Ugyldigt browserresultat.'));}
+            if(message.type==='error')return finish(new Error(`Browseren kunne ikke fuldføre ${['launch','context','navigation','extract'].includes(message.stage)?message.stage:'runtime'} (${['sandbox','executable','runtime'].includes(message.reason)?message.reason:'runtime'}).`));
             if(message.type==='result'){
               if(typeof message.html!=='string'||Buffer.byteLength(message.html)>500000)return finish(new Error('Ugyldigt sideuddrag.'));
               return finish(null,{buffer:Buffer.from(message.html),url:initial.href,contentType:'text/html'});
