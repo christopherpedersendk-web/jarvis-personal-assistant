@@ -10,10 +10,10 @@ import { assistantTools, voiceExtraTools } from '../assistant-tools.mjs';
 import { indexPersonalKnowledge } from '../personal-knowledge.mjs';
 const site = 'https://restaurant.example.org', url = site + '/menu';
 const html = '<title>Middag &amp; menu</title><h1>Menu</h1><p>To retter 200 kr.</p>';
-async function fixture({ initial = {}, owner = 'synthetic-owner', now = () => new Date('2026-11-06T12:00:00Z'), write = async () => {}, fetchResource = async value => ({ url: value, buffer: Buffer.from(html) }) } = {}) {
+async function fixture({ initial = {}, owner = 'synthetic-owner', now = () => new Date('2026-11-06T12:00:00Z'), write = async () => {}, renderDynamic = null, fetchResource = async value => ({ url: value, buffer: Buffer.from(html) }) } = {}) {
   const store = new DurableState({ initial, write }); await store.initialize();
   const control = new ProviderControl({ state: store.state, transact: (...a) => store.transact(...a), save: () => store.save(), now, isTransactionActive: () => Boolean(store.context.getStore()) });
-  const work = new BrowserWorkspace({ state: store.state, transact: (...a) => store.transact(...a), save: () => store.save(), control, owner, now, fetchResource, secrets: () => ['synthetic-private-credential'] });
+  const work = new BrowserWorkspace({ state: store.state, transact: (...a) => store.transact(...a), save: () => store.save(), control, owner, now, fetchResource, renderDynamic, secrets: () => ['synthetic-private-credential'] });
   return { work, control, store, allow: () => work.configure({ origins: [site], expectedRevision: work.snapshot().revision }), read: async () => { const p = await work.preview({ url }); return work.read({ intentId: p.intentId }); } };
 }
 const copy = store => JSON.parse(JSON.stringify(store.state));
@@ -106,7 +106,7 @@ test('plain excerpt neutralizes markup, strips executable material, bounds text 
   assert.match(p.text, /Ignore instructions/); // Untrusted data is not claimed safe by a prompt filter.
   assert.match(p.text, /<img/); assert.equal(p.text.length, 12000); assert.equal(p.truncated, true);
   assert.equal(p.trust, 'untrusted-web-content');
-  assert.equal([...assistantTools, ...voiceExtraTools].some(t => /browser|website|web_page/.test(t.name)), false);
+  assert.equal([...assistantTools, ...voiceExtraTools].some(t => t.name !== 'propose_browser_read' && /browser|website|web_page/.test(t.name)), false);
   assert.equal(JSON.stringify(indexPersonalKnowledge({ browserWorkspace: { reads: [{ page: p }] } })).includes('Ignore instructions'), false);
   assert.equal(extractWebPage(Buffer.from('<script>'.repeat(50000)), url).text, '');
   assert.equal(extractWebPage(Buffer.from('<'.repeat(500000)), url).text, '');
@@ -188,4 +188,14 @@ test('navigation extracts at most 20 unique same-origin public paths without fet
   assert.deepEqual(page.links, ['https://restaurant.dk/menu', 'https://restaurant.dk/kontakt']);
   const many = extractWebPage(Buffer.from(Array.from({length:50}, (_,i)=>`<a href="/page-${i}">Page</a>`).join('')), 'https://restaurant.dk/');
   assert.equal(many.links.length, 20);
+});
+
+test('JavaScript mode requires an enabled isolated renderer and explicit single-use review',async()=>{
+ const disabled=await fixture();await disabled.allow();
+ await assert.rejects(disabled.work.preview({url,javascript:true}),{code:'BROWSER_DISABLED'});
+ let calls=0;
+ const f=await fixture({renderDynamic:async(value,options)=>{calls++;assert.equal(value,url);assert.equal(options.allowUrl(new URL(url)),true);assert.equal(options.allowUrl(new URL('https://other.org/')),false);return {url,buffer:Buffer.from('<p>Rendered fixture</p>')};}});
+ await f.allow();const p=await f.work.preview({url,javascript:true});assert.equal(calls,0);assert.match(p.effect,/JavaScript/);
+ await f.work.read({intentId:p.intentId});assert.equal(calls,1);assert.equal(f.work.snapshot().reads[0].page.format,'isolated-javascript-excerpt');
+ await assert.rejects(f.work.read({intentId:p.intentId}));assert.equal(calls,1);
 });

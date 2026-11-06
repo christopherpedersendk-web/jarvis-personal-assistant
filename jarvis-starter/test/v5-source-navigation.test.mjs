@@ -232,19 +232,17 @@ test('R11 copied source URL is preserved by application initialization', async (
   assert.equal(called[0].attention, false);
 });
 
-test('B3/R09 voice household lookup uses the fixed read-only route and encodes the requested date', async () => {
-  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  const begin = app.indexOf("} else if (call.name === 'get_household_day') {");
-  assert.ok(begin > 0);
-  const body = app.slice(begin + "} else if (call.name === 'get_household_day') {".length, app.indexOf('} else if', begin + 2));
-  const requests = [];
-  const operation = vm.runInNewContext(`(async () => { let output; ${body}; return output; })`, {
-    args: { date: '2026-12-20/../../not-a-write' }, encodeURIComponent,
-    api: async (...arguments_) => { requests.push(arguments_); return { recorded: { recorded: false }, effective: { known: false } }; },
-  });
-  const result = await operation();
-  assert.deepEqual(requests, [['/api/knowledge/household/2026-12-20%2F..%2F..%2Fnot-a-write']]);
-  assert.equal(result.recorded.recorded, false); assert.equal(result.effective.known, false);
+test('B3/R09 voice household lookup goes only through the leased dispatcher, never a model URL', async () => {
+ const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
+ const begin=app.indexOf('async function handleVoiceTool('),end=app.indexOf('\nfunction stopVoice()',begin);
+ const requests=[],messages=[];
+ const run=vm.runInNewContext(app.slice(begin,end)+';handleVoiceTool;',{
+   JSON,voiceLease:'synthetic-lease',handledCalls:new Set(),api:async(path,options)=>{requests.push({path,body:JSON.parse(options.body)});return {};}
+ });
+ await run({readyState:'open',send:x=>messages.push(x)},{name:'get_household_day',call_id:'a',arguments:JSON.stringify({date:'2026-12-20/../../not-a-write'})});
+ assert.equal(requests[0].path,'/api/voice/tool');
+ assert.equal(requests[0].body.leaseId,'synthetic-lease');
+ assert.equal(requests[0].body.args.date,'2026-12-20/../../not-a-write');
 });
 
 test('F3/R11 recipe source fixture requires explicit review before retrieval, while a separate local draft changes no facts', async () => {

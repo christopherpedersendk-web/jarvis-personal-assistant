@@ -59,3 +59,15 @@ test('H2 oversized bundled procedure bodies are rejected instead of silently tru
   await writeFile(join(path, 'SKILL.md'), `---\nname: daily-briefing\nversion: 1.0.0\ndescription: Syntetisk\ntriggers: test\n---\n${'a'.repeat(8501)}`);
   await assert.rejects(loadBundledSkills(directory), /skill-felter/);
 });
+
+test('skill routing distinguishes opgaver from gave and explicit IDs outrank incidental words',()=>{
+ const registry = new SkillsRegistry([
+ {...sample('1.1.0'),name:'gift-planning',triggers:['gave','jul']},
+ {...sample('1.1.0'),name:'personal-follow-up',triggers:['opgaver']},
+ {...sample('1.1.0'),name:'meal-planning',triggers:['madplan']}
+ ]);
+ assert.deepEqual(registry.relevant('Vis mine opgaver').map(s=>s.name),['personal-follow-up']);
+ assert.deepEqual(registry.relevant('Hvad sker der i juli?').map(s=>s.name),[]);
+ assert.equal(registry.relevant('Ret madplanen')[0].name,'meal-planning');
+ assert.equal(registry.relevant('Brug meal-planning, jeg har mange opgaver')[0].name,'meal-planning');
+});

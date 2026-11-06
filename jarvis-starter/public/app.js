@@ -1,6 +1,9 @@
 const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem('jarvisAccessToken') || '';
 let peer = null;
+let voiceLease = null;
+let voiceGeneration = 0;
+let voicePoll = null;
 let microphone = null;
 let remoteAudio = null;
 let startingVoice = false;
@@ -235,8 +238,9 @@ function toast(message) {
 }
 
 async function api(path, options = {}) {
+  const { responseMeta, ...requestOptions } = options;
   const response = await fetch(path, {
-    ...options,
+    ...requestOptions,
     headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     cache: 'no-store',
   });
@@ -252,6 +256,7 @@ async function api(path, options = {}) {
     throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();
+  if (path === '/api/realtime' && responseMeta) responseMeta.leaseId = response.headers.get('X-Jarvis-Voice-Lease');
   return response.text();
 }
 
@@ -609,58 +614,8 @@ async function handleVoiceTool(channel, call) {
   let output;
   try {
     const args = JSON.parse(call.arguments || '{}');
-    if (['get_maps_link', 'search_web', 'list_report_jobs', 'run_report_job', 'list_personal_tasks', 'create_personal_task', 'update_personal_task', 'complete_personal_task', 'list_follow_up_cases', 'create_follow_up_case', 'update_follow_up_case', 'get_weekly_review'].includes(call.name)) {
-      output = await api('/api/assistant/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: call.name, args, callId: call.call_id }) });
-    } else if (call.name === 'create_research_task') {
-      const data = await api('/api/tasks', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...args, activation: 'paused' }),
-      });
-      output = { ok: true, id: data.task.id, title: data.task.title, status: data.task.status, nextRunAt: data.task.nextRunAt,
-        note: 'Gemt som pauset forslag. Ejeren skal gennemgå politikken og aktivere i Planlægning; intet baggrundsarbejde er startet.' };
-      await refreshTasks();
-    } else if (call.name === 'list_research_tasks') {
-      const data = await api('/api/tasks');
-      output = { tasks: data.tasks.slice(0, 15).map(({ title, status, nextRunAt, runs }) => ({ title, status, nextRunAt, lastResult: runs?.[0]?.result?.slice(0, 500) })) };
-    } else if (call.name === 'create_code_project') {
-      const data = await api('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-      output = { ok: true, project: data.project };
-      await refreshProjects();
-    } else if (call.name === 'list_code_projects') {
-      const data = await api('/api/projects');
-      output = { projects: data.projects };
-    } else if (call.name === 'develop_code_project') {
-      const data = await api(`/api/projects/${args.id}/develop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: args.request }) });
-      output = { ok: true, summary: data.project.lastSummary, changedFiles: data.changedFiles, packagesAwaitingApproval: data.packagesAwaitingApproval };
-      await refreshProjects();
-    } else if (call.name === 'remember_preference') {
-      const data = await api('/api/planning/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'remember_personal_fact', args }) });
-      output = { ok: true, ...data };
-      await refreshSecretary();
-    } else if (call.name === 'prepare_action') {
-      const data = await api('/api/approvals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-      output = { ok: true, status: data.action.status, note: 'Kun forberedt. Ingen booking, køb eller besked er gennemført.' };
-      await refreshSecretary();
-    } else if (call.name === 'search_personal_knowledge') {
-      output = await api('/api/knowledge/search', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'get_household_day') {
-      output = await api('/api/knowledge/household/' + encodeURIComponent(args.date));
-    } else if (['list_collections', 'get_collection', 'search_collection_items', 'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item'].includes(call.name)) {
-      output = await handleOrganizerVoice(call.name, args);
-    } else if (call.name === 'list_hue_devices') {
-      output = await api('/api/smart-home/hue/resources');
-    } else if (call.name === 'set_hue_light') {
-      output = await api('/api/smart-home/hue/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else if (call.name === 'activate_hue_scene') {
-      output = await api('/api/smart-home/hue/scene', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    } else {
-      // The authenticated server, not a model-chosen URL, dispatches the fixed
-      // planning allowlist. Approval/checkout names are never permitted here.
-      output = await api('/api/planning/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: call.name, args }) });
-    }
+    output = await api('/api/voice/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: call.name, args, callId: call.call_id, leaseId: voiceLease }) });
   } catch (error) { output = { error: error.message }; }
   if (channel.readyState !== 'open') return;
   channel.send(JSON.stringify({
@@ -672,6 +627,11 @@ async function handleVoiceTool(channel, call) {
 }
 
 function stopVoice() {
+  voiceGeneration++; startingVoice=false; $('voice-toggle').disabled=false;
+  clearInterval(voicePoll); voicePoll = null;
+  const leaseId = voiceLease; voiceLease = null;
+  if (leaseId && token) api('/api/voice/close', {method:'POST',keepalive:true,
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({leaseId})}).catch(error=>toast(error.message));
   peer?.close();
   peer = null;
   microphone?.getTracks().forEach(track => track.stop());
@@ -686,22 +646,29 @@ async function startVoice() {
   if (startingVoice) return;
   if (!aiReady) { toast('AI mangler opsætning. Se OpenAI-forbindelsen på serveren.'); openAiSetup(); return; }
   startingVoice = true;
-  $('voice-toggle').disabled = true;
+  const generation=++voiceGeneration, credential=token, responseMeta={};
+  const current=()=>generation===voiceGeneration && token===credential;
+  $('voice-toggle').disabled = false;
+  $('voice-toggle').textContent = '■ Annuller stemmestart';
   $('voice-status').textContent = 'Opretter sikker stemmeforbindelse …';
   try {
     if (!window.isSecureContext) throw new Error('Mikrofonen kræver HTTPS eller localhost.');
-    microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
-    peer = new RTCPeerConnection();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if(!current()){stream.getTracks().forEach(track=>track.stop());return;}
+    microphone=stream;
+    const sessionPeer=new RTCPeerConnection();peer=sessionPeer;
     remoteAudio = document.createElement('audio');
     remoteAudio.autoplay = true;
     remoteAudio.playsInline = true;
     peer.ontrack = event => {
+      if(!current() || peer!==sessionPeer)return;
       remoteAudio.srcObject = event.streams[0];
       remoteAudio.play().catch(() => {});
     };
     microphone.getTracks().forEach(track => peer.addTrack(track, microphone));
     const channel = peer.createDataChannel('oai-events');
     channel.onmessage = event => {
+      if(!current() || peer!==sessionPeer)return;
       let message;
       try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'conversation.item.input_audio_transcription.completed') {
@@ -714,33 +681,55 @@ async function startVoice() {
         toast(`Stemmefejl: ${message.error?.message || 'Ukendt fejl'}`);
       }
     };
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
+    const offer = await sessionPeer.createOffer();
+    if(!current())return;
+    await sessionPeer.setLocalDescription(offer);
+    if(!current())return;
     const sdp = await api('/api/realtime', {
       method: 'POST', headers: { 'Content-Type': 'application/sdp' },
-      body: offer.sdp,
+      body: offer.sdp, responseMeta,
     });
-    await peer.setRemoteDescription({ type: 'answer', sdp });
+    if(!current()) {
+      if(responseMeta.leaseId) await fetch('/api/voice/close',{method:'POST',keepalive:true,headers:{Authorization:`Bearer ${credential}`,'Content-Type':'application/json'},body:JSON.stringify({leaseId:responseMeta.leaseId})}).catch(()=>{});
+      return;
+    }
+    voiceLease=responseMeta.leaseId;
+    if (!voiceLease || !peer) throw new Error('Stemmesessionen kunne ikke bekræftes.');
+    await sessionPeer.setRemoteDescription({ type: 'answer', sdp });
+    if(!current())return;
+    const pollingLease = voiceLease;
+    voicePoll = setInterval(async () => {
+      if (voiceLease !== pollingLease) return;
+      try { const control = await api('/api/assistant/control');
+        if (voiceLease === pollingLease && (control.stopped || !control.voice?.active)) stopVoice();
+      } catch { if (voiceLease === pollingLease) stopVoice(); }
+    }, 3000);
     $('voice-orb').classList.add('listening');
     $('voice-toggle').textContent = '■ Afslut stemmesamtale';
     $('voice-status').textContent = 'Du kan tale nu. Samtalen gemmes som tekst, når transskription er tilgængelig.';
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(peer?.connectionState)) stopVoice();
+      if (current() && peer===sessionPeer && ['failed', 'closed', 'disconnected'].includes(sessionPeer.connectionState)) stopVoice();
     };
   } catch (error) {
-    stopVoice();
-    toast(error.message);
+    if(responseMeta.leaseId && voiceLease!==responseMeta.leaseId)await fetch('/api/voice/close',{method:'POST',keepalive:true,headers:{Authorization:`Bearer ${credential}`,'Content-Type':'application/json'},body:JSON.stringify({leaseId:responseMeta.leaseId})}).catch(()=>{});
+    if(current()){stopVoice();toast(error.message);}
   } finally {
-    startingVoice = false;
-    $('voice-toggle').disabled = false;
+    if(current()){startingVoice = false;$('voice-toggle').disabled = false;}
   }
 }
 
-$('voice-toggle').addEventListener('click', () => peer ? stopVoice() : startVoice());
+$('voice-toggle').addEventListener('click', () => peer || startingVoice ? stopVoice() : startVoice());
 window.addEventListener('pagehide', stopVoice);
 
-if (token) refresh().catch(() => showLogin());
-else showLogin();
+// All deferred domain modules must register their refresh/source listeners
+// before bootstrap can complete, even on a cached localhost response.
+function bootstrapWorkspace() {
+  if (token) refresh().catch(() => showLogin());
+  else showLogin();
+}
+if (document.readyState === 'loading' || document.readyState === 'interactive')
+  document.addEventListener('DOMContentLoaded', bootstrapWorkspace, { once: true });
+else bootstrapWorkspace();
 
 setInterval(() => {
   if (token && !$('workspace').classList.contains('hidden') && document.visibilityState === 'visible') {

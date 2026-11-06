@@ -250,8 +250,8 @@ export function createPlanningToolHandler({ secretary, meals, recipes, shopping,
   // that an old manual choice has been reviewed against today's requirements.
   const viewPlan = (plan, detail = false) => {
     const projection = meals.shoppingProjection(plan);
-    return planView({ ...plan, shoppingReview: projection.shoppingReview,
-      shoppingNeedsReview: Boolean(plan.shoppingNeedsReview || projection.shoppingNeedsReview) }, detail);
+    return {isActive:plan.id===meals.activePlanId(), ...planView({ ...plan, shoppingReview: projection.shoppingReview,
+      shoppingNeedsReview: Boolean(plan.shoppingNeedsReview || projection.shoppingNeedsReview) }, detail)};
   };
   return async function handlePlanningTool(name, input = {}, context = {}) {
     const definition = definitions.get(name);
@@ -272,7 +272,7 @@ export function createPlanningToolHandler({ secretary, meals, recipes, shopping,
         return { profile: await meals.setProfile({ ...meals.profile(), ...args }), note: 'Madpræferencer opdateret lokalt. Gennemgå eksisterende madplaner og opret nye indkøbslister.' };
       }
       case 'list_meal_plans': {
-        const plans = meals.plans(); return { plans: plans.slice(0, 12).map(plan => viewPlan(plan)), returned: Math.min(12, plans.length), note: 'Brug get_meal_plan før redigering.' };
+        const plans = meals.plans(); return { activePlanId:meals.activePlanId(), plans: plans.slice(0, 12).map(plan => viewPlan(plan)), returned: Math.min(12, plans.length), note: 'Kun activePlanId er den aktuelle madplan. Andre planer er historik. Brug get_meal_plan før redigering.' };
       }
       case 'create_meal_plan': return { plan: viewPlan(await createMealPlan(args), true), note: 'Kun et redigerbart madplansudkast. Ingen indkøbsliste er oprettet og ingen kurv ændret.' };
       case 'list_google_calendar_events': {

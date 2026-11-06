@@ -44,3 +44,12 @@ for (const channel of ['text', 'discord', 'voice']) test(`${channel}: stop/resum
   const rejected = assert.rejects(pending, { code: 'ASSISTANT_STOPPED' });
   await control.stop(true); await control.stop(false); release(); await rejected;
 });
+
+for(const channel of ['text','discord','voice','web']) test(`${channel}: deferred home and code tools cannot reach handlers`,async()=>{
+ for(const name of ['set_hue_light','activate_hue_scene','sonos_control','develop_code_project']) {
+  let reached=false;
+  await assert.rejects(invokeControlledTool({control:{current:()=>({}),assertAllowed(){}},journal:{invoke(){reached=true;}},
+   mutatingTools:new Set([name]),call:{name},args:{},handler:()=>{reached=true;},channel}),{code:'CAPABILITY_DEFERRED'});
+  assert.equal(reached,false);
+ }
+});

@@ -91,7 +91,7 @@ export function splitDiscordMessage(value, max = 1900) {
 }
 
 export class DiscordGateway {
-  constructor({ onMessage, fetcher = fetch, socketFactory = url => new WebSocket(url),
+  constructor({ onMessage, onVoiceUnavailable = () => {}, voiceEnabled = false, fetcher = fetch, socketFactory = url => new WebSocket(url),
     dataDirectory = process.env.JARVIS_DATA_DIR || DEFAULT_DATA_DIR,
     scheduleRetry = (callback, ms) => setTimeout(callback, ms),
     scheduleHeartbeat = (callback, ms) => setTimeout(callback, ms), random = Math.random,
@@ -99,7 +99,8 @@ export class DiscordGateway {
     writeJournal = atomicStateWrite, maxWaiting = 8, maxJournalEntries = DEDUPE_LIMIT }) {
     if (!Number.isInteger(maxJournalEntries) || maxJournalEntries < 1 || maxJournalEntries > DEDUPE_LIMIT)
       throw new Error('Ugyldig grænse for Discord-journalen.');
-    this.onMessage = onMessage;
+    this.onMessage = onMessage; this.onVoiceUnavailable=onVoiceUnavailable; this.voiceEnabled=voiceEnabled;
+    this.voiceAdapters=new Map(); this.voiceStates=new Map();
     this.fetcher = fetcher;
     this.socketFactory = socketFactory;
     this.scheduleRetry = scheduleRetry;
@@ -156,6 +157,19 @@ export class DiscordGateway {
       ingressGap: this.ingressGap ? { ...this.ingressGap } : null };
   }
 
+  voiceMembers(guildId,channelId) { return [...this.voiceStates.values()].filter(s=>s.guild_id===guildId&&s.channel_id===channelId).map(s=>s.user_id); }
+  voiceAdapterCreator(guildId) {
+    return methods=>{
+      if(guildId!==this.config.guildId||!this.voiceEnabled||this.voiceAdapters.has(guildId))throw new Error('Discord voice adapter unavailable.');
+      this.voiceAdapters.set(guildId,methods);
+      return {sendPayload:payload=>this.status==='connected'&&payload.op===4&&payload.d?.guild_id===guildId&&this.sendGateway(payload),destroy:()=>this.voiceAdapters.delete(guildId)};
+    };
+  }
+  stopVoiceTransport() {
+    for(const adapter of this.voiceAdapters.values())adapter.destroy();
+    this.voiceAdapters.clear();this.voiceStates.clear();
+    Promise.resolve(this.onVoiceUnavailable()).catch(()=>{});
+  }
   clearHeartbeat() {
     clearInterval(this.heartbeat);
     clearTimeout(this.firstHeartbeat);
@@ -166,6 +180,7 @@ export class DiscordGateway {
   }
 
   stop() {
+    this.stopVoiceTransport();
     this.generation++;
     this.resumeConfirmed = null;
     this.markResumeUnavailable('session_stopped');
@@ -233,6 +248,7 @@ export class DiscordGateway {
       socket.addEventListener('close', event => {
         if (generation !== this.generation || this.socket !== socket) return;
         this.socket = null;
+        this.stopVoiceTransport();
         this.clearHeartbeat();
         if ([4004, 4013, 4014].includes(event.code)) {
           this.status = 'error';
@@ -273,6 +289,7 @@ export class DiscordGateway {
   forceReconnect(reason, generation = this.generation) {
     if (generation !== this.generation) return;
     this.lastError = reason;
+    this.stopVoiceTransport();
     const socket = this.socket;
     this.socket = null;
     this.clearHeartbeat();
@@ -339,7 +356,7 @@ export class DiscordGateway {
       this.firstHeartbeat.unref?.();
       this.sendGateway(this.sessionId && this.sequence !== null
         ? { op: 6, d: { token: this.config.token, session_id: this.sessionId, seq: this.resumeSequence ?? this.sequence } }
-        : { op: 2, d: { token: this.config.token, intents: DM_INTENTS | (this.config.guildId ? GUILD_INTENTS : 0), properties: { os: process.platform, browser: 'jarvis', device: 'jarvis' } } });
+        : { op: 2, d: { token: this.config.token, intents: DM_INTENTS | (this.config.guildId ? GUILD_INTENTS | (this.voiceEnabled ? 128 : 0) : 0), properties: { os: process.platform, browser: 'jarvis', device: 'jarvis' } } });
     } else if (packet.op === 1) {
       // Discord can request a heartbeat at any time. Respond immediately,
       // while keeping the pending-ACK watchdog active.
@@ -371,6 +388,15 @@ export class DiscordGateway {
       if (!this.dedupeFailure) this.lastError = this.gapWarning();
       this.lastConnectedAt = new Date().toISOString();
       this.finishResume();
+    } else if (packet.op === 0 && this.voiceEnabled && packet.t === 'GUILD_CREATE' && packet.d?.id===this.config.guildId) {
+      for(const member of packet.d.voice_states||[])this.voiceStates.set(member.user_id,{...member,guild_id:packet.d.id});
+    } else if (packet.op === 0 && this.voiceEnabled && packet.t === 'VOICE_STATE_UPDATE' && packet.d?.guild_id===this.config.guildId) {
+      const member=packet.d;this.voiceStates.set(member.user_id,member);
+      if(member.user_id===this.botId)this.voiceAdapters.get(member.guild_id)?.onVoiceStateUpdate(member);
+      const bot=this.voiceStates.get(this.botId);
+      if(bot?.channel_id && (this.voiceStates.get(this.config.userId)?.channel_id!==bot.channel_id || this.voiceMembers(member.guild_id,bot.channel_id).some(id=>id!==this.botId&&id!==this.config.userId)))this.stopVoiceTransport();
+    } else if (packet.op === 0 && this.voiceEnabled && packet.t === 'VOICE_SERVER_UPDATE' && packet.d?.guild_id===this.config.guildId) {
+      this.voiceAdapters.get(packet.d.guild_id)?.onVoiceServerUpdate(packet.d);
     } else if (packet.op === 0 && packet.t === 'MESSAGE_CREATE') {
       this.handleIncoming(packet.d, generation).catch(error => {
         if (generation !== this.generation) return;
@@ -481,6 +507,13 @@ export class DiscordGateway {
     this.checkpointGap({ ...gap, status: 'recovered', reason: 'resumed' }, this.generation);
   }
 
+  sendVoiceReply(channelId, text) {
+    if (!this.voiceEnabled) throw new Error('Discord-stemme er ikke aktiveret.');
+    // Bind this delivery to the current gateway before the first async send.
+    // Reuse the same guarded/redacted sender as ordinary Discord replies.
+    return this.sendReply(channelId, text, this.generation);
+  }
+
   async sendReply(channelId, text, generation) {
     if (!SNOWFLAKE.test(String(channelId || '')))
       throw discordError('DISCORD_CHANNEL_INVALID', 'Ugyldig Discord-kanal.', { deliveryNotAttempted: true });
@@ -542,27 +575,28 @@ export class DiscordGateway {
   async reportApi(path, options = {}, config = this.config) {
     if (!config.token || !config.guildId || !config.userId) throw new Error('Gem bot, dit bruger-ID og Server ID først.');
     const response = await this.fetcher('https://discord.com/api/v10' + path, {
-      ...options, headers: { Authorization: `Bot ${config.token}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20_000),
+      ...options, headers: { Authorization: `Bot ${config.token}`, 'Content-Type': 'application/json' }, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
     });
     if (!response.ok) throw new Error(`Discord rapportkanal fejlede (${Number(response.status) || 0}). Kontrollér botrettighederne.`);
     return response.json();
   }
 
-  async createReportChannel(config = this.config) {
-    const bot = await this.reportApi('/users/@me', {}, config);
+  async createReportChannel(config = this.config, { signal, guard = () => {} } = {}) {
+    const api = (path, options = {}) => { guard(); signal?.throwIfAborted(); return this.reportApi(path, { ...options, signal }, config); };
+    const bot = await api('/users/@me');
     if (!SNOWFLAKE.test(String(bot.id || ''))) throw new Error('Ugyldigt bot-ID fra Discord.');
-    const channels = await this.reportApi(`/guilds/${config.guildId}/channels`, {}, config);
+    const channels = await api(`/guilds/${config.guildId}/channels`);
     if (!Array.isArray(channels)) throw new Error('Ugyldig kanalliste fra Discord.');
     const existing = channels.filter(c => c.name === 'jarvis-rapporter');
     if (existing.length) throw new Error('Kanalen jarvis-rapporter findes allerede. Gennemgå dens adgang og gem kanal-ID; der oprettes ikke en dublet.');
-    const channel = await this.reportApi(`/guilds/${config.guildId}/channels`, { method: 'POST', body: JSON.stringify({
+    const channel = await api(`/guilds/${config.guildId}/channels`, { method: 'POST', body: JSON.stringify({
       name: 'jarvis-rapporter', type: 0, topic: 'JARVIS · planlagte rapporter og kildehenvisninger',
       permission_overwrites: [
         { id: config.guildId, type: 0, allow: '0', deny: '1024' },
         { id: config.userId, type: 1, allow: '68608', deny: '0' },
         { id: bot.id, type: 1, allow: '68608', deny: '0' },
       ],
-    }) }, config);
+    }) });
     if (!SNOWFLAKE.test(String(channel.id || '')) || channel.type !== 0 || channel.guild_id !== config.guildId)
       throw new Error('Kanalen kan være oprettet, men svaret kunne ikke bekræftes. Kontrollér Discord før et nyt forsøg.');
     return channel;
@@ -827,7 +861,7 @@ export class DiscordGateway {
     const token = this.config.token;
     const context = { id, channelId: String(event.channel_id), generation, durable: this.dedupeEnabled,
       ready: this.dedupeReady, token, content: redactSecrets(event.content.trim(), [token]),
-      metadata: redactSecrets(discordMessageMetadata(event), [token]) };
+      metadata: { ...redactSecrets(discordMessageMetadata(event), [token]), guildId: event.guild_id || '', ownerId: event.author.id } };
     const pending = { queueId: null };
     this.pendingMessages.set(id, pending);
     const operation = this.admitMessage(context, pending).finally(() => {

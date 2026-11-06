@@ -1,0 +1,30 @@
+name: Discord voice dependency and policy checks
+on:
+  pull_request:
+    branches: [main]
+    paths: ['jarvis-starter/**', 'docs/v5.2/**', '.github/workflows/discord-voice.yml']
+permissions:
+  contents: read
+jobs:
+  voice:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --ignore-scripts --no-fund
+        working-directory: jarvis-starter/discord-voice-runtime
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: jarvis-starter/discord-voice-runtime
+      - run: node discord-voice-runtime/probe.mjs
+        working-directory: jarvis-starter
+      - run: node --test test/discord-voice.test.mjs test/discord-voice-gateway.test.mjs test/voice-sessions.test.mjs test/realtime-speech.test.mjs
+        working-directory: jarvis-starter

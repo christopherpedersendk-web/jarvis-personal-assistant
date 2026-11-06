@@ -62,3 +62,18 @@ test('nested state transaction cannot send before its reservation becomes durabl
   await assert.rejects(store.transact([], () => control.request('/responses', options, async () => { sends++; })), { code: 'API_TRANSACTION_SCOPE' });
   assert.equal(sends, 0);
 });
+
+test('hosted search invocations are reserved before send and cannot exceed the daily cap',async()=>{
+ const {control}=await fixture({env:{JARVIS_HOSTED_TOOL_CALLS_PER_DAY:'2'}});
+ let sends=0;
+ const send=async(path,options)=>{sends++;assert.equal(options.body.max_tool_calls,2);return {status:'completed',usage:{input_tokens:1,output_tokens:1}};};
+ await control.request('/responses',{method:'POST',body:{tools:[{type:'web_search'}]}},send);
+ await assert.rejects(control.request('/responses',{method:'POST',body:{tools:[{type:'web_search'}]}},send),/grænse/);
+ assert.equal(sends,1);assert.equal(control.snapshot().reservedHostedToolCalls,2);
+});
+test('OpenClaw search uses shared durable request admission and preserves unknown reservations',async()=>{
+ const {control}=await fixture({env:{JARVIS_API_CALLS_PER_DAY:'1'}});
+ await assert.rejects(control.externalSearch(async()=>{throw new Error('transport');}));
+ await assert.rejects(control.externalSearch(async()=>assert.fail('must not send')),/grænse/);
+ assert.equal(control.snapshot().unresolved,1);
+});

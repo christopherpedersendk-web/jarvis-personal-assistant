@@ -139,7 +139,9 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind, signa
         if (status !== 200) { response.destroy(); finish(null, new RecipeFetchError('unavailable', 'Hjemmesiden tillod ikke hentning.')); return; }
         const contentType = String(response.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
         const encoding = String(response.headers['content-encoding'] || 'identity').toLowerCase();
-        const allowed = kind === 'image' ? IMAGE_TYPES.has(contentType) : ['text/html', 'application/xhtml+xml'].includes(contentType);
+        const allowed = kind === 'image' ? IMAGE_TYPES.has(contentType) : (kind === 'browser'
+          ? ['text/html','application/xhtml+xml','text/css','text/javascript','application/javascript','application/json']
+          : ['text/html','application/xhtml+xml']).includes(contentType);
         const declaredLength = Number(response.headers['content-length']);
         if (!allowed || encoding !== 'identity' || (Number.isFinite(declaredLength) && declaredLength > maxBytes)) {
           response.destroy(); finish(null, new RecipeFetchError('unavailable', 'Filtypen, kodningen eller størrelsen er ikke understøttet.')); return;
@@ -163,7 +165,7 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind, signa
 
 export async function fetchRecipeResource(value, { kind = 'html', lookup = dnsLookup, request = httpsRequest,
   timeoutMs = 10_000, maxBytes = kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES, allowUrl = () => true, signal } = {}) {
-  if (!['html', 'image'].includes(kind)) throw new RecipeFetchError('blocked', 'Ukendt ressourcetype.');
+  if (!['html', 'image', 'browser'].includes(kind)) throw new RecipeFetchError('blocked', 'Ukendt ressourcetype.');
   const deadline = Date.now() + Math.max(50, Math.min(15_000, timeoutMs));
   let url = recipeUrl(value);
   for (let redirects = 0; redirects <= 2; redirects++) {

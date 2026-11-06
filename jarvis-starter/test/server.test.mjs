@@ -187,7 +187,7 @@ test('local server protects endpoints and persists preferences without a paid AP
   assert.equal(calendarStatus.canEdit, false);
   assert.equal((await fetch(`${base}/api/google/calendar/connect`, { method: 'POST', headers: authorizedHeaders })).status, 409);
   assert.equal((await fetch(`${base}/api/smart-home/sonos/connect`, { method: 'POST' })).status, 401);
-  assert.equal((await fetch(`${base}/api/smart-home/sonos/connect`, { method: 'POST', headers: authorizedHeaders })).status, 400);
+  assert.equal((await fetch(`${base}/api/smart-home/sonos/connect`, { method: 'POST', headers: authorizedHeaders })).status, 409);
   const sonosStatus = await (await fetch(`${base}/api/smart-home/settings`, { headers: authorizedHeaders })).json();
   assert.equal(sonosStatus.oauthConfigured, false);
   assert.equal(sonosStatus.automaticRefresh, false);

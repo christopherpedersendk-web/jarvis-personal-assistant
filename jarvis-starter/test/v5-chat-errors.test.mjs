@@ -12,7 +12,7 @@ import { planningTools } from '../planning-tools.mjs';
 
 const source = await readFile(new URL('../server.mjs', import.meta.url), 'utf8');
 const from = source.indexOf('const mutatingTools = new Set(');
-const to = source.indexOf('\nawait stateStore.initialize();', from);
+const to = source.indexOf('\nconst discordAudio=', from);
 function fixture({ response, save = async () => {}, configured = true } = {}) {
   const calls = [], effects = [], history = [], queue = new BoundedJobQueue();
   const tool = { type: 'function', name: 'create_collection', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: [] } };

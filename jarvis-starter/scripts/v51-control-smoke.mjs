@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { syntheticServerEnv } from '../test/helpers/synthetic-env.mjs';
 import { browserNetworkFixture } from '../test/helpers/browser-network.mjs';
+import { realtimeNetworkFixture } from '../test/helpers/realtime-network.mjs';
 import { renderedAccessibilityReport } from './ui-accessibility.mjs';
 const require = createRequire(import.meta.url), { chromium } = require('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -20,7 +21,7 @@ const credential = 'synthetic-v51-control-owner-token', origin = `http://127.0.0
 let child, browser, logs = '';
 const report = { at: new Date().toISOString(), playwrightVersion: require('playwright/package.json').version, status: 'running', checks: [], scope: 'Disposable server, synthetic data, Chromium. No physical iPhone, paid model, or production access.' };
 async function start() {
-  child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(browserNetworkFixture)}`, 'server.mjs'], { cwd: root, env: syntheticServerEnv({ dataDir: dir, accessToken: credential, port }), stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(browserNetworkFixture+'\n'+realtimeNetworkFixture)}`, 'server.mjs'], { cwd: root, env: syntheticServerEnv({ dataDir: dir, accessToken: credential, port, modelKey:'sk-synthetic-voice-smoke-key-32-characters' }), stdio: ['ignore', 'pipe', 'pipe'] });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', b => { logs = (logs + String(b)).slice(-3000); });
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(origin + '/health', { signal: AbortSignal.timeout(500) })).ok) return; } catch {}
@@ -41,16 +42,25 @@ try {
   await start();
   await api('/api/assistant/control', undefined, 401, false); report.checks.push('unauthenticated access rejected');
   const call = { name: 'create_personal_task', callId: 'synthetic-once', args: { title: 'Syntetisk opgave', purpose: 'Kontrollér fælles udførelse', durationMinutes: 15 } };
+  for(const path of ['/api/assistant/tool','/api/voice/tool'])await api(path,call,409);
+  async function lease() {
+    const response=await fetch(origin+'/api/realtime',{method:'POST',headers:{Authorization:`Bearer ${credential}`,'Content-Type':'application/sdp'},body:'v=0\r\nsynthetic-offer'});
+    assert.equal(response.status,201);await response.text();const id=response.headers.get('x-jarvis-voice-lease');assert.ok(id);return id;
+  }
+  call.leaseId=await lease();
   const first = await api('/api/assistant/tool', call);
-  const second = await api('/api/assistant/tool', call); assert.equal(second.alreadyRecorded, true);
+  const second = await api('/api/voice/tool', call); assert.equal(second.alreadyRecorded, true);
   assert.equal((await api('/api/personal-tasks')).tasks.length, 1); report.checks.push('real HTTP execution is deduplicated');
   await api('/api/assistant/control', { stopped: true }); await stop(); await start();
   assert.equal((await api('/api/assistant/control')).stopped, true);
   await api('/api/assistant/tool', { ...call, callId: 'blocked-call' }, 409);
   assert.equal((await api('/api/personal-tasks')).tasks.length, 1); report.checks.push('stop survives restart and prevents a new tool effect');
   await api('/api/assistant/control', { stopped: false });
-  await api('/api/assistant/tool', { name: 'complete_personal_task', callId: 'complete-once', args: { id: first.task.id, expectedRevision: 1 } });
-  assert.equal((await api('/api/assistant/tool', { name: 'get_weekly_review', args: {} })).openTasks.length, 0);
+  await api('/api/assistant/tool',call,409);
+  const leaseId=await lease();
+  await api('/api/voice/tool', { leaseId,name: 'complete_personal_task', callId: 'complete-once', args: { id: first.task.id, expectedRevision: 1 } });
+  assert.equal((await api('/api/voice/tool', { leaseId,callId:'review-once',name: 'get_weekly_review', args: {} })).openTasks.length, 0);
+  await api('/api/voice/close',{leaseId});
   report.checks.push('completion is visible in the weekly review');
   await api('/api/browser/sites', { origins: ['https://restaurant.example.org'], expectedRevision: 1 });
   browser = await chromium.launch({ headless: true, ...(process.env.JARVIS_TEST_CHROMIUM ? { executablePath: process.env.JARVIS_TEST_CHROMIUM } : {}) });

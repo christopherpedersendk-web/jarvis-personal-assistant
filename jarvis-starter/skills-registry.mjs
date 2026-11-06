@@ -127,9 +127,15 @@ export class SkillsRegistry {
     return this.resolve(id, versions.sort(compare)[0].version);
   }
   relevant(query, limit = 2) {
-    const normalized = String(query || '').toLocaleLowerCase('da-DK');
+    const normalized = String(query || '').normalize('NFKC').toLocaleLowerCase('da-DK');
+    const words = normalized.match(/[\p{L}\p{N}-]+/gu) || [];
+    const matches = trigger => {
+      const phrase = trigger.normalize('NFKC').toLocaleLowerCase('da-DK').match(/[\p{L}\p{N}-]+/gu) || [];
+      return phrase.length && words.some((_,i)=>phrase.every((word,j)=>words[i+j] === word ||
+        (j === phrase.length-1 && ['en','et','er','ne','ene'].some(suffix=>words[i+j] === word+suffix))));
+    };
     return [...new Set(this.skills.map(skill => skill.name))].map(id => this.current(id))
-      .map(skill => ({ skill, score: (skill.triggers || []).filter(trigger => normalized.includes(trigger)).length }))
+      .map(skill => ({ skill, score: words.includes(skill.name) ? 100 : (skill.triggers || []).filter(matches).length }))
       .filter(x => x.score > 0).sort((a, b) => b.score - a.score)
       .slice(0, Math.max(0, Math.min(3, limit))).map(({ skill }) => skill);
   }

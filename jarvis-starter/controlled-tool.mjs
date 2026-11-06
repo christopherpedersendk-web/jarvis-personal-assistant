@@ -1,6 +1,8 @@
+import { assertToolPolicy } from './tool-policy.mjs';
 // Capture the generation before any awaited journal write. A stop/resume
 // during durable admission must not authorize the previously queued action.
 export async function invokeControlledTool({ control, journal, mutatingTools, call, args, handler, channel }) {
+  assertToolPolicy(call.name);
   const scope = control.current();
   control.assertAllowed(scope);
   const guarded = (...parameters) => {

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-06T20:27:00.543457+00:00",
+  "command": "node --test --test-concurrency=2",
+  "runtime": "v24.22.1",
+  "applicationTree": "bc6bbaf6df8ee46f7e2bd26aef758a3e69d54b9a",
+  "exitCode": 0,
+  "tests": 1188,
+  "passed": 1188,
+  "failed": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "scope": "Disposable/synthetic local Node suite. Not live provider, physical phone, Discord call or installation restore acceptance."
+}

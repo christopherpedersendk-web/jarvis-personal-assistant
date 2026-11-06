@@ -1,9 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PersonalClaims } from '../personal-claims.mjs';
-import { PersonalKnowledge } from '../personal-knowledge.mjs';
+import { PersonalKnowledge, indexPersonalKnowledge } from '../personal-knowledge.mjs';
 
 const now = new Date('2026-11-05T12:00:00.000Z');
+test('M4/M6 retrieval identifies one active plan without losing or promoting historical meal records',async()=>{
+ const meal=id=>({id,startDate:'2026-11-05',revision:1,status:'draft',dishes:[{date:'2026-11-05',title:'Syntetisk grød'}]});
+ const state={mealPlans:[meal('new'),meal('old')]},before=JSON.stringify(state);
+ let documents=indexPersonalKnowledge(state).filter(x=>x.type==='meal-plan');
+ assert.deepEqual(documents.map(x=>[x.source.id,x.source.isActive]),[['new',true],['old',false]]);
+ assert.match(documents[1].text,/må ikke bruges som den aktuelle plan/);
+ assert.equal(JSON.stringify(state),before,'retrieval never rewrites stored plans');
+ const context=await new PersonalKnowledge({state}).contextAsync('Syntetisk grød');
+ assert.match(context,/Historisk madplan/);assert.match(context,/ikke bevis for spiste/);
+ state.mealPlans.unshift({...meal('unreviewed'),recipeStale:true});
+ documents=indexPersonalKnowledge(state).filter(x=>x.type==='meal-plan');
+ assert.equal(documents.some(x=>x.source.isActive),false,'an unsafe current plan cannot promote an older plan to current');
+});
 async function fixture(category = 'planned', options = {}) {
   const state = {}, claims = new PersonalClaims({ state, now: () => now });
   const proposed = await claims.propose({ subject: 'syntetisk_middag', value: 'Middag på Syntetisk Bistro den 7. november.', category,

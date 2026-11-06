@@ -1,3 +1,4 @@
+import { activeMealPlan } from './meal-plan-selection.mjs';
 // Evidence-backed local suggestions. No network access, external writes, calendar
 // title interpretation, or implicit approvals are performed by this module.
 import { personalTaskRecords } from './personal-tasks.mjs';
@@ -21,6 +22,16 @@ function suggestion(id, priority, title, detail, source, tab, { date = null, sou
   return { id, priority, title, detail, reason: detail, source, sourceRefs: [source, ...sourceRefs].slice(0, 8), tab, date };
 }
 
+// Only the current plan drives Today/reminders. Historical plans remain editable.
+export function effectiveMealPlans(state) {
+  const plan=activeMealPlan(state.mealPlans);if(!plan)return [];
+  const seen=new Set(),dishes=plan.dishes.filter(dish=>{
+    if(!dish||dayNumber(dish.date)===null||seen.has(dish.date))return false;
+    seen.add(dish.date);return true;
+  });
+  return dishes.length?[{...plan,dishes}]:[];
+}
+
 export function buildPlanningSuggestions({ state, now = new Date() }) {
   const result = [];
   const todayNumber = dayNumber(localDay(now));
@@ -28,7 +39,7 @@ export function buildPlanningSuggestions({ state, now = new Date() }) {
     const day = dayNumber(value);
     return day !== null && day >= todayNumber && day < todayNumber + 7;
   };
-  const plans = (state.mealPlans || []).filter(plan => plan && plan.id && !plan.archived && Array.isArray(plan.dishes));
+  const plans = effectiveMealPlans(state);
   const currentPlans = plans.filter(plan => plan.dishes.some(dish => inWeek(dish.date)));
   const household = state.mealHousehold;
   const coveredDays = new Set(currentPlans.flatMap(plan => plan.dishes.map(dish => dish.date)));
@@ -167,8 +178,7 @@ function householdToday(state, date) {
 
 function mealsToday(state, date, validateMealSources) {
   const rows = [];
-  for (const plan of state.mealPlans || []) {
-    if (!plan || plan.archived || !plan.id || !Array.isArray(plan.dishes)) continue;
+  for (const plan of effectiveMealPlans(state)) {
     for (const dish of plan.dishes.filter(item => item && item.date === date)) {
       let sourceInvalid = false;
       if (!dish.skip) {

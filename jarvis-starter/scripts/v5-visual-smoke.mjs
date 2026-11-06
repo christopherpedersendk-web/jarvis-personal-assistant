@@ -1490,8 +1490,13 @@ async function verifyHouseholdAndSources(page, width, height, label) {
   await page.locator(`[data-record-key="recipe:${recipeId}"].source-target`).waitFor({ state: 'visible' });
   assert.equal(await recipeCard.getByLabel('Titel', { exact: true }).inputValue(), rawTitle,
     `${label}: a source read must not overwrite the recipe editor draft`);
+  // Force the source module to arrive after a fast bootstrap response. This
+  // reproduces the deferred-script race instead of relying on CI timing.
+  const lateSourceModule = async route => { await delay(500); await route.continue(); };
+  await page.route('**/intelligence.js', lateSourceModule);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator(`[data-record-key="recipe:${recipeId}"].source-target`).waitFor({ state: 'visible' });
+  await page.unroute('**/intelligence.js', lateSourceModule);
   assert.equal(new URL(page.url()).searchParams.get('source'), `recipe:${recipeId}`,
     `${label}: copied/reloaded source URL keeps the exact source identity`);
   assert.equal(await recipeCard.getByLabel('Titel', { exact: true }).inputValue(), rawTitle);

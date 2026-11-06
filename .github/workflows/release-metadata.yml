@@ -1,0 +1,27 @@
+name: Release metadata
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact release tag to validate
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check exact tag against package and data schema
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: node jarvis-starter/scripts/check-release-version.mjs "$RELEASE_TAG"

@@ -18,8 +18,9 @@ export class ProviderControl {
   constructor({ state, transact, save, now = () => new Date(), env = {}, isTransactionActive = () => false }) {
     this.state = state; this.transact = transact; this.save = save; this.now = now;
     this.isTransactionActive = isTransactionActive;
-    this.context = new AsyncLocalStorage(); this.active = new Set();
+    this.context = new AsyncLocalStorage(); this.active = new Set(); this.activeScopes = new Map(); this.revokedScopes = new Set();
     this.limits = {
+      hostedToolCallsPerDay: limit(env.JARVIS_HOSTED_TOOL_CALLS_PER_DAY, 100, 10000),
       callsPerDay: limit(env.JARVIS_API_CALLS_PER_DAY, 200, 10000),
       outputTokensPerDay: limit(env.JARVIS_API_OUTPUT_TOKENS_PER_DAY, 300000, 10000000),
       inputBytesPerCall: limit(env.JARVIS_API_INPUT_BYTES, 512000, 2000000),
@@ -31,19 +32,23 @@ export class ProviderControl {
   run(fn, scope = this.scope()) { return this.context.run(scope, fn); }
   current() { return this.context.getStore() || this.scope(); }
   assertAllowed(scope = this.current()) {
-    if (this.settings().stopped || scope.generation !== this.settings().generation)
+    if (this.revokedScopes.has(scope.requestId) || this.settings().stopped || scope.generation !== this.settings().generation)
       throw fail('ASSISTANT_STOPPED', 'Assistenten er stoppet. Gennemgå igangværende handlinger før genoptagelse.');
+  }
+  revoke(scope) {
+    this.revokedScopes.add(scope.requestId);
+    for(const [controller,id] of this.activeScopes) if(id===scope.requestId)controller.abort();
   }
   // Shared stop boundary for non-model reads. An old operation cannot publish
   // a result after stop/resume, even if its transport ignores cancellation.
   async controlled(operation, scope = this.current()) {
     this.assertAllowed(scope);
-    const controller = new AbortController(); this.active.add(controller);
+    const controller = new AbortController(); this.active.add(controller); this.activeScopes.set(controller,scope.requestId);
     try {
       const result = await operation(controller.signal);
       this.assertAllowed(scope);
       return result;
-    } finally { this.active.delete(controller); }
+    } finally { this.active.delete(controller); this.activeScopes.delete(controller); }
   }
   async stop(stopped) {
     if (typeof stopped !== 'boolean') throw new Error('Angiv stop eller genoptagelse.');
@@ -60,9 +65,9 @@ export class ProviderControl {
     const entries = s.entries.filter(e => e.day === today || unresolved(e));
     const charge = e => Number.isSafeInteger(e.outputTokens) ? e.outputTokens : e.reservedOutput;
     return { stopped: s.stopped, day: today, limits: this.limits,
-      calls: entries.length, reservedOrUsedOutputTokens: entries.reduce((n, e) => n + charge(e), 0),
+      calls: entries.length, reservedHostedToolCalls: entries.reduce((n,e)=>n+(e.reservedHostedToolCalls||0),0), reservedOrUsedOutputTokens: entries.reduce((n, e) => n + charge(e), 0),
       unresolved: entries.filter(e => unresolved(e)).length,
-      coverage: 'Responses API; Realtime audio usage is not included. Not a currency budget.',
+      coverage: 'Responses and OpenClaw request admission; hosted tools use reserved invocation limits. Realtime and Discord voice have separate wall-clock reservations; Discord audio requests consume request slots. No measured audio tokens or currency budget.',
       recent: s.entries.slice(-30).map(e => ({ ...e })) };
   }
   async reserve(body, scope = this.current()) {
@@ -70,18 +75,22 @@ export class ProviderControl {
     if (this.isTransactionActive()) throw fail('API_TRANSACTION_SCOPE', 'Modelkald må ikke starte inde i en ugemt datatransaktion.');
     const reservedOutput = body.max_output_tokens ?? 3500;
     const inputBytes = Buffer.byteLength(JSON.stringify(body));
+    const hosted = (body.tools || []).some(t => t.type !== 'function');
+    const reservedHostedToolCalls = hosted ? body.max_tool_calls : 0;
+    if (hosted && (!Number.isSafeInteger(reservedHostedToolCalls) || reservedHostedToolCalls < 1 || reservedHostedToolCalls > 10))
+      throw fail('API_REQUEST_LIMIT', 'Hosted tools kræver en eksplicit grænse på 1–10 kald.');
     if (!Number.isSafeInteger(reservedOutput) || reservedOutput < 1 || reservedOutput > this.limits.outputTokensPerCall || inputBytes > this.limits.inputBytesPerCall)
       throw fail('API_REQUEST_LIMIT', 'Anmodningen overstiger den konfigurerede størrelse eller outputgrænse.');
     return this.transact(['providerControl'], async () => {
       this.assertAllowed(scope);
       const summary = this.snapshot();
-      if (summary.calls >= this.limits.callsPerDay || summary.reservedOrUsedOutputTokens + reservedOutput > this.limits.outputTokensPerDay)
+      if (summary.reservedHostedToolCalls + reservedHostedToolCalls > this.limits.hostedToolCallsPerDay || summary.calls >= this.limits.callsPerDay || summary.reservedOrUsedOutputTokens + reservedOutput > this.limits.outputTokensPerDay)
         throw fail('API_BUDGET_LIMIT', 'Dagens API-grænse er nået. Uafklarede kald tæller fortsat med.');
       const s = this.settings();
       const retained = s.entries.filter(e => unresolved(e) || e.day >= day(new Date(this.now().getTime() - 30 * 86400000)));
       if (retained.length >= 5000) throw fail('API_LEDGER_FULL', 'Forbrugsjournalen kræver gennemgang før nye kald.');
       const record = { id: randomUUID(), requestId: scope.requestId, day: day(this.now()),
-        model: String(body.model || '').slice(0, 100), inputBytes, reservedOutput, inputTokens: null, outputTokens: null,
+        model: String(body.model || '').slice(0, 100), inputBytes, reservedOutput, reservedHostedToolCalls, inputTokens: null, outputTokens: null,
         status: 'reserved', startedAt: this.now().toISOString(), durationMs: null, responseId: null };
       this.state.providerControl = { ...s, entries: [...retained, record] };
       await this.save();
@@ -102,22 +111,34 @@ export class ProviderControl {
       await this.save();
     });
   }
+  async externalSearch(operation) {
+    const scope=this.current();
+    const id=await this.reserve({model:'openclaw.web_search',max_output_tokens:1},scope);
+    try {
+      const result=await this.controlled(operation,scope);
+      await this.settle(id,{usage:{input_tokens:0,output_tokens:0}},'completed');
+      return result;
+    } catch(error) { await this.settle(id,null,'unknown').catch(()=>{});throw error; }
+  }
   async request(path, options, send) {
     const scope = this.current(); this.assertAllowed(scope);
     const creates = path === '/responses' && options.method === 'POST';
     const body = creates ? { ...options.body, max_output_tokens: options.body?.max_output_tokens ?? 3500 } : options.body;
+    if (creates && (body.tools || []).some(t=>t.type !== 'function') && body.max_tool_calls === undefined) body.max_tool_calls=2;
     const id = creates ? await this.reserve(body, scope) : null;
-    const controller = new AbortController(); this.active.add(controller);
+    const controller = new AbortController(); this.active.add(controller); this.activeScopes.set(controller,scope.requestId);
+    let settled=false;
     try {
       this.assertAllowed(scope);
       const result = await send(path, { ...options, body, signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal });
       const recordId = id || this.settings().entries.find(e => e.responseId && path === `/responses/${e.responseId}`)?.id;
       if (recordId) await this.settle(recordId, result, ['queued', 'in_progress'].includes(result.status) ? 'pending' : result.status || 'completed');
+      settled=true;this.assertAllowed(scope);
       return result;
     } catch (error) {
-      if (id) await this.settle(id, null, 'unknown').catch(() => {});
+      if (id && !settled) await this.settle(id, null, 'unknown').catch(() => {});
       error.requestId = scope.requestId;
       throw error;
-    } finally { this.active.delete(controller); }
+    } finally { this.active.delete(controller); this.activeScopes.delete(controller); }
   }
 }

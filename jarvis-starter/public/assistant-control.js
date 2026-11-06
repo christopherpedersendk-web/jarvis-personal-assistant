@@ -7,7 +7,10 @@
   let generation = 0, busy = false;
   const valid = (g, credential) => g === generation && credential && credential === token && !document.getElementById('workspace').classList.contains('hidden');
   function render(data) {
-    status.textContent = `${data.stopped ? 'Stoppet' : 'Aktiv'} · ${data.calls} af ${data.limits.callsPerDay} modelkald · ${data.reservedOrUsedOutputTokens} af ${data.limits.outputTokensPerDay} outputtokens brugt eller reserveret · ${data.unresolved} uafklarede kald.`;
+    status.textContent = `${data.stopped ? 'Stoppet' : 'Aktiv'} · ${data.calls} af ${data.limits.callsPerDay} API-kald · ${data.reservedOrUsedOutputTokens} af ${data.limits.outputTokensPerDay} outputtokens brugt eller reserveret · ${data.unresolved} uafklarede kald.`;
+    if (data.voice) status.textContent += ` Stemme: ${data.voice.active} aktive, ${data.voice.unresolved} uafklarede, ${data.voice.reservedSecondsToday}/${data.voice.secondsPerDay} sekunder reserveret i dag.`;
+    if(data.discordVoice?.enabled) status.textContent += ` Discord-stemme: ${({disconnected:'afbrudt',connecting:'forbinder',listening:'lytter',processing:'behandler',closing:'afbryder'})[data.discordVoice.status]||'ukendt'}, ${data.discordVoice.reservedSecondsToday}/${data.discordVoice.secondsPerDay} sekunder reserveret.`;
+    status.textContent += ` Hosted tools: ${data.reservedHostedToolCalls || 0}/${data.limits.hostedToolCallsPerDay || '—'} kald reserveret. Grænserne er ikke et kronebudget.`;
     stopButton.disabled = data.stopped; resumeButton.disabled = !data.stopped;
   }
   async function load(stopped) {

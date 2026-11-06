@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {evaluate,gradeEvaluation} from '../scripts/assistant-evaluation.mjs';
+const tasks=JSON.parse(await readFile(new URL('../scripts/fixtures/danish-assistant-tasks.json',import.meta.url)));
+test('evaluation separates unrun, ungraded and accepted real-language evidence',async()=>{
+ assert.equal(tasks.length,30);assert.equal(new Set(tasks.map(x=>x.id)).size,30);assert.ok(tasks.filter(x=>x.critical).length>=5);
+ const dry=await evaluate();assert.equal(dry.status,'not_run');assert.equal(gradeEvaluation(dry).accepted,false);
+ const report={...dry,live:true,model:'synthetic-model',results:tasks.map(x=>({...x,status:'awaiting_human_review',answers:x.turns.map(()=>({status:200,body:{answer:'Synthetic answer'}})),passed:true,reviewedBy:'synthetic reviewer',reviewNote:'Fixture only'}))};
+ assert.equal(gradeEvaluation(report).accepted,true);
+ const critical=report.results.find(x=>x.critical);critical.status='execution_failed';critical.critical=false;
+ assert.equal(gradeEvaluation(report).accepted,false,'removing a critical flag cannot hide failed execution');
+ critical.status='awaiting_human_review';
+ const originalId=critical.id;critical.id='invented';assert.equal(gradeEvaluation(report).accepted,false);critical.id=originalId;
+ const originalHash=report.datasetSha256;report.datasetSha256='changed';assert.equal(gradeEvaluation(report).accepted,false);report.datasetSha256=originalHash;
+ critical.answers[0].status=500;assert.equal(gradeEvaluation(report).accepted,false);critical.answers[0].status=200;
+ report.results[0].passed=null;assert.equal(gradeEvaluation(report).accepted,false);
+ report.results[0].passed=true;critical.passed=false;assert.equal(gradeEvaluation(report).accepted,false);
+ report.live=false;assert.equal(gradeEvaluation(report).accepted,false);
+});

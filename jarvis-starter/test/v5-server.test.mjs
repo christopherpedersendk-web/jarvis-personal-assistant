@@ -1,3 +1,4 @@
+import { offlineSnapshot } from '../scripts/offline-snapshot.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -8,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
+import { realtimeNetworkFixture } from './helpers/realtime-network.mjs';
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const token = 'synthetic-v5-http-token-32-characters-long';
@@ -20,7 +22,7 @@ async function freePort() {
   return value;
 }
 
-async function fixture(t, { legacy = null } = {}) {
+async function fixture(t, { legacy = null, voice = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'jarvis-v5-http-'));
   if (legacy) await writeFile(join(dir, 'state.json'), JSON.stringify(legacy));
   let child = null, exit = null, base = '';
@@ -34,8 +36,8 @@ async function fixture(t, { legacy = null } = {}) {
   }
   async function start() {
     const port = await freePort(); base = `http://127.0.0.1:${port}`;
-    child = spawn(process.execPath, ['server.mjs'], { cwd: appRoot,
-      env: syntheticServerEnv({ dataDir: dir, accessToken: token, port }),
+    child = spawn(process.execPath, [...(voice?['--import',`data:text/javascript,${encodeURIComponent(realtimeNetworkFixture)}`]:[]),'server.mjs'], { cwd: appRoot,
+      env: syntheticServerEnv({ dataDir: dir, accessToken: token, port,...(voice?{modelKey:'sk-synthetic-voice-http-key-32-characters'}:{}) }),
       stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => logs.push(String(chunk)));
     child.stderr.on('data', chunk => logs.push(String(chunk)));
@@ -65,7 +67,10 @@ async function fixture(t, { legacy = null } = {}) {
   }
   t.after(async () => { await stop(); await rm(dir, { recursive: true, force: true }); });
   await start();
-  return { dir, start, stop, api, asset };
+  return { dir, start, stop, api, asset, async voiceLease() {
+    const response=await fetch(base+'/api/realtime',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/sdp'},body:'v=0\r\nsynthetic-offer'});
+    assert.equal(response.status,201,await response.text());const id=response.headers.get('x-jarvis-voice-lease');assert.ok(id);return id;
+  } };
 }
 
 test('v5 HTTP: every v5 browser entrypoint is served with its real CSS/JS type', { timeout: 15_000 }, async t => {
@@ -122,7 +127,7 @@ test('v5 HTTP: independent personal knowledge, tasks and cases survive restart w
   const f = await fixture(t, { legacy: { preferences: 'syntetisk', extraLegacy: { manual: true } } });
   for (const path of ['/api/overview', '/api/personal-tasks', '/api/personal-claims', '/api/follow-ups'])
     await f.api('GET', path, undefined, 401, false);
-  assert.equal((await f.api('GET', '/health')).data.version, '5.0.2');
+  assert.equal((await f.api('GET', '/health')).data.version, JSON.parse(await readFile(join(appRoot, 'package.json'), 'utf8')).version);
   assert.equal((await f.api('GET', '/ready')).data.storage.ready, true);
   const state = (await f.api('GET', '/api/state')).data;
   assert.equal(state.preferences, 'syntetisk');
@@ -380,4 +385,62 @@ test('v5 HTTP: Nemlig direct approvals lack one-use revision-bound owner-click i
   await f.api('POST', `/api/nemlig/proposals/${id}/approve`, {
     approved: true, expectedRevision: 3, intentToken: intent.intentToken }, 409);
   assert.equal((await f.api('GET', '/api/nemlig/status')).data.proposals[0].status, 'pending');
+});
+
+test('M1 offline snapshot restores notes, media and settings and boots a separate service', {timeout: 30000}, async t => {
+ const f = await fixture(t);
+ const collection = (await f.api('POST', '/api/organizer', {title:'Restore fixture',type:'notes'},201)).data.collection;
+ await f.stop();
+ await writeFile(join(f.dir, 'private-settings.json'), '{}', {mode:0o600});
+ await writeFile(join(f.dir, 'synthetic-media.bin'), Buffer.from([1,4,9]), {mode:0o600});
+ const backup = f.dir + '-backup';
+ t.after(() => rm(backup, {recursive:true,force:true}));
+ await offlineSnapshot(f.dir, backup, {quiescent:true});
+ await assert.rejects(offlineSnapshot(f.dir, backup, {quiescent:true}));
+ // Restore into the now absent fixture directory, never overwrite a live tree.
+ await rm(f.dir, {recursive:true});
+ await offlineSnapshot(backup, f.dir, {quiescent:true});
+ await f.start();
+ assert.equal((await f.api('GET','/ready')).data.storage.ready,true);
+ assert.equal((await f.api('GET','/api/organizer/' + collection.id)).data.collection.title,'Restore fixture');
+ assert.deepEqual(await readFile(join(f.dir,'synthetic-media.bin')),Buffer.from([1,4,9]));
+});
+
+test('M2 restart normalizes saved data before revoking interrupted voice sessions', {timeout: 30000}, async t => {
+ const f = await fixture(t, {legacy: {
+  mealPlans: [{id:'legacy-meal', dishes:[], shoppingList:[]}],
+  providerControl:{stopped:true,generation:3,entries:[]},
+  voiceSessions:[{id:'interrupted',owner:'synthetic-owner',scope:{requestId:'old-request',generation:2},
+   day:'2026-01-01',status:'creating',callId:null,reservedSeconds:600,expiresAt:1}],
+ }});
+ assert.equal((await f.api('GET','/ready')).data.storage.ready,true);
+ let persisted=JSON.parse(await readFile(join(f.dir,'state.json')));
+ assert.equal(persisted.mealPlans[0].schemaVersion,2);
+ assert.equal(persisted.voiceSessions[0].status,'unknown');
+ assert.equal(persisted.providerControl.stopped,true);
+ await f.stop(); await f.start();
+ persisted=JSON.parse(await readFile(join(f.dir,'state.json')));
+ assert.equal(persisted.voiceSessions[0].status,'unknown');
+ assert.equal(persisted.providerControl.stopped,true);
+ assert.equal(persisted.providerControl.generation,3);
+});
+
+test('M2 HTTP voice aliases share exact-once dispatch, owner lease and durable stop', {timeout:30000},async t=>{
+ const f=await fixture(t,{voice:true});
+ const call={name:'create_personal_task',callId:'synthetic-once',args:{title:'Syntetisk stemmeopgave',purpose:'Test',durationMinutes:15}};
+ for(const path of ['/api/voice/tool','/api/assistant/tool']){
+  await f.api('POST',path,call,401,false);await f.api('POST',path,call,409);
+ }
+ const leaseId=await f.voiceLease();
+ await f.api('POST','/api/assistant/tool',{...call,leaseId});
+ assert.equal((await f.api('POST','/api/voice/tool',{...call,leaseId})).data.alreadyRecorded,true);
+ assert.equal((await f.api('GET','/api/personal-tasks')).data.tasks.length,1);
+ await f.api('POST','/api/assistant/control',{stopped:true});await f.stop();await f.start();
+ assert.equal((await f.api('GET','/api/assistant/control')).data.stopped,true);
+ await f.api('POST','/api/voice/tool',{...call,leaseId,callId:'blocked'},409);
+ await f.api('POST','/api/assistant/control',{stopped:false});
+ await f.api('POST','/api/voice/tool',{...call,leaseId,callId:'still-blocked'},409);
+ const fresh=await f.voiceLease();assert.notEqual(fresh,leaseId);
+ await f.api('POST','/api/voice/close',{leaseId:fresh});
+ assert.equal((await f.api('GET','/api/personal-tasks')).data.tasks.length,1);
 });
