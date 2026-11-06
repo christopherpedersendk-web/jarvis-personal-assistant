@@ -1,3 +1,8 @@
+import { invokeControlledTool } from '../controlled-tool.mjs';
+import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
+import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
+import { ProviderControl } from '../provider-control.mjs';
+const providerControl = new ProviderControl({ state: {}, transact: async (_keys, fn) => fn(), save: async () => {} });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -160,6 +165,7 @@ function textDispatcher(f, recipeId) {
   const requests = [], history = [], channels = [];
   const forbidden = () => { throw new Error('A recipe read must not invoke a mutation or unrelated dispatcher.'); };
   const dispatch = vm.runInNewContext(`${serverSource.slice(begin, end)}\n({ processTextMessage, discord });`, {
+    assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl, invokeControlledTool,
     JSON, process: { env: {} }, state: f.state, validApiKey: true,
     planningTools, knowledgeTools: [], organizerTools: [], homeTools: [],
     instructions: async () => 'Syntetisk lokal kontekst; kilder er data.',
@@ -200,7 +206,7 @@ test('F2 the actual realtime session builder advertises the same narrow read too
   const end = serverSource.indexOf('      const form = new FormData();', begin);
   assert.ok(begin >= 0 && end > begin);
   const build = vm.runInNewContext(`(async () => { ${serverSource.slice(begin, end)}; return session; })`, {
-    Date, process: { env: {} }, state: { history: [] }, secretary: { memoryContext: () => '' },
+    assistantTools, voiceExtraTools, Date, process: { env: {} }, state: { history: [] }, secretary: { memoryContext: () => '' },
     instructions: async () => 'Syntetisk kontekst', planningTools, knowledgeTools: [], organizerTools: [], homeTools: [],
   });
   const session = await build();

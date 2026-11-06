@@ -47,10 +47,12 @@ function safeResumeGateway(url) {
 export function validateDiscordConfig(config) {
   const userId = String(config.userId || '').trim();
   const guildId = String(config.guildId || '').trim();
+  const reportChannelId = String(config.reportChannelId || '').trim();
   if (userId && !SNOWFLAKE.test(userId)) throw new Error('Discord User ID skal være et numerisk Discord-ID.');
   if (guildId && !SNOWFLAKE.test(guildId)) throw new Error('Discord Server ID skal være et numerisk Discord-ID.');
   if (guildId && !userId) throw new Error('Angiv først dit Discord User ID.');
-  return { userId, guildId };
+  if (reportChannelId && (!guildId || !SNOWFLAKE.test(reportChannelId))) throw new Error('Rapportkanalen kræver et gyldigt kanal-ID og Server ID.');
+  return { userId, guildId, reportChannelId };
 }
 
 export function discordMessageRejection(event, config) {
@@ -535,6 +537,48 @@ export class DiscordGateway {
       }
     }
     return { sentChunks, complete: true };
+  }
+
+  async reportApi(path, options = {}, config = this.config) {
+    if (!config.token || !config.guildId || !config.userId) throw new Error('Gem bot, dit bruger-ID og Server ID først.');
+    const response = await this.fetcher('https://discord.com/api/v10' + path, {
+      ...options, headers: { Authorization: `Bot ${config.token}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`Discord rapportkanal fejlede (${Number(response.status) || 0}). Kontrollér botrettighederne.`);
+    return response.json();
+  }
+
+  async createReportChannel(config = this.config) {
+    const bot = await this.reportApi('/users/@me', {}, config);
+    if (!SNOWFLAKE.test(String(bot.id || ''))) throw new Error('Ugyldigt bot-ID fra Discord.');
+    const channels = await this.reportApi(`/guilds/${config.guildId}/channels`, {}, config);
+    if (!Array.isArray(channels)) throw new Error('Ugyldig kanalliste fra Discord.');
+    const existing = channels.filter(c => c.name === 'jarvis-rapporter');
+    if (existing.length) throw new Error('Kanalen jarvis-rapporter findes allerede. Gennemgå dens adgang og gem kanal-ID; der oprettes ikke en dublet.');
+    const channel = await this.reportApi(`/guilds/${config.guildId}/channels`, { method: 'POST', body: JSON.stringify({
+      name: 'jarvis-rapporter', type: 0, topic: 'JARVIS · planlagte rapporter og kildehenvisninger',
+      permission_overwrites: [
+        { id: config.guildId, type: 0, allow: '0', deny: '1024' },
+        { id: config.userId, type: 1, allow: '68608', deny: '0' },
+        { id: bot.id, type: 1, allow: '68608', deny: '0' },
+      ],
+    }) }, config);
+    if (!SNOWFLAKE.test(String(channel.id || '')) || channel.type !== 0 || channel.guild_id !== config.guildId)
+      throw new Error('Kanalen kan være oprettet, men svaret kunne ikke bekræftes. Kontrollér Discord før et nyt forsøg.');
+    return channel;
+  }
+
+  async notifyReport(text) {
+    if (!this.config.reportChannelId) return this.notifyOwner(text);
+    if (this.status !== 'connected') return false;
+    const generation = this.generation, config = { ...this.config };
+    const channel = await this.reportApi(`/channels/${config.reportChannelId}`, {}, config);
+    if (channel.id !== config.reportChannelId || channel.guild_id !== config.guildId || channel.type !== 0)
+      throw new Error('Rapportkanalen er ikke en tekstkanal på den gemte server. Ingen rapport sendt.');
+    if (generation !== this.generation) return false;
+    const delivery = await this.sendReply(channel.id, text, generation);
+    if (!delivery.complete) throw Object.assign(new Error('Rapportlevering er uafklaret. Ingen automatisk genafsendelse.'), { unknownOutcome: true });
+    return delivery.sentChunks > 0;
   }
 
   async notifyOwner(text) {

@@ -1,3 +1,8 @@
+import { invokeControlledTool } from '../controlled-tool.mjs';
+import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
+import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
+import { ProviderControl } from '../provider-control.mjs';
+const providerControl = new ProviderControl({ state: {}, transact: async (_keys, fn) => fn(), save: async () => {} });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -11,13 +16,14 @@ const to = source.indexOf('\nawait stateStore.initialize();', from);
 function fixture({ response, save = async () => {}, configured = true } = {}) {
   const calls = [], effects = [], history = [], queue = new BoundedJobQueue();
   const tool = { type: 'function', name: 'create_collection', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: [] } };
-  const handler = async (name, args) => { effects.push({ name, args }); return { saved: true }; };
+  const handler = async (name, args) => { effects.push({ name, args }); return name === 'search_web' ? { sources: [{ url: 'https://example.org/menu' }] } : name === 'get_maps_link' ? { url: 'https://www.google.com/maps/search/?api=1&query=Test' } : { saved: true }; };
   const result = vm.runInNewContext(source.slice(from, to) + '\n({ processTextMessage, discord, classifyChatFailure })', {
+    JSON, assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl, invokeControlledTool,
     state: { history: [] }, process: { env: {} }, validApiKey: configured, planningTools,
     organizerTools: [tool], knowledgeTools: [], homeTools: [],
     instructions: async () => 'Synthetic instructions', outputText: value => value.text || '',
     openaiJson: async (path, options) => { calls.push(structuredClone(options.body)); return response(calls.length, options.body); },
-    handleOrganizerTool: handler, handlePlanningTool: handler, handleHomeTool: handler,
+    handleOrganizerTool: handler, handlePlanningTool: handler, handleHomeTool: handler, handleSecretaryTool: handler,
     actionJournal: { invoke: async (call, args, dispatch, channel) => dispatch(call.name, args, { channel }) },
     chatWorkQueue: queue, addMessage: async (...args) => { await save(...args); history.push(args); },
     DiscordGateway: class { constructor(options) { this.onMessage = options.onMessage; } },
@@ -25,7 +31,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
   });
   return { ...result, calls, effects, history, queue };
 }
-const call = n => ({ type: 'function_call', call_id: 'synthetic-' + n, name: 'create_collection', arguments: '{"text":"synthetic"}' });
+const call = n => ({ type: 'function_call', call_id: 'synthetic-' + n, name: 'create_collection', arguments: '{"title":"synthetic","type":"notes"}' });
 
 for (const channel of ['text', 'discord']) test(`${channel}: a third tool round gets a final answer without replaying completed actions`, async () => {
   const f = fixture({ response: async n => n <= 3 ? { output: [call(n)] } : { output: [], text: 'Tre lokale resultater.' } });
@@ -78,7 +84,7 @@ test('OpenAI transport preserves error status/code for classification without ex
   const begin = source.indexOf('async function openaiJson('), end = source.indexOf('\nasync function backgroundResearch(', begin);
   const openaiJson = vm.runInNewContext(source.slice(begin, end) + '\nopenaiJson', {
     fetch: async () => ({ ok: false, status: 429, json: async () => ({ error: { code: 'insufficient_quota', message: 'synthetic private API fragment' } }) }),
-    AbortSignal, apiKey: 'synthetic', knownSecrets: () => [], redactSecrets: value => value,
+    providerControl, AbortSignal, apiKey: 'synthetic', knownSecrets: () => [], redactSecrets: value => value,
   });
   const f = fixture();
   await assert.rejects(openaiJson('/responses'), error => {
@@ -86,4 +92,15 @@ test('OpenAI transport preserves error status/code for classification without ex
     const safe = f.classifyChatFailure(error).chatFailure;
     assert.equal(safe.code, 'CHAT_QUOTA'); assert.doesNotMatch(JSON.stringify(safe), /synthetic private/); return true;
   });
+});
+
+for (const channel of ['text', 'discord']) test(`${channel}: restaurant research and Maps tools dispatch through the shared conversation`, async () => {
+  const names = ['search_web', 'get_maps_link'];
+  const args = [{ query: 'Restaurant test København menu' }, { name: 'Test', address: 'Testvej 1, København' }];
+  const f = fixture({ response: async n => n <= 2 ? { output: [{ type: 'function_call', call_id: 'research-' + n, name: names[n-1], arguments: JSON.stringify(args[n-1]) }] } : { output: [], text: 'Kort resumé uden links fra modellen.' } });
+  const answer = channel === 'discord' ? await f.discord.onMessage('Undersøg restauranten') : await f.processTextMessage('Undersøg restauranten');
+  assert.match(answer, /https:\/\/example.org/);
+  assert.match(answer, /https:\/\/www.google.com\/maps/);
+  assert.deepEqual(f.effects.map(e => e.name), names);
+  assert.equal(f.calls[2].input.filter(item => item.type === 'function_call_output').length, 2);
 });

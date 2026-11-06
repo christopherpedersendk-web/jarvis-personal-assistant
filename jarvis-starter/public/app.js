@@ -247,6 +247,8 @@ async function api(path, options = {}) {
     const error = new Error(detail || `HTTP ${response.status}`);
     error.status = response.status;
     error.code = payload?.code; error.outcome = payload?.outcome;
+    error.requestId = payload?.requestId || response.headers.get('X-Jarvis-Request-Id');
+    if (error.requestId && /^[0-9a-f-]{36}$/.test(error.requestId)) error.message += ` Reference: ${error.requestId}.`;
     throw error;
   }
   if (response.headers.get('Content-Type')?.includes('application/json')) return response.json();
@@ -286,11 +288,31 @@ function renderHistory(history) {
     meta.className = 'meta';
     meta.textContent = `${item.role === 'user' ? 'DIG' : 'JARVIS'} · ${item.channel === 'voice' ? 'TALE' : 'TEKST'}`;
     const content = document.createElement('span');
-    content.textContent = item.text;
+    appendChatLinks(content, item.text);
     bubble.append(meta, content);
     list.append(bubble);
   });
   list.scrollTop = list.scrollHeight;
+}
+
+// Create text nodes and HTTP(S) anchors only; never interpret model HTML.
+function appendChatLinks(root, value) {
+  const text = String(value || '');
+  const pattern = /https?:\/\/[^\s<>"'\[\]]+/g;
+  let last = 0;
+  for (const match of text.matchAll(pattern)) {
+    const raw = match[0].replace(/[.,;!?)]+$/, '');
+    root.append(document.createTextNode(text.slice(last, match.index)));
+    try {
+      const url = new URL(raw);
+      if (url.username || url.password) throw new Error('Credentials');
+      const link = document.createElement('a');
+      link.href = url.href; link.textContent = raw; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      root.append(link);
+    } catch { root.append(document.createTextNode(raw)); }
+    last = match.index + raw.length;
+  }
+  root.append(document.createTextNode(text.slice(last)));
 }
 
 function acceptHistoryPage(page, { older = false } = {}) {
@@ -587,7 +609,10 @@ async function handleVoiceTool(channel, call) {
   let output;
   try {
     const args = JSON.parse(call.arguments || '{}');
-    if (call.name === 'create_research_task') {
+    if (['get_maps_link', 'search_web', 'list_report_jobs', 'run_report_job', 'list_personal_tasks', 'create_personal_task', 'update_personal_task', 'complete_personal_task', 'list_follow_up_cases', 'create_follow_up_case', 'update_follow_up_case', 'get_weekly_review'].includes(call.name)) {
+      output = await api('/api/assistant/tool', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: call.name, args, callId: call.call_id }) });
+    } else if (call.name === 'create_research_task') {
       const data = await api('/api/tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...args, activation: 'paused' }),
       });
@@ -726,3 +751,14 @@ setInterval(() => {
     if (route.view === 'home') { api('/api/overview').then(renderOverview).catch(() => {}); refreshSecretary().catch(() => {}); }
   }
 }, 20_000);
+
+$('discord-create-report-channel').addEventListener('click', async () => {
+  const button = $('discord-create-report-channel'); button.disabled = true;
+  try {
+    const settings = await api('/api/discord/settings');
+    if (!confirm('Opret privat #jarvis-rapporter på den GEMTE server og aktivér rapportlevering? Serveradministratorer kan også se kanalen.')) return;
+    await api('/api/discord/report-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedBasis: settings.basis }) });
+    $('discord-status').textContent = 'Rapportkanalen er oprettet. Hent gemte Discord-indstillinger for at se kanal-ID.';
+  } catch (error) { $('discord-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});

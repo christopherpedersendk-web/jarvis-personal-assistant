@@ -2,11 +2,11 @@
 // query parameters survive the migration; this module never mutates data.
 (() => {
   const mainViews = ['home', 'plan', 'smart-home', 'watches', 'settings'];
-  const planSections = ['tasks', 'calendar', 'meals', 'notes'];
+  const planSections = ['tasks', 'calendar', 'meals', 'notes', 'web'];
   const taskKinds = ['personal', 'agent', 'projects'];
   const settingsSections = ['profile', 'notifications', 'integrations', 'automations', 'system', 'device'];
   const names = { home: 'I dag', plan: 'Planlægning', 'smart-home': 'Hjem', watches: 'Overvågninger', settings: 'Indstillinger' };
-  const sectionNames = { tasks: 'Opgaver', calendar: 'Kalender', meals: 'Madplan', notes: 'Noter og lister',
+  const sectionNames = { tasks: 'Opgaver', calendar: 'Kalender', meals: 'Madplan', notes: 'Noter og lister', web: 'Webarbejde',
     profile: 'Om dig og hukommelse', notifications: 'Notifikationer', integrations: 'Integrationer',
     automations: 'Automatiseringer', system: 'System og opdateringer', device: 'Denne enhed' };
   const aliases = {

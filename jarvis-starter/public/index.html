@@ -28,6 +28,9 @@
   <script src="/gui-watches.js" defer></script>
   <script src="/gui-shell.js" defer></script>
   <script src="/app.js" defer></script>
+  <script src="/assistant-control.js" defer></script>
+  <script src="/browser-workspace.js" defer></script>
+  <link rel="stylesheet" href="/browser-workspace.css" />
   <script src="/organizer.js" defer></script>
   <script src="/smart-home.js" defer></script>
   <script src="/system-health.js" defer></script>
@@ -91,7 +94,42 @@
           <button type="button" class="gui-subtab" data-plan-tab="calendar" aria-controls="plan-calendar" aria-pressed="false">Kalender</button>
           <button type="button" class="gui-subtab" data-plan-tab="meals" aria-controls="tab-meals" aria-pressed="false">Madplan</button>
           <button type="button" class="gui-subtab" data-plan-tab="notes" aria-controls="plan-notes" aria-pressed="false">Noter og lister</button>
+          <button type="button" class="gui-subtab" data-plan-tab="web" aria-controls="plan-web" aria-pressed="false">Webarbejde</button>
         </nav>
+        <section id="plan-web" class="plan-subview hidden" aria-label="Webarbejde">
+          <section class="panel web-workspace" aria-labelledby="web-title">
+            <h2 id="web-title">Læs en side, forbered en booking</h2>
+            <p>Læs offentlige sider og gem dine ønsker i en lokal kladde. Login, JavaScript og afsendelse af formularer understøttes endnu ikke.</p>
+            <p id="web-status" role="status" aria-live="polite">Hent status for at begynde.</p>
+            <button id="web-refresh" type="button" class="secondary">Hent status</button>
+            <details class="gui-disclosure"><summary>Godkendte websites</summary>
+              <p class="muted">Du vælger de præcise websites. Underdomæner kræver deres egen godkendelse. Fjernelse stopper aktive læsninger.</p>
+              <ul id="web-sites"></ul>
+              <form id="web-site-form" class="v5-fields">
+                <label for="web-site">Website</label><input id="web-site" type="url" required maxlength="2048" placeholder="https://restaurant.dk" />
+                <button type="submit" class="secondary">Godkend website til læsning</button>
+              </form>
+            </details>
+            <form id="web-read-form" class="v5-fields">
+              <label for="web-url">Offentligt link uden søgeparametre</label><input id="web-url" type="url" required maxlength="2048" placeholder="https://restaurant.dk/menu" />
+              <button type="submit" class="primary">Gennemgå link</button>
+            </form>
+            <div id="web-preview" class="hidden" aria-live="polite">
+              <p id="web-preview-url"></p><p id="web-preview-effect"></p>
+              <button id="web-read-confirm" type="button" class="primary">Læs denne side én gang</button>
+            </div>
+            <div id="web-reads"></div>
+            <form id="web-draft-form" class="v5-fields hidden">
+              <h3 id="web-draft-heading">Lokal bookingkladde</h3>
+              <p id="web-draft-source" class="muted"></p>
+              <label for="web-draft-title">Titel</label><input id="web-draft-title" required maxlength="160" placeholder="Middag for to" />
+              <label for="web-draft-details">Dine ønsker</label><textarea id="web-draft-details" required maxlength="2000" placeholder="Dato, tidspunkt, antal personer og spørgsmål. Gem ikke betalings- eller loginoplysninger."></textarea>
+              <button type="submit" class="primary">Gem lokal kladde</button><button id="web-draft-cancel" type="button" class="secondary">Luk redigering</button>
+            </form>
+            <h3>Dine kladder</h3><p class="muted">Ingen kladder er sendt. Åbn selv websitet for at aftale eller reservere.</p>
+            <div id="web-drafts"></div>
+          </section>
+        </section>
         <section id="plan-tasks" class="plan-subview" aria-label="Opgaver">
           <nav class="gui-filterbar" aria-label="Opgavetype">
             <button type="button" class="gui-filter active" data-task-filter="personal" aria-controls="plan-personal" aria-pressed="true">Personlige</button>
@@ -290,6 +328,14 @@
 <section id="settings-integrations" class="settings-subview hidden" aria-label="Integrationer"></section>
 <section id="settings-automations" class="settings-subview hidden" aria-label="Automatiseringer"></section>
 <section id="settings-system" class="settings-subview hidden" aria-label="System og opdateringer">
+  <section class="panel gui-settings-group" aria-labelledby="assistant-control-title">
+    <h2 id="assistant-control-title">Assistentens forbrug og stop</h2>
+    <p id="assistant-control-status" role="status" aria-live="polite">Hent status for at se forbrug og stopkontrol.</p>
+    <p class="muted small-text">Grænsen dækker tekst, research og kodekald. Stemmelyd og udgifter i kroner er endnu ikke medregnet. Stop afbryder aktive modelanmodninger og weblæsninger og spærrer efterfølgende chatværktøjer; allerede udførte handlinger og research hos udbyderen kan stadig have virkning.</p>
+    <button id="assistant-control-refresh" type="button">Hent status</button>
+    <button id="assistant-control-stop" type="button" disabled>Stop model- og webarbejde</button>
+    <button id="assistant-control-resume" type="button" disabled>Genoptag nye anmodninger</button>
+  </section>
   <section id="ai-setup" class="panel gui-settings-group" tabindex="-1" aria-labelledby="ai-setup-title">
     <h2 id="ai-setup-title">AI-forbindelse på serveren</h2>
     <p class="muted small-text">Chat og stemme bruger serverens OpenAI-forbindelse. Åbn <code>.env</code> på serveren, angiv din API-nøgle i <code>OPENAI_API_KEY</code>, og genstart JARVIS.</p>
@@ -351,7 +397,7 @@
             <label for="max-runs">Maksimalt antal nye baggrundskørsler pr. UTC-døgn</label>
             <input id="max-runs" type="number" min="1" max="100" required />
             <label class="inline-check" for="reminders-enabled"><input id="reminders-enabled" type="checkbox" checked /> Vis proaktive påmindelser om kommende datoer i JARVIS-indbakken</label>
-            <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send opgave- og datopåmindelser til mig via Discord DM</label>
+            <label class="inline-check" for="discord-alerts-enabled"><input id="discord-alerts-enabled" type="checkbox" /> Send rapporter til valgt Discord-kanal og øvrige påmindelser via DM</label>
             <label for="https-url">JARVIS' HTTPS-adresse</label>
             <input id="https-url" type="url" placeholder="https://din-enhed.tailnet.ts.net" />
             <label for="push-user">Pushover User Key</label>
@@ -375,6 +421,10 @@
             <input id="discord-user-id" inputmode="numeric" placeholder="Dit bruger-ID fra Discord" />
             <label for="discord-guild-id">Privat Discord Server ID (valgfrit)</label>
             <input id="discord-guild-id" inputmode="numeric" placeholder="Lad stå tomt for kun at tillade DM" />
+            <label for="discord-report-channel-id">Rapportkanal ID (valgfrit; ellers DM)</label>
+            <input id="discord-report-channel-id" inputmode="numeric" placeholder="Kanal til planlagte rapporter" />
+            <button id="discord-create-report-channel" type="button">Opret privat #jarvis-rapporter og aktivér rapportlevering</button>
+            <p class="muted small-text">Bruger den gemte bot og server. Botten skal kunne administrere kanaler. Kanalen skjules for @everyone; du, botten og serveradministratorer kan se den. En eksisterende kanal skal gennemgås og vælges med ID.</p>
             <p id="discord-status" class="muted small-text" aria-live="polite">Discord er ikke konfigureret.</p>
             <p id="discord-draft-status" class="draft-status small-text" role="status" aria-live="polite"></p>
             <p class="muted small-text">Kun Gem anvender dine ændringer. Hvis Discord-bot aktiv vælges, kan den gemte forbindelse startes. Nye nøgler holdes kun i denne åbne fane og gemmes aldrig som browserkladde.</p>

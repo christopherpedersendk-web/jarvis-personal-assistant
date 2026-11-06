@@ -8,7 +8,7 @@ const JarvisSettings = (() => {
         pushUser: ['push-user', 'secret', 'Pushover User Key'], pushToken: ['push-token', 'secret', 'Pushover App Token'] } },
     discord: { path: '/api/discord/settings', form: 'discord-form', status: 'discord-draft-status', submit: 'discord-submit', reload: 'discord-reload',
       fields: { enabled: ['discord-enabled', 'checkbox', 'Discord aktiv'], userId: ['discord-user-id', 'text', 'Dit Discord User ID'],
-        guildId: ['discord-guild-id', 'text', 'Discord Server ID'], token: ['discord-token', 'secret', 'Discord Bot Token'] } },
+        guildId: ['discord-guild-id', 'text', 'Discord Server ID'], reportChannelId: ['discord-report-channel-id', 'text', 'Rapportkanal ID'], token: ['discord-token', 'secret', 'Discord Bot Token'] } },
     proactive: { path: '/api/proactive/settings', readPath: '/api/proactive', snapshotKey: 'settings', form: 'proactive-form',
       status: 'proactive-draft-status', submit: 'proactive-submit', reload: 'proactive-reload',
       fields: { dailyEnabled: ['proactive-daily', 'checkbox', 'Daglig briefing'], weeklyEnabled: ['proactive-weekly', 'checkbox', 'Ugentlig opsamling'],
@@ -43,7 +43,7 @@ const JarvisSettings = (() => {
       if (url.protocol !== 'https:' || url.username || url.password || value.length > 500)
         throw new Error('Brug en HTTPS-adresse uden brugernavn, adgangskode eller indlejrede adgangsnøgler.');
     }
-    if (['userId', 'guildId'].includes(field) && value && !/^\d{15,22}$/.test(value)) throw new Error('Discord-ID skal være 15–22 cifre.');
+    if (['userId', 'guildId', 'reportChannelId'].includes(field) && value && !/^\d{15,22}$/.test(value)) throw new Error('Discord-ID skal være 15–22 cifre.');
     if (value.length > 500 || sensitive(value)) throw new Error('Et almindeligt indstillingsfelt er for langt eller indeholder følsomme oplysninger.');
     return value;
   }
