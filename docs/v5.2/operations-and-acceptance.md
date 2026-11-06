@@ -57,7 +57,9 @@ docker build -t jarvis-browser-review ./browser-runtime
 docker image inspect jarvis-browser-review --format '{{.Id}}'
 ```
 
-Efter særskilt beslutning om aktivering i testmiljø: sæt `JARVIS_DYNAMIC_BROWSER=yes` og `JARVIS_BROWSER_IMAGE` til det returnerede `sha256:...` image-ID. Der foretages ikke automatisk pull ved en læsning. Kør `node scripts/browser-preflight.mjs` og `node scripts/isolated-browser-smoke.mjs` med image-ID'et i miljøet. Prøverne bruger syntetiske kilder; de må ikke erstattes med `--no-sandbox`, `seccomp=unconfined`, privilegeret container eller host-netværk for at få grønt.
+Efter særskilt beslutning om aktivering i testmiljø: sæt `JARVIS_DYNAMIC_BROWSER=yes` og `JARVIS_BROWSER_IMAGE` til det returnerede `sha256:...` image-ID. Der foretages ikke automatisk pull ved en læsning. Kør `node scripts/browser-preflight.mjs` og `node scripts/isolated-browser-smoke.mjs` med image-ID'et i miljøet. De to prøver bruger syntetiske kilder; de må ikke erstattes med `--no-sandbox`, `seccomp=unconfined`, privilegeret container eller host-netværk for at få grønt.
+
+CI kører desuden `node scripts/public-browser-smoke.mjs --live` mod to faste offentlige sider med den rigtige HTTPS-/DNS-transport. Resultatet gemmes i `artifacts/browser/public-read.json` med præcis commit og indholdshash. Det beviser offentlig læsning i CI; JavaScript-udførelse og angreb kontrolleres særskilt med de syntetiske sider.
 
 I **Planlægning → Webarbejde**: godkend én offentlig HTTPS-origin, vælg JavaScript-læsning, gennemgå præcis URL, og godkend én læsning. Kontrollér et kendt offentligt website med JS-indhold. Sammenhold uddragets tekst, URL og tidspunkt med siden manuelt. Afprøv stop; kontrollér, at ingen `jarvis-browser-*` container bliver tilbage. Skift til statisk læsning ved uunderstøttet side og vis begrænsningen ærligt.
 

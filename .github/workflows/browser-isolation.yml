@@ -25,3 +25,15 @@ jobs:
           export JARVIS_BROWSER_IMAGE="$(docker image inspect jarvis-browser-test --format '{{.Id}}')"
           node scripts/browser-preflight.mjs
           node scripts/isolated-browser-smoke.mjs
+      - name: Verify real public reads without credentials
+        working-directory: jarvis-starter
+        run: |
+          export JARVIS_BROWSER_IMAGE="$(docker image inspect jarvis-browser-test --format '{{.Id}}')"
+          node scripts/public-browser-smoke.mjs --live
+      - name: Retain public read evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-browser-${{ github.event.pull_request.head.sha }}
+          path: jarvis-starter/artifacts/browser/
+          retention-days: 30
