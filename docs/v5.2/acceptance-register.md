@@ -58,6 +58,7 @@ Filer og tests nedenfor indgår i den nye PR-kandidat; præcis remote-SHA og CI 
 | M3.7 / 1 | Discord-kanaler kan oprettes/slettes efter konkret ejerreview | verificeret | `discord-channels.mjs`, `server.mjs`, `discord-channels.test.mjs` | Mock af officiel Discord REST-kontrakt; ingen faktisk kanal oprettet/slettet. Kun tekstkanaler. OFF som standard. |
 | M2.7 / 1 | Kanalreview afviser genbrug, ændret kanal, forkert ejer/server/kanal, expiry, restart, stop og usikker lagring | verificeret | `discord-channels.test.mjs`; varig journal før POST/DELETE | Discord har ingen atomisk revisionsbetingelse for DELETE. Kanalændringer efter sidste GET kan ikke udelukkes; testserver og konkret ejerreview påkrævet. Ukendt write spærrer nye mutationsforsøg. |
 | M3.8 / 1 | Faktisk Discord-kanalstyring og sammenhængende browserresearch | blokeret | Driftsvejledning afsnit 7–8 | Mangler særskilt godkendt testserver, botrettigheder/modeladgang og browser-runtime på målhost. Funktionerne aktiveres ikke i produktion. |
+| M2.8 / 1 | Ældre rapportkanalrute respekterer stop og konfigurationsændring | verificeret | `server.mjs`, `discord-gateway.mjs`; HTTP-stop og abort mellem GET/POST i `discord-channels.test.mjs` | Syntetisk Discord; allerede modtaget POST kan ikke rulles tilbage. Den eksisterende journal bevarer ukendt udfald. |
 
 ## Udskudt ved ejerbeslutning
 

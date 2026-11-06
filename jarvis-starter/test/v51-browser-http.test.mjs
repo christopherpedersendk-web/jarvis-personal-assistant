@@ -69,6 +69,7 @@ globalThis.fetch = async (url, options) => {
   const old = await request('/api/browser/preview', { url: 'https://restaurant.example.org/menu' });
   await request('/api/assistant/control', { stopped: true }); await stop(); await start();
   assert.equal((await request('/api/browser')).stopped, true);
+  assert.match((await request('/api/discord/report-channel', {}, 409)).error, /stoppet/);
   assert.equal((await request('/api/browser')).drafts[0].id, draft.id);
   await request('/api/browser/preview', { url: 'https://restaurant.example.org/menu' }, 409);
   await request('/api/assistant/control', { stopped: false });

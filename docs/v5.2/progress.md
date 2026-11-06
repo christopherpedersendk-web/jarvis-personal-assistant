@@ -46,3 +46,7 @@ Baseline `d4cc25be6e6e74d060d3946119db417e8f6d350b` er kontrolleret remote: PR #
 Tests og præcis efterfølgende kandidat fremgår af den opdaterede PR og `local-test-result.json`. Ingen hel milestone er lukket. Næste ejerprøve skal ud over de tidligere trin afprøve nedenstående nye opt-in-forløb i en isoleret testinstallation.
 
 Den nye lokale fulde suite består: **1.187/1.187**, 0 fejl/skipped/cancelled. App-træ: `e6dd9a34bb762eff61b682c0af97589294cb0f3f`. CI for den nye remote-SHA skal kontrolleres særskilt; baseline-checks erstatter den ikke.
+
+M2-efterkontrol fandt en konkret stopomgåelse i den ældre `/api/discord/report-channel`. Ruten kontrollerer nu fælles stop før review og før hvert providerkald, videresender abort og afviser ændret konfiguration. HTTP- og transportregression er tilføjet.
+
+Efter M2-rettelsen: **1.188/1.188** lokale tests, ingen fejl/skipped/cancelled. App-træ `bc6bbaf6df8ee46f7e2bd26aef758a3e69d54b9a`. Denne registrering erstatter 1.187-resultatet for den nye kandidat.

@@ -62,3 +62,14 @@ test('stop while external write is in flight records unknown and never reports c
  const running=f.confirm(id);await started;await f.control.stop(true);await f.control.stop(false);release();
  await assert.rejects(running,/ukendt/);assert.equal(f.work.rows()[0].status,'unknown');
 });
+test('legacy report channel creation honors cancellation before POST',async()=>{
+ const {DiscordGateway}=await import('../discord-gateway.mjs');
+ const abort=new AbortController();let calls=0;
+ const gateway=new DiscordGateway({onMessage:async()=>'',fetcher:async(url,options)=>{
+   calls++;assert.ok(options.signal);
+   if(url.endsWith('/users/@me'))return new Response(JSON.stringify({id:bot}));
+   abort.abort();return new Response('[]');
+ }});
+ await assert.rejects(gateway.createReportChannel({token:'synthetic',guildId:guild,userId:owner},{signal:abort.signal}));
+ assert.equal(calls,2,'no POST after stop between preflight reads');
+});

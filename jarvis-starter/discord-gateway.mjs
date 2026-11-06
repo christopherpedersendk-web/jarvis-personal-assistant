@@ -575,27 +575,28 @@ export class DiscordGateway {
   async reportApi(path, options = {}, config = this.config) {
     if (!config.token || !config.guildId || !config.userId) throw new Error('Gem bot, dit bruger-ID og Server ID først.');
     const response = await this.fetcher('https://discord.com/api/v10' + path, {
-      ...options, headers: { Authorization: `Bot ${config.token}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20_000),
+      ...options, headers: { Authorization: `Bot ${config.token}`, 'Content-Type': 'application/json' }, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
     });
     if (!response.ok) throw new Error(`Discord rapportkanal fejlede (${Number(response.status) || 0}). Kontrollér botrettighederne.`);
     return response.json();
   }
 
-  async createReportChannel(config = this.config) {
-    const bot = await this.reportApi('/users/@me', {}, config);
+  async createReportChannel(config = this.config, { signal, guard = () => {} } = {}) {
+    const api = (path, options = {}) => { guard(); signal?.throwIfAborted(); return this.reportApi(path, { ...options, signal }, config); };
+    const bot = await api('/users/@me');
     if (!SNOWFLAKE.test(String(bot.id || ''))) throw new Error('Ugyldigt bot-ID fra Discord.');
-    const channels = await this.reportApi(`/guilds/${config.guildId}/channels`, {}, config);
+    const channels = await api(`/guilds/${config.guildId}/channels`);
     if (!Array.isArray(channels)) throw new Error('Ugyldig kanalliste fra Discord.');
     const existing = channels.filter(c => c.name === 'jarvis-rapporter');
     if (existing.length) throw new Error('Kanalen jarvis-rapporter findes allerede. Gennemgå dens adgang og gem kanal-ID; der oprettes ikke en dublet.');
-    const channel = await this.reportApi(`/guilds/${config.guildId}/channels`, { method: 'POST', body: JSON.stringify({
+    const channel = await api(`/guilds/${config.guildId}/channels`, { method: 'POST', body: JSON.stringify({
       name: 'jarvis-rapporter', type: 0, topic: 'JARVIS · planlagte rapporter og kildehenvisninger',
       permission_overwrites: [
         { id: config.guildId, type: 0, allow: '0', deny: '1024' },
         { id: config.userId, type: 1, allow: '68608', deny: '0' },
         { id: bot.id, type: 1, allow: '68608', deny: '0' },
       ],
-    }) }, config);
+    }) });
     if (!SNOWFLAKE.test(String(channel.id || '')) || channel.type !== 0 || channel.guild_id !== config.guildId)
       throw new Error('Kanalen kan være oprettet, men svaret kunne ikke bekræftes. Kontrollér Discord før et nyt forsøg.');
     return channel;

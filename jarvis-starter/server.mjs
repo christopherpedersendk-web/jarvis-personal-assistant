@@ -1375,15 +1375,21 @@ async function route(req, res) {
     }
     if (req.method === 'POST' && path === '/api/discord/report-channel') {
       try {
+        const scope = providerControl.current(); providerControl.assertAllowed(scope);
         const input = await bodyJson(req), config = { ...discordConfig };
         const values = currentSettingsValues('discord');
         settingsReview.patch('discord', values, { patch: { guildId: values.guildId, userId: values.userId, reportChannelId: values.reportChannelId, enabled: values.enabled }, expectedBasis: input.expectedBasis });
         if (!config.enabled || !config.guildId || !config.userId || config.reportChannelId) throw new Error('Gem en aktiv bot og Server ID først. En eksisterende rapportkanal overskrives ikke.');
         await actionJournal.invoke({ name: 'create_discord_report_channel', call_id: `reports:${config.guildId}:${config.userId}` },
           { guildId: config.guildId, userId: config.userId }, async () => {
-            const channel = await discord.createReportChannel(config);
+            const channel = await providerControl.controlled(signal => discord.createReportChannel(config, {
+              signal, guard: () => { providerControl.assertAllowed(scope);
+                if (discordConfig.enabled !== config.enabled || discordConfig.token !== config.token || discordConfig.guildId !== config.guildId || discordConfig.userId !== config.userId || discordConfig.reportChannelId !== config.reportChannelId)
+                  throw new Error('Discord-opsætningen er ændret; gennemgå handlingen igen.'); }
+            }), scope);
             await persistPrivateSettings(next => {
-              if (next.discord.token !== config.token || next.discord.guildId !== config.guildId || next.discord.userId !== config.userId || next.discord.reportChannelId)
+              providerControl.assertAllowed(scope);
+              if (next.discord.enabled !== config.enabled || next.discord.token !== config.token || next.discord.guildId !== config.guildId || next.discord.userId !== config.userId || next.discord.reportChannelId)
                 throw new Error('Opsætningen blev ændret under oprettelsen. Kanalen kan være oprettet; gennemgå Discord.');
               next.discord.reportChannelId = channel.id;
             }, () => { state.settings.discordAlertsEnabled = true; });
