@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { syntheticServerEnv } from './helpers/synthetic-env.mjs';
+import { realtimeNetworkFixture } from './helpers/realtime-network.mjs';
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const token = 'synthetic-v5-http-token-32-characters-long';
@@ -21,7 +22,7 @@ async function freePort() {
   return value;
 }
 
-async function fixture(t, { legacy = null } = {}) {
+async function fixture(t, { legacy = null, voice = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'jarvis-v5-http-'));
   if (legacy) await writeFile(join(dir, 'state.json'), JSON.stringify(legacy));
   let child = null, exit = null, base = '';
@@ -35,8 +36,8 @@ async function fixture(t, { legacy = null } = {}) {
   }
   async function start() {
     const port = await freePort(); base = `http://127.0.0.1:${port}`;
-    child = spawn(process.execPath, ['server.mjs'], { cwd: appRoot,
-      env: syntheticServerEnv({ dataDir: dir, accessToken: token, port }),
+    child = spawn(process.execPath, [...(voice?['--import',`data:text/javascript,${encodeURIComponent(realtimeNetworkFixture)}`]:[]),'server.mjs'], { cwd: appRoot,
+      env: syntheticServerEnv({ dataDir: dir, accessToken: token, port,...(voice?{modelKey:'sk-synthetic-voice-http-key-32-characters'}:{}) }),
       stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => logs.push(String(chunk)));
     child.stderr.on('data', chunk => logs.push(String(chunk)));
@@ -66,7 +67,10 @@ async function fixture(t, { legacy = null } = {}) {
   }
   t.after(async () => { await stop(); await rm(dir, { recursive: true, force: true }); });
   await start();
-  return { dir, start, stop, api, asset };
+  return { dir, start, stop, api, asset, async voiceLease() {
+    const response=await fetch(base+'/api/realtime',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/sdp'},body:'v=0\r\nsynthetic-offer'});
+    assert.equal(response.status,201,await response.text());const id=response.headers.get('x-jarvis-voice-lease');assert.ok(id);return id;
+  } };
 }
 
 test('v5 HTTP: every v5 browser entrypoint is served with its real CSS/JS type', { timeout: 15_000 }, async t => {
@@ -419,4 +423,24 @@ test('M2 restart normalizes saved data before revoking interrupted voice session
  assert.equal(persisted.voiceSessions[0].status,'unknown');
  assert.equal(persisted.providerControl.stopped,true);
  assert.equal(persisted.providerControl.generation,3);
+});
+
+test('M2 HTTP voice aliases share exact-once dispatch, owner lease and durable stop', {timeout:30000},async t=>{
+ const f=await fixture(t,{voice:true});
+ const call={name:'create_personal_task',callId:'synthetic-once',args:{title:'Syntetisk stemmeopgave',purpose:'Test',durationMinutes:15}};
+ for(const path of ['/api/voice/tool','/api/assistant/tool']){
+  await f.api('POST',path,call,401,false);await f.api('POST',path,call,409);
+ }
+ const leaseId=await f.voiceLease();
+ await f.api('POST','/api/assistant/tool',{...call,leaseId});
+ assert.equal((await f.api('POST','/api/voice/tool',{...call,leaseId})).data.alreadyRecorded,true);
+ assert.equal((await f.api('GET','/api/personal-tasks')).data.tasks.length,1);
+ await f.api('POST','/api/assistant/control',{stopped:true});await f.stop();await f.start();
+ assert.equal((await f.api('GET','/api/assistant/control')).data.stopped,true);
+ await f.api('POST','/api/voice/tool',{...call,leaseId,callId:'blocked'},409);
+ await f.api('POST','/api/assistant/control',{stopped:false});
+ await f.api('POST','/api/voice/tool',{...call,leaseId,callId:'still-blocked'},409);
+ const fresh=await f.voiceLease();assert.notEqual(fresh,leaseId);
+ await f.api('POST','/api/voice/close',{leaseId:fresh});
+ assert.equal((await f.api('GET','/api/personal-tasks')).data.tasks.length,1);
 });

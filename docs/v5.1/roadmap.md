@@ -1,5 +1,7 @@
 # JARVIS v5.1.0 — arbejdsgrundlag og releasekrav
 
+> Historisk v5.1-grundlag. Den aktuelle status efter released v5.1.1 findes i [v5.2-acceptregisteret](../v5.2/acceptance-register.md). Nyere kode og ejerbekræftelser har forrang.
+
 Ejerbeslutning 6. november 2026 (Europe/Copenhagen): byt N4/N5, start v5.1.0,
 medtag ALLE P0/P1 og hele N1/N2 som minimum. N3's P1-arbejde er dermed også
 releaseomfang; N1/N2 er ikke en scope-reduktion. Smart Home afventer lokal agent.

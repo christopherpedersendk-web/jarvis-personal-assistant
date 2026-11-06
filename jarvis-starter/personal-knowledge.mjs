@@ -6,6 +6,7 @@ import { currentClaim, claimConflicts } from './personal-claims.mjs';
 import { containsSecret } from './privacy.mjs';
 import { resolveHouseholdAttendance } from './meal-planner.mjs';
 import { personalTaskRecords } from './personal-tasks.mjs';
+import { activeMealPlan } from './meal-plan-selection.mjs';
 
 // Function words are not identifying evidence. Keep negation/boundary words
 // such as ikke, aldrig, ingen, uden and kun: removing them can reverse meaning.
@@ -182,15 +183,17 @@ export function indexPersonalKnowledge(state, { now = new Date() } = {}) {
       confirmation: 'user-reviewed' });
   }
   const currentRecipes = new Map((state.recipes || []).filter(x => x && !x.archived && x.status === 'confirmed' && x.confirmed !== false).map(x => [x.id, x]));
+  const activePlanId = activeMealPlan(state.mealPlans)?.id;
   for (const plan of (state.mealPlans || []).filter(x => x && !x.archived && !x.recipeStale).slice(0, 12)) {
     if (!plan.id || !Array.isArray(plan.dishes)) continue;
     // A retained plan snapshot must not resurrect a forgotten recipe, even if
     // invalidation was interrupted before its recipeStale flag was persisted.
     if (plan.dishes.some(dish => (dish.sourceRefs || []).some(ref => ref.kind === 'recipe' &&
         (!currentRecipes.has(ref.id) || ref.revision && ref.revision !== (currentRecipes.get(ref.id).revision || 1))))) continue;
-    documents.push(makeDocument(`meal-plan:${plan.id}`, 'meal-plan', 'Madplan',
-      `${plan.startDate} · Status: ${plan.status || 'draft'}${plan.needsReview || plan.householdStale || plan.profileStale ? ' · Skal gennemgås igen' : ''} · ${plan.dishes.map(x => `${x.date}: ${x.skip ? 'Spiser ude / springes over' : x.title}${x.theme ? ` (${x.theme})` : ''}`).join('; ')}`,
-      { kind: 'meal-plan', id: plan.id, revision: plan.revision || 1 }, plan.updatedAt || plan.createdAt));
+    const isActive = plan.id === activePlanId;
+    documents.push(makeDocument(`meal-plan:${plan.id}`, 'meal-plan', isActive ? 'Aktiv madplan' : 'Historisk madplan',
+      `${isActive ? 'Aktiv plan; ikke bevis for spiste måltider.' : 'Historisk plan; må ikke bruges som den aktuelle plan.'} ${plan.startDate} · Status: ${plan.status || 'draft'}${plan.needsReview || plan.householdStale || plan.profileStale ? ' · Skal gennemgås igen' : ''} · ${plan.dishes.map(x => `${x.date}: ${x.skip ? 'Spiser ude / springes over' : x.title}${x.theme ? ` (${x.theme})` : ''}`).join('; ')}`,
+      { kind: 'meal-plan', id: plan.id, revision: plan.revision || 1, isActive }, plan.updatedAt || plan.createdAt));
   }
   // Samtalehistorik, logfiler, .env, kalenderdetaljer, rå websider og
   // ubekræftede opskrifter bliver ikke indekseret. Kilder genvalideres også

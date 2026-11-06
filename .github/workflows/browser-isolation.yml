@@ -2,7 +2,7 @@ name: Isolated browser containment
 on:
   pull_request:
     branches: [main]
-    paths: ['jarvis-starter/**', '.github/workflows/browser-isolation.yml']
+    paths: ['jarvis-starter/**', 'docs/v5.2/**', '.github/workflows/browser-isolation.yml']
 permissions:
   contents: read
 jobs:

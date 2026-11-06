@@ -9,6 +9,7 @@ on:
       - fix/v5-discord-meal-plan
     paths:
       - 'jarvis-starter/**'
+      - 'docs/v5.2/**'
       - 'docs/gui/**'
       - '.github/workflows/gui-redesign.yml'
   workflow_dispatch:

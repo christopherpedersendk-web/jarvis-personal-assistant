@@ -1,5 +1,7 @@
 # Verifikation af v5.1.0-arbejdet
 
+> Historisk v5.1-grundlag. Den aktuelle status efter released v5.1.1 findes i [v5.2-acceptregisteret](../v5.2/acceptance-register.md). Nyere kode og ejerbekræftelser har forrang.
+
 ## Rapportkanal, madplanparitet og webnavigation
 
 Lokal fuld regression: 1.124/1.124 bestået fra app-mappen. Efter tilføjelse

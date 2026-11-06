@@ -1,5 +1,7 @@
 # N4: offentlige webkilder og lokale bookingkladder
 
+> Historisk v5.1-grundlag. Den aktuelle status efter released v5.1.1 findes i [v5.2-acceptregisteret](../v5.2/acceptance-register.md). Nyere kode og ejerbekræftelser har forrang.
+
 Implementeringsstatus 6. november 2026. Første afgrænsede N4-fase på
 `feature/v5.1.0`, som svar på ejerens prioritering af browserarbejde og sikkerhed.
 
