@@ -7,6 +7,11 @@ export async function invokeControlledTool({ control, journal, mutatingTools, ca
     control.assertAllowed(scope);
     return handler(...parameters);
   };
-  if (!mutatingTools.has(call.name)) return guarded(call.name, args, { channel });
+  if (!mutatingTools.has(call.name)) {
+    const result = await guarded(call.name, args, { channel });
+    // A slow read from an old generation must not feed a resumed conversation.
+    control.assertAllowed(scope);
+    return result;
+  }
   return journal.invoke(call, args, guarded, channel);
 }

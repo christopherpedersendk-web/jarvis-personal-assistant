@@ -104,3 +104,25 @@ og N1/N2 er ikke ophævet. Der oprettes ikke et færdigt release-tag, mens de
 åbne krav ovenfor eller kandidatens CI fejler. Kanalopsætning, live
 provider-/Discord-/mikrofonprøve og serverrestore kræver adgang til den
 faktiske installation. En fremtidig release eller deployment er ikke udført.
+
+## Prioriteret afslutning — 1 til 3
+
+Prioritet 1 er releaseblokerende; prioritet 2 er resterende v5.1 P1-arbejde;
+prioritet 3 er senere. Oprindelige P0/P1-krav ændres ikke.
+
+| Prioritet | Restarbejde | Igangsætning / afhængighed |
+|---|---|---|
+| 1 | N2 fælles kanalpolitik, godkendelser og stop inklusive Realtime | Kodereview startet; stop/resume kasserer nu sene læseresultater, tre nye tests. Fuld Realtime og legacy-dispatch er fortsat åbne. |
+| 1 | N1/N2 stabil kandidat-CI | Nyeste dbbe5f9f består semantik og GUI-workflow; v5 mobilsmoke fejler ved recipe source-target efter reload. Log og kildevej undersøgt; årsag ikke bekræftet. |
+| 1 | N1 live model-/Discord-/stemmeprøver | Prøvegrundlag findes; udførelse kræver server/API og fysisk mikrofon. Ingen live adgang i denne session. |
+| 1 | N1 fuld restore og N2 driftsbeskyttelse | Kræver konsistent backup af installationen, isoleret restore og serviceboot. Ikke verificeret med produktionsmateriale. |
+| 1 | N2 samlet forbrug | Responses-kontrol findes; Realtime og hosted tools mangler. Må ikke kaldes fuldt økonomisk budget. |
+| 2 | N3 skills, hukommelsesholdout og naturlige brugeropgaver | Routing og evaluering mangler; syntetiske handler-tests er ikke modelevaluering. |
+| 2 | N3 I dag, gentagelser og mobilaccept | Samlet UX-/påmindelsesaccept og fysisk iPhone mangler. |
+| 2 | N4 offentlig browserfase | Live offentlige kilder og fysisk accept mangler; statisk navigation/kladder implementeret. |
+| 2 | Discord stemmekanal | Separat lydtransport, brugerafgrænsning, stop og forbrugsgrænser mangler. |
+| 3 | Dynamisk browser/login/formularer; N5 kalenderwrite | Afventer isolation, egresskontrol og handlingsgodkendelser. |
+| 3 | Smart Home | Afventer lokal netværksagent. |
+
+Alle prioritet 1-spor er gennemgået for afhængigheder. Kun kodearbejde og
+CI-diagnose kan udføres her; de eksterne prøver er blokerede, ikke baggrundskørsler.

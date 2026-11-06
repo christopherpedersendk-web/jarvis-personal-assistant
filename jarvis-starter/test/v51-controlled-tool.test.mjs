@@ -32,3 +32,15 @@ for (const channel of ['text', 'discord', 'voice']) for (const resume of [false,
     assert.equal(executions, 0);
   });
 }
+
+for (const channel of ['text', 'discord', 'voice']) test(`${channel}: stop/resume discards an in-flight read result`, async () => {
+  const store = new DurableState({ initial: {}, write: async () => {} });
+  await store.initialize();
+  const control = new ProviderControl({ state: store.state, save: () => store.save(), transact: (...a) => store.transact(...a) });
+  let release;
+  const gate = new Promise(r => release = r);
+  const pending = invokeControlledTool({ control, mutatingTools: new Set(), call: { name: 'read' }, args: {}, channel,
+    handler: async () => { await gate; return { text: 'old result' }; } });
+  const rejected = assert.rejects(pending, { code: 'ASSISTANT_STOPPED' });
+  await control.stop(true); await control.stop(false); release(); await rejected;
+});
