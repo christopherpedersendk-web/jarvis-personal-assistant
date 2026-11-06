@@ -94,8 +94,8 @@ export function extractWebPage(buffer, url, secrets = []) {
  * or connection to memory/research context. Website text stays untrusted data.
  */
 export class BrowserWorkspace {
-  constructor({ state, transact, save, control, owner, now = () => new Date(), fetchResource = fetchRecipeResource, secrets = () => [] }) {
-    Object.assign(this, { state, transact, save, control, owner, now, fetchResource, secrets });
+  constructor({ state, transact, save, control, owner, now = () => new Date(), fetchResource = fetchRecipeResource, renderDynamic = null, secrets = () => [] }) {
+    Object.assign(this, { state, transact, save, control, owner, now, fetchResource, renderDynamic, secrets });
     this.bootId = randomUUID(); this.active = new Map();
   }
   data() { return this.state.browserWorkspace || { revision: 1, origins: [], reads: [], drafts: [] }; }
@@ -117,7 +117,7 @@ export class BrowserWorkspace {
         startedAt: r.startedAt, completedAt: r.completedAt || null, code: r.code || null,
         ...(this.validSource(r) ? { page: r.page } : {}) })),
       drafts: data.drafts.map(d => ({ ...d, sourceExpired: Date.parse(d.source.readAt) + browserLimits.sourceMs <= this.now().getTime() })),
-      capabilities: { publicRead: true, javascript: false, login: false, formSubmission: false, payments: false, modelAccess: false } };
+      capabilities: { publicRead: true, javascript: Boolean(this.renderDynamic), login: false, formSubmission: false, payments: false, modelAccess: false } };
   }
   async configure(input) {
     shape(input, ['origins', 'expectedRevision']);
@@ -132,7 +132,9 @@ export class BrowserWorkspace {
     return this.snapshot();
   }
   async preview(input) {
-    shape(input, ['url']);
+    shape(input, ['url','javascript']);
+    if (input.javascript !== undefined && typeof input.javascript !== 'boolean') throw fail('BROWSER_INPUT','Ugyldigt browservalg.');
+    if (input.javascript && !this.renderDynamic) throw fail('BROWSER_DISABLED','Den isolerede JavaScript-browser er ikke aktiveret.');
     const url = browserUrl(input.url).href, scope = this.control.current();
     if (redactSecrets(url, this.secrets()) !== url) throw fail('BROWSER_INPUT', 'Linket indeholder beskyttede oplysninger.');
     this.control.assertAllowed(scope);
@@ -144,10 +146,10 @@ export class BrowserWorkspace {
       // server restart, config change, owner-token rotation, or stop/resume.
       const reads = old.reads.filter(r => r.startedAt ? Date.parse(r.startedAt) > this.now().getTime() - 2 * 86400000 : Date.parse(r.expiresAt) > this.now().getTime());
       if (reads.filter(r => r.status === 'ready').length >= 20 || reads.length >= 150) throw fail('BROWSER_LIMIT', 'Der er for mange webanmodninger. Afvent udløb eller gennemgå historikken.');
-      const read = { id: randomUUID(), owner: this.owner, bootId: this.bootId, configRevision: old.revision, scope, url,
+      const read = { id: randomUUID(), owner: this.owner, bootId: this.bootId, configRevision: old.revision, scope, url, javascript: input.javascript === true,
         status: 'ready', expiresAt: new Date(this.now().getTime() + browserLimits.previewMs).toISOString() };
       this.state.browserWorkspace = { ...old, reads: [...reads, read] }; await this.save();
-      return { intentId: read.id, url, expiresAt: read.expiresAt, effect: 'Hent denne offentlige side én gang. Der sendes ingen loginoplysninger eller formularfelter.' };
+      return { intentId: read.id, url, javascript: read.javascript, expiresAt: read.expiresAt, effect: read.javascript ? 'Kør siden i en isoleret JavaScript-browser. Højst 25 GET-anmodninger på samme website; ingen login eller formularafsendelse.' : 'Hent denne offentlige side én gang. Der sendes ingen loginoplysninger eller formularfelter.' };
     });
   }
   async read(input) {
@@ -167,7 +169,7 @@ export class BrowserWorkspace {
     try {
       const page = await this.control.controlled(async signal => {
         this.check(read);
-        const result = await this.fetchResource(read.url, { kind: 'html', timeoutMs: 10000, maxBytes: browserLimits.bytes,
+        const result = await (read.javascript ? this.renderDynamic : this.fetchResource)(read.url, { kind: 'html', timeoutMs: 10000, maxBytes: browserLimits.bytes,
           signal: AbortSignal.any([signal, controller.signal]), allowUrl: url => {
             this.check(read);
             // Even another approved origin needs its own explicit preview.
@@ -175,7 +177,9 @@ export class BrowserWorkspace {
           } });
         this.check(read); controller.signal.throwIfAborted();
         if (browserUrl(result.url).origin !== new URL(read.url).origin || result.buffer.length > browserLimits.bytes) throw fail('BROWSER_BLOCKED', 'Svaret ligger uden for den godkendte læsning.');
-        return extractWebPage(result.buffer, result.url, this.secrets());
+        const page = extractWebPage(result.buffer, result.url, this.secrets());
+        if(read.javascript) { page.format='isolated-javascript-excerpt';page.notice='Isoleret JavaScript-læsning med begrænset GET-adgang på samme website. Ingen login eller formularafsendelse. Indholdet kan være ufuldstændigt.'; }
+        return page;
       }, read.scope);
       return await this.transact(['browserWorkspace'], async () => {
         this.check(read); controller.signal.throwIfAborted();

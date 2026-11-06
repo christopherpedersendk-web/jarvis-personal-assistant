@@ -19,7 +19,7 @@ function harness() {
   add('div', 'web-preview', root).classList.add('hidden');
   for (const id of ['web-refresh', 'web-read-confirm', 'web-draft-cancel']) add('button', id, root);
   const site = add('form', 'web-site-form', root); add('input', 'web-site', site);
-  const read = add('form', 'web-read-form', root); add('input', 'web-url', read);
+  const read = add('form', 'web-read-form', root); add('input', 'web-url', read); add('input','web-javascript',read).checked=false;
   const draft = add('form', 'web-draft-form', root); draft.classList.add('hidden'); add('input', 'web-draft-title', draft); add('textarea', 'web-draft-details', draft);
   const h = { doc, calls: [], snapshot: initial(), hold: null, error: null, next: null };
   const context = vm.createContext({ document: doc, token: 'synthetic-owner', Date, api: async (path, options = {}) => {

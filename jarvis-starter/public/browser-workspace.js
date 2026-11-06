@@ -22,7 +22,7 @@
   }
   function render(data) {
     if (data.isPreview) {
-      if (el('web-url').value !== data.enteredUrl) { el('web-status').textContent = 'Linket blev ændret. Gennemgå det nye link.'; return; }
+      if (el('web-url').value !== data.enteredUrl || Boolean(data.javascript) !== el('web-javascript').checked) { el('web-status').textContent = 'Linket blev ændret. Gennemgå det nye link.'; return; }
       el('web-url').value = data.url;
       preview = data; el('web-preview-url').textContent = data.url;
       el('web-preview-effect').textContent = `${data.effect} Bekræft senest ${new Date(data.expiresAt).toLocaleTimeString('da-DK')}.`;
@@ -30,6 +30,8 @@
       return;
     }
     snapshot = data;
+    el('web-javascript').disabled = !data.capabilities?.javascript;
+    if(!data.capabilities?.javascript) el('web-javascript').checked = false;
     el('web-status').textContent = `${data.stopped ? 'Stoppet' : 'Klar'} · ${data.readsToday}/${data.limits.readsPerDay} læsninger i dag · ${data.origins.length} godkendte websites.`;
     el('web-sites').replaceChildren(...data.origins.map(site => {
       const li = node('li', site + ' ');
@@ -91,10 +93,11 @@
     run(() => post('sites', { origins: [...snapshot.origins, value], expectedRevision: snapshot.revision }), () => { if (el('web-site').value === value) el('web-site-form').reset(); invalidatePreview(); });
   });
   el('web-url').addEventListener('input', invalidatePreview);
+  el('web-javascript').addEventListener('change', invalidatePreview);
   el('web-read-form').addEventListener('submit', event => {
     event.preventDefault(); invalidatePreview(); const url = el('web-url').value;
     run(async () => {
-      const result = await post('preview', { url });
+      const result = await post('preview', { url, javascript: el('web-javascript').checked });
       return { ...result, isPreview: true, enteredUrl: url };
     });
   });

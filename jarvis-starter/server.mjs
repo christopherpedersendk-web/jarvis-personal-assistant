@@ -1,3 +1,4 @@
+import { createIsolatedBrowser } from './isolated-browser.mjs';
 import { VoiceSessions } from './voice-sessions.mjs';
 import { createOpenJarvis } from './openjarvis.mjs';
 import { createWebResearch } from './web-research.mjs';
@@ -156,7 +157,7 @@ const recentEventIds = new Set();
 const providerControl = new ProviderControl({ state, transact: mutateV5, save, env: process.env,
   isTransactionActive: () => Boolean(stateStore.context.getStore()) });
 const browserWorkspace = new BrowserWorkspace({ state, transact: mutateV5, save, control: providerControl,
-  owner: tokenDigest.toString('hex'), secrets: knownSecrets });
+  owner: tokenDigest.toString('hex'), secrets: knownSecrets, renderDynamic: createIsolatedBrowser() });
 
 const voiceSessions = new VoiceSessions({ state, transact: mutateV5, save, control: providerControl, env: process.env,
   hangup: async callId => {

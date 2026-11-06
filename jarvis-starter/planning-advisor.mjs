@@ -21,6 +21,21 @@ function suggestion(id, priority, title, detail, source, tab, { date = null, sou
   return { id, priority, title, detail, reason: detail, source, sourceRefs: [source, ...sourceRefs].slice(0, 8), tab, date };
 }
 
+// Plans are stored newest first. Retain historical records, but let only the
+// newest non-archived plan contribute a meal or reminder for a given date.
+export function effectiveMealPlans(state) {
+  const seen = new Set(), result = [];
+  for (const plan of state.mealPlans || []) {
+    if (!plan || !plan.id || plan.archived || !Array.isArray(plan.dishes)) continue;
+    const dishes = plan.dishes.filter(dish => {
+      if (!dish || dayNumber(dish.date) === null || seen.has(dish.date)) return false;
+      seen.add(dish.date); return true;
+    });
+    if (dishes.length) result.push({...plan,dishes});
+  }
+  return result;
+}
+
 export function buildPlanningSuggestions({ state, now = new Date() }) {
   const result = [];
   const todayNumber = dayNumber(localDay(now));
@@ -28,7 +43,7 @@ export function buildPlanningSuggestions({ state, now = new Date() }) {
     const day = dayNumber(value);
     return day !== null && day >= todayNumber && day < todayNumber + 7;
   };
-  const plans = (state.mealPlans || []).filter(plan => plan && plan.id && !plan.archived && Array.isArray(plan.dishes));
+  const plans = effectiveMealPlans(state);
   const currentPlans = plans.filter(plan => plan.dishes.some(dish => inWeek(dish.date)));
   const household = state.mealHousehold;
   const coveredDays = new Set(currentPlans.flatMap(plan => plan.dishes.map(dish => dish.date)));
@@ -167,8 +182,7 @@ function householdToday(state, date) {
 
 function mealsToday(state, date, validateMealSources) {
   const rows = [];
-  for (const plan of state.mealPlans || []) {
-    if (!plan || plan.archived || !plan.id || !Array.isArray(plan.dishes)) continue;
+  for (const plan of effectiveMealPlans(state)) {
     for (const dish of plan.dishes.filter(item => item && item.date === date)) {
       let sourceInvalid = false;
       if (!dish.skip) {

@@ -1,0 +1,26 @@
+name: Isolated browser containment
+on:
+  pull_request:
+    branches: [main]
+    paths: ['jarvis-starter/**', '.github/workflows/browser-isolation.yml']
+permissions:
+  contents: read
+jobs:
+  containment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build isolated test image
+        run: docker build -t jarvis-browser-test jarvis-starter/browser-runtime
+      - name: Verify containment with synthetic sources only
+        working-directory: jarvis-starter
+        run: |
+          export JARVIS_BROWSER_IMAGE="$(docker image inspect jarvis-browser-test --format '{{.Id}}')"
+          node scripts/isolated-browser-smoke.mjs

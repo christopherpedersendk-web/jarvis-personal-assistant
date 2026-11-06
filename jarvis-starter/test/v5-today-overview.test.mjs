@@ -93,7 +93,7 @@ test('K2 household uses the shared explicit rule resolver, including guests, exc
   assert.equal(unknown.household.attendance.servings, null);
 });
 
-test('K2 today meals preserve multiple proposals, skipped days and source invalidity without claiming consumption', () => {
+test('K2 today uses one current proposal while retaining skipped-day and source-invalidity semantics', () => {
   const recipeSource = { kind: 'recipe', id: 'old-recipe', revision: 1 };
   const state = { mealPlans: [{ id: 'one', revision: 3, status: 'draft', dishes: [{ date: '2026-11-05', title: 'Planlagt risret',
     servings: 2, minutes: 20, skip: false, sourceRefs: [] }] },
@@ -103,12 +103,15 @@ test('K2 today meals preserve multiple proposals, skipped days and source invali
   let validations = 0;
   const before = structuredClone(state);
   const view = today(state, { validateMealSources: dishes => { validations++; if (dishes.some(dish => dish.sourceRefs?.length)) throw new Error('Opskriften er arkiveret'); } });
-  assert.equal(view.meals.length, 3);
-  assert.equal(view.mealCount, 3);
+  assert.equal(view.meals.length, 1);
+  assert.equal(view.mealCount, 1);
   assert.equal(view.meals.find(item => item.source.id === 'one').sourceId, 'meal-plan:one:2026-11-05');
   assert.equal(view.meals.find(item => item.source.id === 'one').source.revision, 3);
-  assert.equal(view.meals.find(item => item.source.id === 'two').status, 'stale');
-  assert.equal(view.meals.find(item => item.source.id === 'skip').status, 'skipped');
+  const staleView=today({...state,mealPlans:state.mealPlans.slice(1)}, {validateMealSources:()=>{throw new Error('Arkiveret');}});
+  assert.equal(staleView.meals[0].status,'stale');
+  assert.doesNotMatch(JSON.stringify(staleView.meals), /Glemt opskriftstitel/);
+  const skipped=today({...state,mealPlans:state.mealPlans.slice(2)});
+  assert.equal(skipped.meals[0].status,'skipped');
   assert.doesNotMatch(JSON.stringify(view.meals), /Glemt opskriftstitel|Arkiveret plan/);
   assert.ok(validations > 0);
   assert.deepEqual(state, before);
