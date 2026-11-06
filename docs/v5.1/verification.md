@@ -1,5 +1,18 @@
 # Verifikation af v5.1.0-arbejdet
 
+## Fortsættelse: stop under journalføring
+
+`controlled-tool.mjs` fastholder anmodningens stopgeneration og kontrollerer
+den igen umiddelbart før handleren, efter den asynkrone journalføring. Stop og
+efterfølgende genoptagelse kan dermed ikke genautorisere et gammelt kald.
+Seks nye prøver bruger den faktiske DurableState, ActionJournal og ProviderControl
+på tværs af tekst, Discord og stemme. Blokerede kald registreres som ingen
+handling udført og genafspilles ikke. Dette lukker ét konkret hul i N2.4;
+ældre direkte stemmeruter og aktive Realtime-sessioner er fortsat åbne krav.
+
+Fuld lokal regression: 1.101/1.101 tests bestået. Remote CI for denne nye
+ændring skal vurderes særskilt fra de tidligere grønne commits nedenfor.
+
 ## Baseline og afgrænsning
 
 6. november 2026, Node 24.22.1. Baseline: 1.018/1.018 Node-tests bestået.

@@ -1,3 +1,4 @@
+import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
 import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
 import { ProviderControl } from '../provider-control.mjs';
@@ -17,7 +18,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
   const tool = { type: 'function', name: 'create_collection', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: [] } };
   const handler = async (name, args) => { effects.push({ name, args }); return { saved: true }; };
   const result = vm.runInNewContext(source.slice(from, to) + '\n({ processTextMessage, discord, classifyChatFailure })', {
-    JSON, assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl,
+    JSON, assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl, invokeControlledTool,
     state: { history: [] }, process: { env: {} }, validApiKey: configured, planningTools,
     organizerTools: [tool], knowledgeTools: [], homeTools: [],
     instructions: async () => 'Synthetic instructions', outputText: value => value.text || '',

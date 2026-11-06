@@ -1,6 +1,7 @@
 import { assistantTools, homeTools, voiceExtraTools, validateAssistantTool } from './assistant-tools.mjs';
 import { secretaryTools, secretaryWrites, createSecretaryToolHandler } from './secretary-tools.mjs';
 import { ProviderControl } from './provider-control.mjs';
+import { invokeControlledTool } from './controlled-tool.mjs';
 import { BrowserWorkspace } from './browser-workspace.mjs';
 import { SonosAuth, sonosCredentialKey, clearSonosCookie } from './sonos-auth.mjs';
 import http from 'node:http';
@@ -592,9 +593,7 @@ const mutatingTools = new Set([
 ]);
 
 async function invokeToolWithJournal(call, args, handler, channel) {
-  providerControl.assertAllowed();
-  if (!mutatingTools.has(call.name)) return handler(call.name, args, { channel });
-  return actionJournal.invoke(call, args, handler, channel);
+  return invokeControlledTool({ control: providerControl, journal: actionJournal, mutatingTools, call, args, handler, channel });
 }
 
 // Public messages are selected locally, never copied from an API body that

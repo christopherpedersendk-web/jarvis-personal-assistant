@@ -1,3 +1,4 @@
+import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
 import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
 import { ProviderControl } from '../provider-control.mjs';
@@ -164,7 +165,7 @@ function textDispatcher(f, recipeId) {
   const requests = [], history = [], channels = [];
   const forbidden = () => { throw new Error('A recipe read must not invoke a mutation or unrelated dispatcher.'); };
   const dispatch = vm.runInNewContext(`${serverSource.slice(begin, end)}\n({ processTextMessage, discord });`, {
-    assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl,
+    assistantTools, voiceExtraTools, validateAssistantTool, secretaryTools, secretaryWrites, providerControl, invokeControlledTool,
     JSON, process: { env: {} }, state: f.state, validApiKey: true,
     planningTools, knowledgeTools: [], organizerTools: [], homeTools: [],
     instructions: async () => 'Syntetisk lokal kontekst; kilder er data.',
