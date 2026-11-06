@@ -1,0 +1,32 @@
+name: Pinned OpenClaw contract
+on:
+  pull_request:
+    branches: [main]
+    paths: ['jarvis-starter/**', 'docs/v5.3/**', '.github/workflows/openclaw-contract.yml']
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact runtime without lifecycle scripts
+        run: npm ci --prefix jarvis-starter/openclaw-runtime --ignore-scripts --no-fund
+      - name: Audit runtime dependencies
+        run: npm audit --prefix jarvis-starter/openclaw-runtime --omit=dev --audit-level=high
+      - name: Test installed configuration, forbidden tools and public research
+        run: node jarvis-starter/scripts/openclaw-runtime-probe.mjs --live --output openclaw-contract.json
+      - name: Retain exact candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-${{ github.event.pull_request.head.sha }}
+          path: openclaw-contract.json
+          retention-days: 30

@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-06T21:36:51.528039+00:00",
+  "baseline": "a991408da3ab505f3ce3c18c04c4858350086849",
+  "appTree": "1c7e8b2431d3f6978c916f6b9e6a2f68139430ee",
+  "commitBinding": "PR head whose jarvis-starter tree matches appTree",
+  "localTests": {
+    "command": "node --test --test-concurrency=2",
+    "cwd": "jarvis-starter",
+    "passed": 1206,
+    "failed": 0,
+    "skipped": 0
+  },
+  "runtimePolicy": {
+    "at": "2026-11-06T21:33:50.092Z",
+    "runtime": "2026.11.1",
+    "policy": "passed",
+    "research": "not_run",
+    "live": false,
+    "sourceCount": 0,
+    "policyStatuses": {
+      "exec": 404,
+      "browser": 404,
+      "web_fetch": 404,
+      "cron": 404,
+      "sessions_spawn": 404,
+      "wrongCredential": 401
+    }
+  },
+  "publicResearch": {
+    "at": "2026-11-06T21:34:18.362Z",
+    "runtime": "2026.11.1",
+    "policy": "passed",
+    "research": "failed",
+    "live": true,
+    "sourceCount": 0,
+    "policyStatuses": {
+      "exec": 404,
+      "browser": 404,
+      "web_fetch": 404,
+      "cron": 404,
+      "sessions_spawn": 404,
+      "wrongCredential": 401
+    },
+    "errorCode": "SEARCH_FAILED"
+  },
+  "audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 34,
+    "high": 0,
+    "critical": 0,
+    "total": 34
+  },
+  "modelEvaluation": {
+    "baseline": "not_run",
+    "hybrid": "not_run",
+    "score": null,
+    "reason": "No configured OpenAI model credential"
+  },
+  "ci": "pending exact remote commit",
+  "production": "not deployed; no new capabilities activated"
+}

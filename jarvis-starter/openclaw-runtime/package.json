@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@openclaw/parallel-plugin": "2026.11.1",
+    "openclaw": "2026.11.1"
+  },
+  "overrides": {
+    "zod": "4.6.6",
+    "npm": "12.2.2"
+  }
+}
