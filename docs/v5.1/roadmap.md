@@ -82,3 +82,15 @@ instruks prioriterer første N4-fase. N5 og Home udvides ikke.
 3. N1: kør live kontraktprøver og fuld isoleret serverrestore, mål drift og udfør
    fysisk iPhone-accept. Bind rapporter til kandidatens SHA, løft versionen til
    5.1.0 og gennemfør hele CI før releasevurdering.
+
+
+## Brugerafklaret kanalparitet, 6. november 2026
+
+Offentlig webresearch, kilde-URL'er, Maps-søgelinks og start af eksisterende
+aktive rapportjobs er tilføjet fælles for chat, Discord-tekst og webstemme.
+Der mangler fortsat live prøve og deployment; øvrige sikkerhedsgates gælder.
+Brugeren ønsker desuden Discord-serverens stemmekanal. Denne lydintegration er
+åben: eksplicit tilslutning/afbrydelse, allowlist for server/kanal/bruger,
+synlig lytteindikator, ingen optagelse af andre deltagere, korte lydsegmenter,
+stop/forbrugsgrænser og en DAVE-kompatibel transport skal implementeres og
+verificeres. Ingen baggrundslytning eller fuld stemmeparitet er leveret endnu.

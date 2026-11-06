@@ -1,5 +1,40 @@
 # Verifikation af v5.1.0-arbejdet
 
+## Samtaler: offentlig research, links og rapportstart
+
+Chat og Discord-tekst manglede webresearch og start af eksisterende rapportjobs.
+Det fælles værktøjssæt har nu search_web, get_maps_link, list_report_jobs og
+run_report_job. Webstemme bruger samme validerede handler via assistant/tool.
+Webresearch bruger en separat Responses-anmodning uden privat hukommelse eller
+handlingsværktøjer: højst to indbyggede værktøjskald og 2.000 outputtokens pr.
+søgning. Eksisterende Responses-stop og forbrugskontrol gælder. Kildeannoteringer
+returneres særskilt; manglende kilder markeres som ikke verificeret. Maps-links
+er URL-kodede søgninger, ikke verificerede virksomhedsprofiler.
+
+Forsidens historik viser HTTP(S)-links som klikbare, sikre DOM-ankre, uden at
+fortolke model-HTML. Discord får korte resuméer og almindelige kilde-URL'er.
+Rapportstart kræver aktuelt ID/revision og et aktivt eller gennemført læsejob;
+pausede, fejlramte og uafklarede jobs skal fortsat gennemgås. ActionJournal
+forhindrer genafspilning af samme kald. Et accepteret startkald er ikke en
+færdig rapport. Der gives ikke adgang til godkendelser, betalinger eller køb.
+
+Samlet lokal regression: 1.115/1.115 bestået (parallelitet 2). En tidligere
+kørsel fik timeout i projektagentens syntakstest; den bestod isoleret og i
+den samlede genkørsel. Efter sidste ændring, der sikrer links i slutsvaret,
+bestod alle ni chat-dispatchtests igen. Remote CI for pakken afventer.
+
+Tolv nye regressioner dækker tre kanalers handlers, faktisk TaskEngine og
+ActionJournal, tekst/Discord-dispatch, kildeudtræk, Maps-kodning og sikker
+linkvisning. Ingen live model-, mikrofon- eller Discord-lydprøve er udført.
+Discord-stemmekanal er brugerens valgte næste integration, men lydtransport er
+ikke implementeret i denne pakke. Der er ingen automatisk lytning.
+
+API-grundlag gennemgået 6. november 2026:
+https://developers.openai.com/api/docs/guides/tools-web-search
+https://developers.openai.com/api/reference/python/resources/responses/methods/create
+https://github.com/discord/discord-api-docs/blob/main/developers/topics/voice-connections.mdx
+
+
 ## Dagsrapporter: lange instruktioner og lokal fejlstatus
 
 Den automatiske hukommelsessøgning bruger nu højst 240 tegn af instruktionen;
