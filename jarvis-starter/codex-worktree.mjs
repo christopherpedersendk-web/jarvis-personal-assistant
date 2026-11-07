@@ -84,7 +84,15 @@ export class CodexWorktrees{
   const changes=await this.changes(row);if(!changes.files.length)throw Error('Der er ingen kodeændringer at teste.');
   const protectedTests=new Set(changes.files.flatMap(f=>testMap[f.path.split('/').at(-1)]||[]));
   if(changes.files.some(f=>f.path==='jarvis-starter/public/commerce.js'))throw Error('UI-ændringer kræver særskilt browserverifikation før draft-PR.');
-  if(!protectedTests.size)throw Error('Der mangler en beskyttet testkontrakt for ændringen.');
+  // A test-only task must still run the canonical contract for the explicitly
+  // allowed module it imports; changing a test must not require a dummy edit.
+  const generated='jarvis-starter/test/codex-task-'+row.id+'.test.mjs';
+  const test=changes.files.find(f=>f.path===generated);
+  if(test)for(const m of test.content.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+)['"]/g)){
+   const target=relative(row.worktree,resolve(dirname(join(row.worktree,generated)),m[1]));
+   if(CODEX_EDITABLE.includes(target))for(const name of testMap[target.split('/').at(-1)]||[])protectedTests.add(name);
+  }
+  if(!protectedTests.size)throw Object.assign(Error('Der mangler en beskyttet testkontrakt for ændringen.'),{code:'DEVELOPMENT_TEST_CONTRACT',noActionTaken:true});
   const files=new Map(),visit=async(path,trusted=false)=>{
    if(files.has(path))return;if(files.size>=250)throw Error('Testgrundlaget er for stort.');
    const full=trusted?join(this.sourceRoot,path):await this.checked(row,path);const stat=await lstat(full);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>200000)throw Error('Usikker testkilde.');
