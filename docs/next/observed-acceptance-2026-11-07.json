@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-07",
+  "applicationSource": "908b80d34d21524aa48bcd6fdda224fba6a30088",
+  "mergedSource": "77e51be5ce36e55c0002cff196849ba874ac5865",
+  "version": "5.5.2",
+  "schema": {"version": 1, "readableFrom": 0},
+  "discord": {
+    "effectiveAdministrator": true,
+    "checkedAt": "2026-11-07T16:46:24Z",
+    "boundedRestIntegration": "passed",
+    "cases": ["missing-name continuation", "reviewed private create", "reviewed rename", "isolated report-channel selection", "mobile response preserves price and link", "delete only new test channel", "verify cleanup"],
+    "productionReportChannelChanged": false,
+    "competingGatewayStarted": false
+  },
+  "voice": {
+    "ownerReported": "Jeg fik et talt svar og har stoppet",
+    "channel": "private JARVIS-stemme",
+    "serverObservedAfterTest": "disconnected",
+    "acceptance": "owner-reported microphone input, spoken response and stop for this concrete session",
+    "limitation": "No retained audio, transcript or measured provider-closure proof; this does not close every M5 criterion."
+  },
+  "backup": {
+    "snapshot": "6d709c947b35be5db739bdfd35f7bb9074708911246322b7b4363671c56485a8",
+    "resticRestoreVerify": "passed, 3787 files",
+    "isolatedDerivedBoot": "passed, ready and state HTTP 200, preserved array counts",
+    "externalCredentials": "removed from derived boot copy only",
+    "network": "none",
+    "productionDataOverwritten": false,
+    "productionStopped": false,
+    "remaining": "Backup policy must separately include new OpenClaw service credentials/configuration and isolated Codex runtime paths; physical iPhone recovery acceptance remains separate."
+  },
+  "nemlig": {
+    "actualReadOnlyBasket": "HTTP 200, empty basket observed",
+    "writes": 0,
+    "mealPlanTransferAccepted": false
+  },
+  "activation": {
+    "alreadyActiveBeforeThisTask": ["Codex bridge", "Discord channel handlers", "recipe image intake", "media/video", "voice", "commerce", "bounded Proshop cart", "networkless dynamic browser", "local semantic search"],
+    "notActivated": ["native OpenClaw shopping browser without accepted dedicated egress containment", "self-release approval without independent controls"],
+    "productionDeploymentInThisTask": false
+  },
+  "milestonesClosed": []
+}
