@@ -94,3 +94,11 @@ På denne host krævede den installerede OpenClaw-opstart omtrent 1,5 GiB. Den v
 Voice- og semantic-runtimeafhængigheder er separate låste pakker. En ny release skal have disse afhængigheder forberedt i staging, før allerede aktiverede flags overføres; en ren checkout indeholder dem ikke. Brug de eksisterende package-lock-filer, ikke flydende npm-versioner. Modelmappen er fælles og skal hashverificeres, ikke downloades igen, når den allerede er korrekt.
 
 Den eksisterende restic-prøve beviser gendannelse af snapshot-rødderne, ikke backup af alle efterfølgende eksterne installationer. Inddrag OpenClaw-servicekonfiguration/credentials og Codex-runtime/auth i en særskilt sikker backupplan før fuld katastrofegendannelsesaccept. Credentials må ikke indgå i offentlige releaseartefakter.
+
+### Direkte begrænset OpenClaw-liveprøve
+
+`node jarvis-starter/scripts/openclaw-live.mjs --live --config-file /sikker/research.env --output /privat/ny-evidens.json`
+
+Konfigurationen skal være en privat regulær fil uden gruppe-/andre-rettigheder; scriptet bruger kun de fire OPENJARVIS-konfigurationsfelter. Alternativt kan disse gives gennem eksisterende sikkert miljø. Ingen token som argv, shelltrace eller output. Scriptet udfører health, to offentlige søgninger (direkte og gennem eksisterende adapter), fem forbudte tools og forkert-auth-prøve. Det starter ingen bot og ændrer ingen produktionsdata. Output oprettes eksklusivt før kald; ved fejl inspiceres det før eventuelt nyt forsøg. Det er ikke en kode-/browser-/betalingsadapter.
+
+Kandidatens researchgateway har 60 upstream-søgninger pr. monotont timevindue og højst to aktive. Lokal JARVIS ProviderControl er fortsat den fælles bruger-/døgnjournal; gatewaykvoten er en selvstændig perimetergrænse. 429 med Retry-After tillader ingen automatisk klientgentagelse. Denne kode ændrer ikke den allerede installerede immutable runtime; senere installation kræver særskilt mandat. Ekstern providerlukning og ikke-returneret forbrug er stadig ukendt.

@@ -1,0 +1,95 @@
+{
+  "at": "2026-11-07T18:57:49.652Z",
+  "status": "passed",
+  "sourceCommit": "745bdd3639ee53f7dc756b56ca2a563a88972e07",
+  "sourceHashes": {
+    "openjarvis.mjs": "1e7f2f1ff74a60dfde1ca717b5185ef3ddca3192d4f5bbc00e9f7ae9bcfe1af9",
+    "openjarvis-transport.mjs": "8bc72f49f4aad8b74ee10562887e2feab60f3e91ad9d6c0b2ffce64f752e1f7c",
+    "openclaw-runtime/gateway.mjs": "5c398f97d2d520be4082c6f3271216479d1ccc871797a830014adbf317341729",
+    "scripts/openclaw-live.mjs": "cc56c3075d7d49545cbf2cf7717d0d7b4e139d58d217f7fc7bb68dd58b2532b8"
+  },
+  "runtime": "2026.11.1",
+  "contractVersion": 1,
+  "direct": {
+    "status": 200,
+    "sources": [
+      {
+        "url": "https://docs.openclaw.ai/tools/browser/configuration",
+        "title": "Browser configuration"
+      },
+      {
+        "url": "http://docs.openclaw.ai/tools/browser/troubleshooting",
+        "title": "Browser troubleshooting"
+      },
+      {
+        "url": "http://docs.openclaw.ai/tools/browser/security",
+        "title": "Browser security"
+      },
+      {
+        "url": "https://docs.openclaw.ai/gateway/security/browser-control",
+        "title": "Browser control risks"
+      },
+      {
+        "url": "https://docs.openclaw.ai/cli/browser",
+        "title": "Browser - OpenClaw"
+      }
+    ]
+  },
+  "adapter": {
+    "status": "completed",
+    "sources": [
+      {
+        "url": "https://docs.openclaw.ai/tools/web",
+        "title": "Web search - OpenClaw"
+      },
+      {
+        "url": "https://docs2.openclaw.ai/tools/web",
+        "title": "Web search - OpenClaw"
+      },
+      {
+        "url": "https://docs2.openclaw.ai/tools",
+        "title": "Overview - OpenClaw"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/searxng-search",
+        "title": "SearXNG search - OpenClaw"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/web.md",
+        "title": "docs.openclaw.ai"
+      }
+    ],
+    "usage": {
+      "requests": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "cost": null,
+      "measurement": "requests-only"
+    }
+  },
+  "rejected": [
+    {
+      "tool": "exec",
+      "status": 403
+    },
+    {
+      "tool": "browser",
+      "status": 403
+    },
+    {
+      "tool": "web_fetch",
+      "status": 403
+    },
+    {
+      "tool": "cron",
+      "status": 403
+    },
+    {
+      "tool": "sessions_spawn",
+      "status": 403
+    }
+  ],
+  "invalidCredentialStatus": 401,
+  "scope": "Actual existing restricted gateway and public searches, empty isolated adapter state; no new bot, operator credential or production write. Remote provider closure not measured.",
+  "gatewayDeployment": "Existing installed 2026.11.1 gateway; candidate request-window change was NOT deployed by this probe."
+}

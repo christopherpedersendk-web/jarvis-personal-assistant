@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "1ef2306cbc05ac539b05e8deb3ca3611fcf52c0d",
+  "sourceBasis": "Gateway/client changes identical to 745bdd3; 1ef2306 adds only the focused timeout case.",
+  "newUniqueCases": 6,
+  "existingSourcePrivacyRegressions": 2,
+  "focusedTotalUniqueCases": 8,
+  "cases": [
+    "quota reset using controlled monotonic window; concurrent admission",
+    "invalid quota rejected",
+    "real loopback HTTP disconnect closes forwarded HTTP connection",
+    "429 concrete/rejected/no retry/body secrecy",
+    "observed title envelope display cleanup preserves original input and redaction",
+    "real loopback HTTP deadline cancels connection"
+  ],
+  "initialFixtureCorrection": "Expected English placeholder corrected to the existing Danish privacy placeholder; only failed title case rerun with two relevant existing privacy regressions. Four passing gateway cases reused. New timeout case run separately.",
+  "actualExternal": [
+    "openclaw-direct-before.json",
+    "openclaw-direct-after.json"
+  ],
+  "gatewayQuotaLiveDeployed": false,
+  "providerRemoteClosure": "unknown",
+  "productionChanged": false,
+  "milestonesClosed": [],
+  "sourceHashes": {
+    "openjarvis.mjs": "1e7f2f1ff74a60dfde1ca717b5185ef3ddca3192d4f5bbc00e9f7ae9bcfe1af9",
+    "openjarvis-transport.mjs": "8bc72f49f4aad8b74ee10562887e2feab60f3e91ad9d6c0b2ffce64f752e1f7c",
+    "openclaw-runtime/gateway.mjs": "5c398f97d2d520be4082c6f3271216479d1ccc871797a830014adbf317341729",
+    "scripts/openclaw-live.mjs": "cc56c3075d7d49545cbf2cf7717d0d7b4e139d58d217f7fc7bb68dd58b2532b8",
+    "test/openjarvis-window.test.mjs": "5eadd6d566d176fc01940a9f84fe852ac124dd0c605f9220343df9fdbc34b786"
+  }
+}
