@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-07",
+  "fullEvaluationCommit": "77e51be5ce36e55c0002cff196849ba874ac5865",
+  "regressionCommit": "a1b00d2d5f239f2353bea678651cdd2a87e5d2e4",
+  "status": "awaiting-human-review",
+  "summary": {
+    "full-baseline": {
+      "model": "gpt-6.1-sol",
+      "scenarios": 30,
+      "executionComplete": 30,
+      "sourceFingerprint": "9c9ce79008e14e3f0df12d0da99b59cf7f2eb505a950eed84581ab68d0bdf1c4",
+      "fingerprintVersion": 1,
+      "setupMs": 6592.978173999955,
+      "conversationMs": 277159.1497879999,
+      "requests": 83,
+      "measuredInputTokens": 773827,
+      "measuredOutputTokens": 10776,
+      "entriesWithUnknownTokens": 0,
+      "currencyCost": null,
+      "humanReviewed": 0,
+      "qualityScore": null
+    },
+    "full-hybrid": {
+      "model": "gpt-6.1-sol",
+      "scenarios": 30,
+      "executionComplete": 30,
+      "sourceFingerprint": "9c9ce79008e14e3f0df12d0da99b59cf7f2eb505a950eed84581ab68d0bdf1c4",
+      "fingerprintVersion": 1,
+      "setupMs": 6632.411644999977,
+      "conversationMs": 190887.19796400002,
+      "requests": 85,
+      "measuredInputTokens": 729157,
+      "measuredOutputTokens": 5609,
+      "entriesWithUnknownTokens": 7,
+      "currencyCost": null,
+      "humanReviewed": 0,
+      "qualityScore": null
+    },
+    "regression-baseline": {
+      "model": "gpt-6.1-sol",
+      "scenarios": 2,
+      "executionComplete": 2,
+      "sourceFingerprint": "5b7181956fcb4e48754d69aa53dbefabfe274a08aa5bb20a028058b13b171e4a",
+      "fingerprintVersion": 2,
+      "setupMs": 462.59194299999945,
+      "conversationMs": 16606.123353000003,
+      "requests": 9,
+      "measuredInputTokens": 75103,
+      "measuredOutputTokens": 380,
+      "entriesWithUnknownTokens": 0,
+      "currencyCost": null,
+      "humanReviewed": 0,
+      "qualityScore": null
+    },
+    "regression-hybrid": {
+      "model": "gpt-6.1-sol",
+      "scenarios": 2,
+      "executionComplete": 2,
+      "sourceFingerprint": "5b7181956fcb4e48754d69aa53dbefabfe274a08aa5bb20a028058b13b171e4a",
+      "fingerprintVersion": 2,
+      "setupMs": 455.0649930000005,
+      "conversationMs": 18577.934563,
+      "requests": 10,
+      "measuredInputTokens": 83599,
+      "measuredOutputTokens": 426,
+      "entriesWithUnknownTokens": 0,
+      "currencyCost": null,
+      "humanReviewed": 0,
+      "qualityScore": null
+    }
+  },
+  "observedIssues": [
+    "DA10 did not remove the requested item in either initial backend; after persona correction both targeted runs removed exactly that item.",
+    "DA11 could describe default food-profile values as saved preferences; explicit provenance now distinguishes confirmed user entry from defaults/legacy; both targeted model runs state no confirmed preferences."
+  ],
+  "fingerprintLimit": "Initial v1 harness omitted persona/skill file bytes. Both initial runs used the same clean immutable 77e51be worktree. New v2 includes persona, exact historical skill files and rejects symlinks. The initial reports are historical observations and cannot be accepted by the new v2 gate.",
+  "sourceSha256": {
+    "persona.md": "50a0e6ce8c52276991686634e9cb7413508362ae5106a44e8841e3d26bd3d838",
+    "planning-tools.mjs": "c2b35101810be3c22645a7cf1750eb22101115bce543eea4cb1b3987e082f638",
+    "scripts/assistant-evaluation.mjs": "044e2b2069596db4aa0f94881b036f13a212a96fbcc3f481ad262b350b4b218c",
+    "scripts/compare-assistant-evaluations.mjs": "d5167db1548c68b52dbdfe66387f0bd18a0f7311dcd936e2c34aa7609b733e3d"
+  },
+  "reviewNote": "Technical execution and observed state are not a human quality score. No 27/30 acceptance or cost savings claimed. No production mutation or extra Discord gateway used."
+}

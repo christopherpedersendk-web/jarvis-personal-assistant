@@ -149,3 +149,9 @@ Kode fafcbad4617b38e7e8edf9f53cf46865e3485073 på main 77e51be. Kladden og mobil
 Ny faktisk anonym observation af præcis én Sandberg-vare til 57 DKK bekræftede en komplet gæste-/kontaktformular på /Basket/CheckOut/Register. Feltnavne og metode er observeret, ingen kontakt-/adresseregistrering er sendt. Parseren kræver den komplette formstruktur; et tilfældigt form-tag er ikke accept. Fragt/total til 2900, adresseoverførsel, autentificeret login og fuldt checkout er fortsat åbne. Ingen betalingsform udledes af footerlogoer.
 
 22 unikke fokuserede unitcases, plus én korrigeret fixtures målrettede genkørsel; Chromium/WebKit på 320/390/1280 px bestod i netværksløs container. Faktisk butik, simulerede kontrakter og UI holdes adskilt i [evidensen](m16-freight-evidence.json). Ingen hel milestone lukkes. Ingen produktionsændring i denne leverance.
+
+## M6–M10: faktisk dansk baseline/hybrid-evaluering 2026-11-07
+
+Samme model og 30 syntetiske danske opgaver blev kørt mod begge backends på `77e51be5ce36e55c0002cff196849ba874ac5865`: alle 60 scenarier gennemført teknisk. To observerede fejl blev rettet i `a1b00d2d5f239f2353bea678651cdd2a87e5d2e4`: konkret fjernelse af eget listepunkt og kildeangivelse for standard/ubekræftede madpræferencer. Kun DA10/DA11 blev derefter kørt igen på begge backends; de forventede tilstandsændringer/svar blev observeret.
+
+Den nye evaluator binder også persona og historiske skillfiler og afviser delvise evalueringer som fuld accept. Første v1-evidens er historisk og kan ikke godkendes gennem den nye v2-gate. Ingen menneskelig kvalitetsscore, 27/30-accept eller besparelse påstås. Syv hybrid-forbrugsposter har ukendt tokenforbrug. [Målinger og revisioner](language-live-evidence.json), [svar til menneskelig review](language-review.md). Ingen hel milestone lukkes.
