@@ -430,9 +430,9 @@
     "milestonesClosed": [],
     "remaining": [
       "M12 owner conversation/gateway and persisted report selection; physical iPhone",
-      "Combined live Discord image upload -> extraction -> owner review",
       "M16 authenticated login, selected address transfer, final freight/delivery to 2900, complete checkout handoff",
-      "Independent CI/review before merge/release"
+      "Independent CI/review before merge/release",
+      "Owner-authored Discord recipe message and human review; technical combined synthetic upload/CDN/decoder/model/inbox passed separately at 14:11 UTC"
     ],
     "ci": "Normal PR triggers; pending on pushed head, no check bypass or new CI success claimed",
     "ciFollowup": {
@@ -466,6 +466,70 @@
       },
       "liveBinding": "Discord live controller evidence belongs to source in 793d2db. The only subsequent production change is fixed mapping of network/response errors; successful live paths unchanged. No repeated merchant/model/Discord write acceptance run.",
       "nextCi": "Normal PR triggers for updated head; pending, no bypass."
+    },
+    "finalCi": {
+      "testedHead": "f8827c9bd0e8e731dcba80304d7ef57c723c1ac7",
+      "testedTree": "5546b6bdd560de879aef14cca8873e5ef15ca4a4",
+      "node": "v24.22.2",
+      "unit": {
+        "passed": 1326,
+        "failed": 0,
+        "skipped": 0,
+        "run": 42380124173,
+        "artifact": 13577386357,
+        "artifactSha256": "8166748817a09722a5bdbf5d34877d50293072551920ce499c9ec169a96d4967"
+      },
+      "workflows": [
+        {
+          "id": 42380124027,
+          "name": "Pinned OpenClaw contract",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124027"
+        },
+        {
+          "id": 42380124060,
+          "name": "Commerce and self-development contracts",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124060"
+        },
+        {
+          "id": 42380124124,
+          "name": "Isolated browser containment",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124124"
+        },
+        {
+          "id": 42380124224,
+          "name": "Discord voice dependency and policy checks",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124224"
+        },
+        {
+          "id": 42380123965,
+          "name": "Isolated Discord media",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380123965"
+        },
+        {
+          "id": 42380123970,
+          "name": "JARVIS v5 candidate regression and browser smoke",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380123970"
+        },
+        {
+          "id": 42380124173,
+          "name": "JARVIS GUI exact-candidate verification",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124173"
+        }
+      ],
+      "artifacts": {
+        "commerceUi": 13577123554,
+        "guiBrowser": 13577641473,
+        "media": 13577123357
+      },
+      "documentationOnlyFinalization": "Only docs/next and docs/releases after this tested head. App and workflows byte identity verified with git diff. [skip ci] prevents repeating unchanged code; main has no required branch checks/reviews (protected=false), no protection/check removed. Merge must bind exact final PR head.",
+      "ownerAcceptance": "M12/M16 remain open on documented owner/login/address/postal/complete-checkout criteria; no production activation."
     }
   }
 }

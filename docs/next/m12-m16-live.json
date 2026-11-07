@@ -192,8 +192,45 @@
   },
   "boundaries": {
     "discord": "REST controller and sendReply, not a second gateway or a deployed owner conversation. Report selection changed isolated in-memory configuration only.",
-    "recipe": "Synthetic screenshot, actual sandbox/decoder/model; Discord attachment download and owner review not live-tested together.",
+    "recipe": "Actual synthetic bot attachment upload, signed CDN download, container normalization, model and unconfirmed private inbox passed together on f8827c9 source hashes. Direct script intake, not an owner-authored gateway conversation or human review.",
     "shopping": "Actual anonymous merchant transport, not authenticated OpenClaw/Chrome login. Shared basket page observed; copying into another session still requires the merchant button. No postal quote or delivery guarantee.",
     "gui": "Actual Chromium/WebKit synthetic server, no external connectivity, not physical iPhone."
+  },
+  "combinedDiscordRecipe": {
+    "at": "2026-11-07T14:11:38.715Z",
+    "sourceHashes": {
+      "recipe-memory.mjs": "e7e3ddd51d6be7095ee194d1fb84a6bbce58b3084af7d17d7a0adbe1325c2157",
+      "recipe-extractor.mjs": "c8cebdb26d51782d18e633074e6d4f1e83f7dd3f5acf3289346f2d1faabeea63",
+      "isolated-media.mjs": "04bb8c467a33894b0d82079c13b86a249b46a8690a809472e96b0cbff18f8e97",
+      "discord-gateway.mjs": "f2c80bf5a09c88d374be26497c04821ba2e25034e59a09843827d4ed0395e693"
+    },
+    "scope": "actual synthetic attachment upload/CDN download/decoder/model/inbox; direct script intake, not owner-authored gateway message",
+    "generalMediaEnabled": false,
+    "cases": [
+      "actual private synthetic Discord upload",
+      "actual signed CDN download, networkless decoder and model extraction",
+      "private unconfirmed inbox draft, no usable recipe before owner review",
+      "temporary attachment channel deleted"
+    ],
+    "draft": {
+      "title": "Havregrød",
+      "ingredients": [
+        {
+          "name": "havregryn",
+          "quantity": 100,
+          "unit": "g"
+        },
+        {
+          "name": "vand",
+          "quantity": 500,
+          "unit": "ml"
+        }
+      ],
+      "minutes": 10,
+      "servings": 2,
+      "confirmed": false
+    },
+    "modelRequests": 1,
+    "status": "passed"
   }
 }
