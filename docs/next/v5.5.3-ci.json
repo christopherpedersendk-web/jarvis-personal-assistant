@@ -1,0 +1,55 @@
+{
+  "testedCommit": "4c95dea867cb9f27e1fba55ec34125537cc006cf",
+  "mergeCommit": "ec09bbc95d7c68e9c728a9b86425e77e007a9c56",
+  "workflows": [
+    {
+      "id": 42399606715,
+      "name": "JARVIS v5 candidate regression and browser smoke",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606715"
+    },
+    {
+      "id": 42399606856,
+      "name": "Isolated Discord media",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606856"
+    },
+    {
+      "id": 42399606817,
+      "name": "Pinned OpenClaw contract",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606817"
+    },
+    {
+      "id": 42399606786,
+      "name": "Isolated browser containment",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606786"
+    },
+    {
+      "id": 42399606741,
+      "name": "Discord voice dependency and policy checks",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606741"
+    },
+    {
+      "id": 42399606830,
+      "name": "Commerce and self-development contracts",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606830"
+    },
+    {
+      "id": 42399606759,
+      "name": "JARVIS GUI exact-candidate verification",
+      "conclusion": "success",
+      "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42399606759"
+    }
+  ],
+  "unit": {
+    "passed": 1373,
+    "failed": 0,
+    "skipped": 0
+  },
+  "scope": "Exact versioned application/workflows; later evidence-only documents do not inherit a fictional new test execution.",
+  "productionDeployed": false
+}

@@ -588,5 +588,15 @@
     "voiceOwnerAcceptance": "Spoken answer received and session stopped; user confirmation in this session",
     "productionDeploymentInThisTask": false,
     "milestonesClosed": []
+  },
+  "staging553Final": {
+    "ci": "v5.5.3-ci.json",
+    "ownerGatewayStatus": "owner-gateway-status.json",
+    "actualVideoModel": "video-model-live.json",
+    "testedCommit": "4c95dea867cb9f27e1fba55ec34125537cc006cf",
+    "applicationTree": "a5fc70b2fe5284f89654b7a255ae4de004a152a3",
+    "workflowTree": "c351a556b1c17c679534939e6478a6d081d6e56b",
+    "productionDeployed": false,
+    "milestonesClosed": []
   }
 }

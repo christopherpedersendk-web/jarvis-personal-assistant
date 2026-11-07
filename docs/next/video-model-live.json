@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-07T18:22:14.344Z",
+  "sourceCommit": "4c95dea867cb9f27e1fba55ec34125537cc006cf",
+  "decoderImage": "sha256:5a7b5076b6aa68b0b5d365ce03cbd24fc93b3cde3483c2fbff92de0ca1f8eb4a",
+  "fixtureSha256": "d64733f7caf0f98cd2013174709f6a32f760e5c96bf877b7ae74ff8b92891a3f",
+  "fixture": "Synthetic Chromium recording: red START RØD for 3 seconds, then blue SLUT BLÅ for 3 seconds; no audio",
+  "kind": "video",
+  "duration": 8.92,
+  "frames": [
+    {
+      "seconds": 2.23,
+      "sha256": "7ce3bba29ba527b60e49d46aad79ba10b0c6a06e86f5f44eb0bed3c191ccd39d"
+    },
+    {
+      "seconds": 6.69,
+      "sha256": "be094e50f7fd2a2dde7e755b0e830f1ad625ca7a934b1fcb579bc8679fe45343"
+    }
+  ],
+  "hasAudio": false,
+  "model": "gpt-6.1-sol",
+  "answer": "- **2,23 sek.:** Rød baggrund med hvid tekst: »START RØD«.\n- **6,69 sek.:** Blå baggrund med hvid tekst: »SLUT BLÅ«.\n\nDe to stikprøver viser et skift fra rød til blå. Jeg kan ikke afgøre, hvornår eller hvordan skiftet sker, eller om der er andre skift i den 8,92 sekunder lange video, da jeg kun har set disse frames. Der er ingen lyd eller transskription tilgængelig, så jeg kan ikke vurdere lydindholdet.",
+  "usage": {
+    "input_tokens": 494,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output_tokens": 135,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 629
+  },
+  "sourceHashes": {
+    "discord-media.mjs": "7ed98f74c8a2532d62a9d7fb775fd711f8c41e9196df520ad58e358520df4a7d",
+    "isolated-media.mjs": "04bb8c467a33894b0d82079c13b86a249b46a8690a809472e96b0cbff18f8e97"
+  },
+  "scope": "Actual networkless decoder and configured model using existing mediaAnalysisRequest; no Discord/CDN upload or owner video acceptance; no audio-understanding claim",
+  "productionChanged": false
+}
