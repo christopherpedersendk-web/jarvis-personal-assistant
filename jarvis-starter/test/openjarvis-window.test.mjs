@@ -26,3 +26,7 @@ test('observed OpenClaw title envelope is removed only for display while source 
  const title='\n<<<EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>\nSource: Web Search\n---\nBrowser\nconfiguration SECRET\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>';
  const original={results:[{url:'https://docs.openclaw.ai/tools/browser/configuration',title}]};const sources=openJarvisSources(original,['SECRET']);assert.deepEqual(sources,[{url:original.results[0].url,title:'Browser configuration [hemmelighed skjult]'}]);assert.equal(original.results[0].title,title);
 });
+test('actual loopback timeout aborts the HTTP response without retrying',async t=>{
+ let count=0,closed;const ended=new Promise(r=>closed=r);const server=createServer((req,res)=>{count++;req.resume();res.once('close',closed);});const url=await listen(server);t.after(()=>{server.closeAllConnections();server.close();});
+ await assert.rejects(boundedJson(fetch,new URL(url),{},{timeoutMs:100}),{code:'TIMEOUT',outcome:'unknown'});assert.equal(count,1);await Promise.race([ended,new Promise((_,reject)=>setTimeout(()=>reject(Error('Timed out connection remained open')),1500).unref())]);
+});
