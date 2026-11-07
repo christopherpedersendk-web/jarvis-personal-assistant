@@ -813,7 +813,7 @@ async function handleMasterMessage(message,metadata){
 let discordVoice,discordMedia,codexBridge;
 const discordVoiceEnabled=process.env.JARVIS_DISCORD_VOICE==='yes';
 const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUnavailable:()=>discordVoice?.stop('gateway_unavailable'), onMessage: async (message, metadata = {}) => {
-  if(codexBridge){const developmentAnswer=await discordDevelopmentReply(codexBridge,message,metadata);if(developmentAnswer!==null)return developmentAnswer;}
+  const developmentAnswer=await discordDevelopmentReply(codexBridge,message,metadata);if(developmentAnswer!==null)return developmentAnswer;
   const masterAnswer=await handleMasterMessage(message,metadata);if(masterAnswer!==null)return masterAnswer;
   if(/^!medie(?:\s|$)/i.test(message)){
     const command=message.trim().toLocaleLowerCase('da');
