@@ -23,3 +23,10 @@ test('actual route block separates local development drafts from candidate execu
  work.saveDraft=async()=>{throw Error('revision');};assert.equal((await invoke('/api/self-development/'+id+'/draft',{task,expectedRevision:1},work)).status,409);
 });
 
+
+test('Proshop routes bind the reviewed order and expose failures without retrying',async()=>{
+ const calls=[],work={prepareProshop:async(...args)=>{calls.push(args);return {order:{status:'cart_verified'}};},researchProshop:async input=>({products:input.urls})};
+ const body={expectedRevision:2,reviewHash:'exact'};const cart=await invoke('/api/commerce/'+id+'/proshop-cart',body,{},work);assert.equal(cart.status,200);assert.deepEqual(calls,[[id,body]]);
+ const read=await invoke('/api/commerce/proshop/research',{urls:['public-url']},{},work);assert.deepEqual(read.payload.products,['public-url']);
+ work.prepareProshop=async()=>{throw Error('unknown outcome');};assert.equal((await invoke('/api/commerce/'+id+'/proshop-cart',body,{},work)).status,409);assert.equal(calls.length,1);
+});

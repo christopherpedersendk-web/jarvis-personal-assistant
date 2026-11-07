@@ -1,5 +1,6 @@
 import {SelfDevelopment} from './self-development.mjs';
 import {developmentGithub} from './self-development-github.mjs';
+import {createProshopSession} from './proshop-session.mjs';
 import {Commerce,STORES} from './commerce.mjs';
 import {createOpenClawBrowserReader} from './openclaw-browser-reader.mjs';
 import {emptyMasterData,replaceMasterData,MasterDataReviews} from './master-data.mjs';
@@ -231,7 +232,7 @@ function persistPrivateSettings(change = () => {}, stateChange = () => {}) {
 async function saveMasterData(input){await persistPrivateSettings(next=>{next.masterData=replaceMasterData(next.masterData,input);});return structuredClone(masterDataConfig);}
 const masterDataReviews=new MasterDataReviews({read:()=>masterDataConfig,write:saveMasterData});
 
-const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes'});
+const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes',proshopSession:process.env.JARVIS_PROSHOP_CART==='yes'?id=>createProshopSession({file:join(dirname(dataPath),'proshop-sessions',id+'.json')}):null});
 const commerceBrowser=createOpenClawBrowserReader({control:providerControl});
 await commerce.recover();
 
@@ -338,10 +339,12 @@ const knowledge = new PersonalKnowledge({ state, semanticScorer: semanticIndex?.
 const claims = new PersonalClaims({ state, save });
 const followUps = new FollowUpCases({ state, save });
 const personalTasks = new PersonalTasks({ state, save });
+const recipeImageNormalizer=createIsolatedMedia({enabled:process.env.JARVIS_RECIPE_IMAGES==='yes'});
 const recipes = new RecipeMemory({ state, save, transact: mutateV5, dataDirectory: dirname(dataPath),
   onChanged: id => meals.invalidateRecipe(id),
   extractor: validApiKey ? input => extractRecipeDraft(input, {
     model: process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol',
+    normalize:recipeImageNormalizer,
     request: (body, signal) => openaiJson('/responses', { method: 'POST', body, signal, timeoutMs: 25_000 }),
   }) : undefined,
 });
@@ -829,7 +832,7 @@ const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUn
   }
   if (isRecipeCaptureRequest(message)) {
     const recipe = await recipes.capture(recipeCaptureInput(message, metadata));
-    return `Opskriften “${recipe.title}” er gemt i Opskriftsindbakken. Gennemgå ingredienser, portioner og kosttype i Mad & indkøb, før JARVIS bruger den i en madplan. Der er ikke ændret noget i Nemlig-kurven.`;
+    return `Opskriften “${recipe.title}” ${recipe.duplicate?'findes allerede':'ligger som ubekræftet kladde'} i Opskriftsindbakken. ${recipe.extraction.status==='draft-extracted'?'Automatisk udtræk er klar til dit review.':'Automatisk udtræk er ikke fuldført.'}\n${recipe.extraction.messages.join('\n')}\nGennemgå og bekræft ingredienser, portioner, tid og kosttype i Mad & indkøb før brug i madplanen. Der er ikke ændret noget i Nemlig-kurven.`;
   }
   if(metadata.mediaCount)return discordMedia.analyze(message,metadata);
   return processTextMessage(message, 'discord');
@@ -1364,6 +1367,9 @@ async function route(req, res) {
     if(commerceDraft&&req.method==='POST'){try{return json(res,200,{order:await commerce[commerceDraft[2]](commerceDraft[1],await bodyJson(req))});}catch(error){return json(res,409,{error:error.message});}}
     const commerceHandoff=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/handoff$/);
     if(commerceHandoff&&req.method==='POST'){try{return json(res,200,await commerce.handoff(commerceHandoff[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
+    if(path==='/api/commerce/proshop/research'&&req.method==='POST'){try{return json(res,200,await commerce.researchProshop(await bodyJson(req)));}catch(error){return json(res,400,{error:error.message});}}
+    const proshopCart=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/proshop-cart$/);
+    if(proshopCart&&req.method==='POST'){try{return json(res,200,await commerce.prepareProshop(proshopCart[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
     if(path==='/api/commerce/read'&&req.method==='POST'){try{if(!commerceBrowser)throw new Error('Den særskilte isolerede OpenClaw-browser er ikke konfigureret. Offentlig research er fortsat tilgængelig gennem eksisterende funktioner.');const input=await bodyJson(req);return json(res,200,await commerceBrowser.read(input.url,input.store));}catch{return json(res,400,{error:'Produktlæsningen kunne ikke udføres sikkert. Ingen fallback, bestilling eller betaling er udført.'});}}
     if(path==='/api/master-data'){
       if(req.method==='GET')return json(res,200,{masterData:masterDataConfig});

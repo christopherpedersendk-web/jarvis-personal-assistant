@@ -311,7 +311,7 @@ export class RecipeMemory {
         const suggested = candidateFields(extracted);
         delete suggested.text;
         if (Object.keys(suggested).length) { Object.assign(recipe, suggested); recipe.extraction.status = 'draft-extracted'; }
-      } catch { recipe.extraction.messages.push('Automatisk udtræk kunne ikke fuldføres. Det gemte materiale kan stadig gennemgås manuelt.'); }
+      } catch (error) { recipe.extraction.messages.push(error.code==='RECIPE_ISOLATION_REQUIRED'?'Isoleret opskriftsbilledudtræk er ikke konfigureret. Intet billede er sendt til modellen; originalen ligger privat til manuel gennemgang.':'Automatisk udtræk kunne ikke fuldføres. Det gemte materiale kan stadig gennemgås manuelt.'); }
       finally { clearTimeout(timer); }
     } else if (extractionImages.length) {
       recipe.extraction.messages.push('Billedet er gemt privat. Automatisk billedudtræk er ikke tilgængeligt; indtast ingredienserne før brug i madplaner.');

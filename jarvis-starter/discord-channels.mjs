@@ -18,14 +18,26 @@ export function discordChannelCommand(message) {
 const reviewedContent=r=>hash([r.action,r.target,r.payload,r.owner,r.guild,r.channel,r.basis,r.scope,r.boot,r.expires]);
 // Only fixed, controller-owned diagnostics may be sent directly to Discord.
 export async function discordChannelReply(controller,message,metadata){
- const command=discordChannelCommand(message);if(!command)return null;
+ const command=controller.resolveCommand?.(message,metadata)||discordChannelCommand(message);if(!command)return null;
  try{return await controller.command(command,metadata);}
  catch(error){if(error.code==='DISCORD_CHANNEL_REVIEW')return error.message;throw error;}
 }
 // Only explicit owner commands enter this controller. No model gets execute authority.
 export class DiscordChannels {
   constructor({state,transact,save,control,config,enabled=false,voiceChannelId='',selectReportChannel,fetcher=fetch,now=()=>Date.now()}) {
-    Object.assign(this,{state,transact,save,control,config,enabled,voiceChannelId,selectReportChannel,fetcher,now}); this.boot=randomUUID();
+    Object.assign(this,{state,transact,save,control,config,enabled,voiceChannelId,selectReportChannel,fetcher,now}); this.boot=randomUUID(); this.pending=new Map();
+  }
+  conversationKey(meta){return JSON.stringify([meta.ownerId,meta.guildId,meta.channelId]);}
+  resolveCommand(message,meta){
+    const command=discordChannelCommand(message);if(command)return command;
+    const key=this.conversationKey(meta),pending=this.pending.get(key);
+    if(!pending)return null;
+    if(pending.expires<=this.now()||pending.basis!==this.basis(this.config())){this.pending.delete(key);return null;}
+    try{this.control.assertAllowed(pending.scope);}catch{this.pending.delete(key);return null;}
+    if(/^(?:annull[eé]r|stop)[.!]?$/iu.test(message.trim())){this.pending.delete(key);return '!kanal annuller';}
+    const name=/^(?:(?:den skal hedde|kald den|navnet er) )?([a-z0-9æøå][a-z0-9æøå-]{0,99})[.!]?$/iu.exec(message.trim());
+    if(!name)return null;
+    this.pending.delete(key);return '!kanal opret '+name[1].toLocaleLowerCase('da');
   }
   rows(){return this.state.discordChannelActions || [];}
   status(){
@@ -59,13 +71,18 @@ export class DiscordChannels {
   async command(message,meta){
     const c=this.auth(meta),scope=this.control.current();
     message=discordChannelCommand(message)||message;
-    if(message.trim()==='!kanal hjælp')return 'Kanalstyring er konfigureret, men Discord-rettighederne er endnu ikke kontrolleret. Hvad skal den private tekstkanal hedde? Skriv fx “Opret en privat kanal madplan”. Jeg viser et forslag, som du skal godkende her, før kanalen oprettes. Ingen kanal er oprettet.';
+    if(message.trim()==='!kanal annuller'){this.pending.delete(this.conversationKey(meta));return 'Kanalhandlingen er annulleret. Ingen ændring er sendt.';}
+    if(message.trim()==='!kanal hjælp'){
+      for(const [key,p]of this.pending)if(p.expires<=this.now())this.pending.delete(key);
+      if(this.pending.size>=100)this.pending.clear();
+      this.pending.set(this.conversationKey(meta),{expires:this.now()+120000,basis:this.basis(c),scope});
+      return 'Kanalstyring er konfigureret, men Discord-rettighederne er endnu ikke kontrolleret. Hvad skal den private tekstkanal hedde? Skriv fx “Opret en privat kanal madplan”. Jeg viser et forslag, som du skal godkende her, før kanalen oprettes. Ingen kanal er oprettet. Du kan også svare med navnet alene eller skrive annuller.';}
     if(message.trim()==='!kanal liste'){
       const list=await this.api(`/guilds/${c.guildId}/channels`,'GET',c,scope);
       if(!Array.isArray(list))throw fail('Ugyldig kanalliste.');
       return list.filter(x=>x.type===0&&snow(x.id)).slice(0,50).map(x=>`${String(x.name||'').slice(0,100)} · ${x.id}${x.id===c.reportChannelId?' · rapportkanal':''}`).join('\n')||'Ingen tekstkanaler fundet.';
     }
-    const match=/^!kanal (opret|slet|omdøb|rapport|godkend|status) (\S+)(?: (\S+))?$/iu.exec(message.trim());
+    const match=/^!kanal (opret|slet|omdøb|rapport|godkend|status|annuller) (\S+)(?: (\S+))?$/iu.exec(message.trim());
     if(!match)return 'Brug !kanal liste, !kanal opret navn, !kanal omdøb ID nyt-navn, !kanal rapport ID, !kanal slet ID, !kanal godkend review-ID eller !kanal status review-ID.';
     const action=match[1].toLocaleLowerCase('da'),value=match[2],extra=match[3];
     if(action==='omdøb'?!extra:Boolean(extra))throw fail('Angiv præcis handling og dens parametre.');
@@ -73,6 +90,11 @@ export class DiscordChannels {
       const r=this.rows().find(r=>r.id===value && r.owner===c.userId && r.guild===c.guildId);
       if(!r)throw fail('Ukendt kanalreview.');
       return JSON.stringify({id:r.id,status:r.status==='sending'?'unknown':r.status,action:r.action,target:r.target,result:r.result||null});
+    }
+    if(action==='annuller'){
+      return this.transact(['discordChannelActions'],async()=>{
+        const r=this.rows().find(x=>x.id===value);this.check(r,meta,c);r.status='cancelled';await this.save();return 'Kanalreview er annulleret. Ingen ændring er sendt.';
+      });
     }
     if(action==='godkend')return this.execute(value,meta,c);
     let target,payload;
@@ -146,9 +168,9 @@ export class DiscordChannels {
       if(!snow(result.id)||result.guild_id!==c.guildId||result.type!==0||(r.action==='slet'&&result.id!==r.target.id)||(r.action==='opret'&&result.name!==r.target.name)||(r.action==='omdøb'&&(result.id!==r.target.id||result.name!==r.payload.name)))throw fail('Uventet Discord-svar.');
       await this.transact(['discordChannelActions'],async()=>{const item=this.rows().find(x=>x.id===id);item.status='completed';item.result={id:result.id};await this.save();});
       return `${({opret:'Oprettet',slet:'Slettet',omdøb:'Omdøbt',rapport:'Rapportkanal valgt'})[r.action]}: ${r.payload?.name||r.target.name} (${result.id}).`;
-    }catch{
+    }catch(error){
       await this.transact(['discordChannelActions'],async()=>{this.rows().find(x=>x.id===id).status='unknown';await this.save();}).catch(()=>{});
-      throw fail('Udfaldet er ukendt. Kontrollér Discord og !kanal status '+id+'. Der er ikke genforsøgt.');
+      throw fail((error.code==='DISCORD_CHANNEL_REVIEW'?error.message+' ':'')+'Udfaldet er ukendt. Kontrollér Discord og !kanal status '+id+'. Der er ikke genforsøgt.');
     }
   }
 }
