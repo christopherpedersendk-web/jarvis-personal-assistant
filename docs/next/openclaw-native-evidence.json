@@ -1,0 +1,50 @@
+{
+  "sourceBasis": "contained-openclaw-browser.mjs and openclaw-worker.mjs hashes identical across final public/policy/stop probes; CLI evolves only diagnostics and stop metadata, each report binds exact source commit/hash.",
+  "focusedLocal": {
+    "uniqueCases": 7,
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Simulated Docker transport; resource/DNS/mount/source/stop/cleanup safeguards. Actual runtime evidence separate."
+  },
+  "actual": {
+    "publicRead": "openclaw-native-product.json",
+    "adversarialPolicy": "openclaw-native-policy.json",
+    "appliedIsolationAndStop": "openclaw-native-stop.json"
+  },
+  "fixtureCorrections": [
+    "Popup was blocked by Chromium itself, so wrapper popup count stayed zero. Fixture now requires either explicit native-blocked evidence or confirmed wrapper closure; a surviving popup always fails.",
+    "First stop probe completed container-removal checks but failed on product-only usage metadata while reporting. Stop-only reporting corrected; failed probe rerun."
+  ],
+  "securityScope": {
+    "freshProfile": true,
+    "network": "none",
+    "sandbox": true,
+    "hostMounts": "only public node_modules, reviewed Node binary and two read-only source files",
+    "publicBroker": "same-origin HTTPS GET only, DNS checked and pinned per TLS request; queries/redirected response destinations rejected",
+    "postAndWebsocket": "blocked",
+    "resourceLimit": {
+      "requests": 25,
+      "bytes": 4000000,
+      "perResourceBytes": 500000,
+      "lifetimeSeconds": 90,
+      "cleanupSeconds": 5,
+      "memory": "3g",
+      "cpus": 2,
+      "pids": 256
+    },
+    "dnsAndRedirectFixtures": "Controlled DNS/HTTP responses exercised by actual native Chrome; not changes to the real merchant DNS.",
+    "appliedPolicy": "Docker inspect plus actual in-container UID/caps/NoNewPrivs/lo-only interface, denied host credential access, read-only root and unreachable public/private/metadata socket checks.",
+    "externalProviderClosure": "not measured"
+  },
+  "productionActivated": false,
+  "loginContactCartPaymentWrites": false,
+  "milestonesClosed": [],
+  "sourceHashes": {
+    "contained-openclaw-browser.mjs": "54cc038ad60d230c10958d93953c44afc09a321cac140b5f27dddfd4b64d85ec",
+    "browser-runtime/openclaw-worker.mjs": "c18ffe07da423475ac96c6888454b4a79313d615e3c7775bd94626799b501b05",
+    "scripts/openclaw-contained-live.mjs": "0d7c092708c0139382b8f942c52f86d7279380d9ccd62c3be28c39bc327936ba",
+    "server.mjs": "07727418c0ecce810d318645aa6c07b0cb41e36ec75aea1ca61ae4d5d75dc41e",
+    "test/contained-openclaw-browser.test.mjs": "7ce42360aa8dc1ff931fb7cd3efe8eb01790da602d51168a22860f0444f0149b"
+  }
+}

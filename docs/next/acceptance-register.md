@@ -10,9 +10,9 @@ De daterede opfølgninger har forrang for ældre installationsbemærkninger. Ing
 
 | Område | Aktuel accept | Konkret rest |
 |---|---|---|
-| M1 | Faktisk restore og netværksløs genopstart verificeret | Backup af nye eksterne runtimekonfigurationer; fysisk mobilaccept |
+| M1 | Faktisk restore og netværksløs genopstart verificeret | Automatisk samlet backupplan og fysisk mobilaccept; ekstra runtime-snapshot/restore er nu verificeret |
 | M2 | Durable stop og reservationer implementeret og testet | Providerens faktiske fjernlukning og fuldt målt forbrug |
-| M3/M7 | Installeret fastlåst OpenClaw og faktisk lokal research verificeret | Samlet ejeraccept; dedikeret native browserisolation er separat |
+| M3/M7 | Installeret fastlåst OpenClaw og faktisk lokal research verificeret | Samlet ejeraccept; native browserisolation er verificeret separat i udvikling, ikke aktiveret |
 | M4/M17 | Fælles plan, variation og listekode verificeret; faktisk Nemlig-læsning | Ejerretning af samme plan i web/Discord og eksplicit overførsel |
 | M5 | Ejer har bekræftet mikrofon, talt svar og stop i privat kanal | Øvrige fejlsituationer og providerlukning dokumenteres særskilt |
 | M6/M10 | Faktisk baseline/hybrid 30+30 scenarier gennemført | Menneskelig rubric/27 af 30 og alle kritiske; ukendt forbrug er ukendt |
@@ -20,7 +20,7 @@ De daterede opfølgninger har forrang for ældre installationsbemærkninger. Ing
 | M11/M15 | Fælles kladder, revisioner, privat lagring og UI-kontrol | Fysisk mobil/DM-review og samlet ejeraccept |
 | M12 | Administrator verificeret; afgrænset faktisk create/rename/delete og mobilsvar bestået | Ejerens gateway-/opskriftsreview; varigt rapportkanalvalg |
 | M13/M14 | Decodercontainment, opskriftsmodel og syntetisk video-modelprøve faktisk observeret | Ejerens egne medier og faktisk lydforståelse; video-CDN/gatewayaccept særskilt |
-| M16 | Faktisk offentlig søgning, sammenligning og anonym kurv med readback | Login/valgte adresser, fragt og levering til 2900 samt færdig checkout |
+| M16 | Offentlig søgning, anonym kurv og nu faktisk native OpenClaw-produktlæsning med containment | Gæstekontakt/login, valgte adresser, fragt/levering til 2900 og overtagelig checkout er fortsat åbne |
 | M18 | Installeret Codex, samme session, isoleret ændring/tests og JARVIS-publiceret PR verificeret | Ejerens telefonforløb; uafhængige releasekontroller og særskilt deploymentmandat |
 
 Se [aktuel installationsevidens](observed-acceptance-2026-11-07.json). Historiske revisionsbundne resultater nedenfor bevares som historik.
@@ -206,3 +206,15 @@ Aktuel main ved start var dc72800; aktiv installation var nu 5.5.3 (ikke længer
 Kilde 1ef2306 (appændringer identiske med 745bdd3): fjern kun OpenClaws observerede interne envelope fra viste kildetitler; bevar rå kildedata som ubestroede. Gatewayens tidligere livstidsgrænse på 60 søgninger er erstattet af højst 60 pr. monotont timevindue og højst to aktive, uden timer/scheduler eller ændring af JARVIS' egen forbrugsjournal. Samtidigt admission er kontrolleret før upstream; 429 vises konkret uden automatisk retry. Den nye gatewaykvote er kun udviklingskode og lokale kontraktprøver, ikke installeret i den aktive researchtjeneste.
 
 Seks nye unikke lokale tests og to relevante eksisterende source-/privacyregressioner bestod. Faktisk lokal HTTP-abort og timeout lukkede forbindelsen og frigav gatewayens admission. Det er ikke bevis for ekstern providerhangup, som forbliver ukendt. [Filer, præcis evidens og liveprøver](openclaw-integration-evidence.json). Ingen hel milestone lukkes.
+
+## Native OpenClaw-browser, runtimebackup og faktisk ejerfund
+
+Kandidat 5.5.4 bygger på de mergede PR #29–#31. M16.3 får en separat opt-in-læser med OpenClaw 2026.11.1 og rigtig sandboxed Chromium i netværksløs container. Der monteres kun offentlige dependencies, gennemgået Node og to read-only kildefiler; ingen produktionscredentials eller ejerprofil. Den eksisterende DNS-pinnede broker tillader kun begrænsede offentlige same-origin HTTPS-GET-kald. Ingen generisk /act, cookies/login eller merchantwrite tilføjes.
+
+Faktisk Proshop-Sandberg-læsning bestod. Faktisk Chrome på syntetisk side afviste intern IP/metadata, POST, WebSocket og popup; kontrollerede DNS-skift/redirects nåede ikke privat TLS. Docker inspect og checks inde i den aktive container bekræftede den anvendte namespace-/capability-/secret-/rootisolation. Globalt stop i isoleret fælles ProviderControl fjernede den aktive native container, bekræftet ved readback. Ekstern providerlukning er ikke testet. [Præcise revisioner og omfang](openclaw-native-evidence.json).
+
+M1: Den eksisterende offlinebundle kan nu vælge enkelte konfigurationsfiler. Tre nye tests og én nødvendig gammel regression bestod. Separat faktisk krypteret restic-restore verificerede 707 runtime-/auth-/konfigurationsfiler i et nyt privat mål. Det ændrer ikke automatisk backupplan og beviser ikke en offlinekonsistent snapshot af hele aktivt appdata. [Evidens](runtime-backup-evidence.json).
+
+M18: Ejeropgave 75f302d8 viste en reel test-only-fejl i aktiv 5.5.3. Kontraktvalget og not_run/unknown-diagnosen er rettet i PR #31; præcis ejerfil/base/diff bestod faktisk beskyttet Docker i separat reproduktion. Originalopgave, unknown-kvittering og produktionskode er uændret; fuldt ejerforløb til draft-PR er fortsat åbent efter særskilt installation. [Evidens](codex-test-only-evidence.json).
+
+Ejeren har valgt gæstecheckout og vil vælge Stamdata privat. Det er ikke i sig selv samtykke til at sende adresse-/kontaktoplysninger. En konkret revisionsbundet data-/ordregennemgang kræves før en sådan handling. Ingen hel milestone lukkes.

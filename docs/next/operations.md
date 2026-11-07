@@ -102,3 +102,19 @@ Den eksisterende restic-prøve beviser gendannelse af snapshot-rødderne, ikke b
 Konfigurationen skal være en privat regulær fil uden gruppe-/andre-rettigheder; scriptet bruger kun de fire OPENJARVIS-konfigurationsfelter. Alternativt kan disse gives gennem eksisterende sikkert miljø. Ingen token som argv, shelltrace eller output. Scriptet udfører health, to offentlige søgninger (direkte og gennem eksisterende adapter), fem forbudte tools og forkert-auth-prøve. Det starter ingen bot og ændrer ingen produktionsdata. Output oprettes eksklusivt før kald; ved fejl inspiceres det før eventuelt nyt forsøg. Det er ikke en kode-/browser-/betalingsadapter.
 
 Kandidatens researchgateway har 60 upstream-søgninger pr. monotont timevindue og højst to aktive. Lokal JARVIS ProviderControl er fortsat den fælles bruger-/døgnjournal; gatewaykvoten er en selvstændig perimetergrænse. 429 med Retry-After tillader ingen automatisk klientgentagelse. Denne kode ændrer ikke den allerede installerede immutable runtime; senere installation kræver særskilt mandat. Ekstern providerlukning og ikke-returneret forbrug er stadig ukendt.
+
+### Native OpenClaw i netværksløs udviklingscontainer — kandidat 5.5.4
+
+`JARVIS_OPENCLAW_CONTAINER=yes` vælger den nye selvstændigt containede offentlige produktlæser frem for den ældre loopbacklæser. Det er et separat opt-in; ingen flag aktiveres ved installation af kildekoden. Eksempel: `deployment/systemd/jarvis-openclaw-contained.conf.example`. Der kræves præcist lokalt `JARVIS_BROWSER_IMAGE=sha256:...`, `JARVIS_OPENCLAW_RUNTIME_DIRECTORY` til den gennemgåede offentlige npm-installation og `JARVIS_OPENCLAW_NODE` til den gennemgåede Node 24.16+-binary. Native prøve brugte 24.16.0. Kopiér ingen .env, private indstillinger eller browserprofiler til containeren.
+
+Hver læsning opretter et nyt privat HOME og en separat native gateway inde i containeren; ingen port publiceres. Gatewaycredential genereres kun inde i den container. Read-only mount af node_modules genbruger den allerede fastlåste og lifecycle-forberedte runtime; en uforberedt installation må ikke omgå read-only eller sandbox for at starte. Kun eget faneblad åbnes/læses/lukkes. Hele containeren fjernes og oprydning verificeres, også ved stop. 90 sekunders samlet deadline omfatter cold start; ressource-/cleanupgrænser er i evidensen. Dette er offentlige kilder, ikke et login-/checkout-/interaktivt browserhandoff.
+
+Reproducerbart i afgrænset udviklingsmiljø med de tre lokale runtime-/imagevariable:
+
+- `node jarvis-starter/scripts/openclaw-contained-live.mjs --live --output /privat/nyt-produkt.json`
+- Tilføj `--synthetic-policy` for faktisk Chrome med kontrollerede angrebssvar (ingen butiksrequest ud over offentlig DNS).
+- Tilføj `--stop-probe` for applied-policy-/namespaceattestation og faktisk stop/fjernelse af eget aktive browserarbejde. Modes kan ikke kombineres.
+
+Privat output oprettes eksklusivt før kald. Ved fejl gemmes begrænset diagnosticering; inspicér originalfil og egne containere før nyt forsøg. Den oprindelige produktionsbot og researchgateway ændres ikke af prøverne. Det ældre `JARVIS_COMMERCE_ISOLATION_REVIEW=accepted` er ingen erstatning for den nye konstruktions-/runtimeisolation og skal ikke sættes for at få en prøve til at passere.
+
+For M1 genbruges [eksplicit runtime-backupmapping](../../jarvis-starter/deployment/backup/README.md). Den faktiske ekstra restic-restore er ikke en ændring af produktionsbackup-timeren. For M18 skal [den bevarede test-only-fejl](codex-test-only.md) inspiceres før et nyt eksplicit ejerforløb efter autoriseret installation; ingen unknown-post nulstilles automatisk.
