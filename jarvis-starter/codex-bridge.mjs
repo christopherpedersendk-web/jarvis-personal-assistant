@@ -25,6 +25,7 @@ export class CodexBridge{
  async recover(){
   await this.transact(['selfDevelopmentJobs'],async()=>{for(const row of this.rows()){
    if(active.has(row.status)&&row.status!=='stop_requested')row.status='unknown';
+   if(row.publicationOutcome==='sending')row.publicationOutcome='unknown';
    if(row.pendingApproval){row.pendingApproval.status='expired';row.pendingApproval=null;}
    row.recoveryNote='Genstart gentager ikke kodeændringer, tests eller publicering. Status kan genfindes eksplicit.';
   }await this.save();});

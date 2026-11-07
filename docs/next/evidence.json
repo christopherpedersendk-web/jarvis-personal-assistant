@@ -531,5 +531,37 @@
       "documentationOnlyFinalization": "Only docs/next and docs/releases after this tested head. App and workflows byte identity verified with git diff. [skip ci] prevents repeating unchanged code; main has no required branch checks/reviews (protected=false), no protection/check removed. Merge must bind exact final PR head.",
       "ownerAcceptance": "M12/M16 remain open on documented owner/login/address/postal/complete-checkout criteria; no production activation."
     }
+  },
+  "codexBridge": {
+    "baselineMain": "a0a076018429cb87c8d2a0b4d497b95a8738df16",
+    "pullRequest": 24,
+    "version": "5.5.2",
+    "schema": {
+      "version": 1,
+      "readableFrom": 0
+    },
+    "liveEvidence": "docs/next/codex-bridge-live.json",
+    "liveSessionBase": "467b08f348984ecdc73d1afa4fc816c417119bc6",
+    "actualDraftPublicationSha": "e98aaaf82e3b0cad249c1ffbe154a649eec3c25d",
+    "finalSourceSha256": {
+      "codex-app-server.mjs": "fb92a9ffe2fbe03ce0f425740f44732d9d5d132a87caa91bee69a27ec634189b",
+      "codex-worktree.mjs": "fc0974d70a4587dee2091d2dd3685a3120e4c612b6eed53e4d33e317f3ec2f19",
+      "codex-bridge.mjs": "5656844cd92738330941df40041f09db20dec160ce9933b3a67d36a2b5556d9d",
+      "codex-bridge-config.mjs": "4a5faf3703f485d7bd561de93831c06cec10b6e57ef341996bc55a19d488896b",
+      "self-development-github.mjs": "74268866359e473aceaa58d4dd4166da50a7f2cb874b7f2fe51081c8797df331",
+      "self-development-github-cli.mjs": "764a9b5cf35e419e6beaa3f0183cb68b42ae764bd57d0e37c06288d943b94f34",
+      "self-development.mjs": "94e7ed5d9705edb3370c4556246289ae2e9acde90beeb57fb149227ca9e51cd4",
+      "discord-gateway.mjs": "14e926abd773073b03878e5385be320d492b6f7122c5479d0afa16550fa2954b",
+      "server.mjs": "924d7ac70004218d567aa2e9c4ae40ec630e85c1dd4877a0eafde7fbcd975bba"
+    },
+    "focusedLocal": {
+      "newUniqueCases": 35,
+      "necessaryExistingRegressionsUniqueCases": 23,
+      "scope": "Executed in focused batches as the corresponding code changed. Earlier passing unchanged tests reused. Protocol/Discord/GitHub failure cases are contracts; live evidence is separate.",
+      "additionalFinalRecoveryCheck": "restart preserves stop request and unknown publication; 1 passed, no failures/skips, controller source hash as above",
+      "ci": "Normal PR workflows required; final head results will be linked in PR #24, not inferred from historical runs."
+    },
+    "productionActivated": false,
+    "milestonesClosed": []
   }
 }
