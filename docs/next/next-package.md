@@ -44,3 +44,11 @@ Kandidat 5.5.1, schema 1/readableFrom 0; eksisterende v5.5.0-tag/release er veri
 Denne leverance erstatter den ældre oplysning om manglende faktisk M18-kandidatprøve: installeret Codex → afgrænset worktreeændring → beskyttede Docker-tests → faktisk draft-PR #24 er nu verificeret. Samme session understøtter opfølgning, interrupt og genfinding efter genstart. Se [drift](codex-bridge.md), [acceptregister](acceptance-register.md) og [liverapport](codex-bridge-live.json) for præcist omfang og kildehashes.
 
 Version 5.5.2 er alene PR-kandidat; ingen tag/release, merge eller deployment udføres i denne opgave. Broen er OFF i produktion. Telefonkommandoer kræver separat installation/aktivering på eksisterende tjeneste med egen udviklingsklon, privat Codex-home og gennemgået GitHub-transport. M12/M16's faktiske resterende ejer-/butikskrav ovenfor er uændrede.
+
+## Aktuel installation og resterende pakke 2026-11-07
+
+PR #24 er merget som `77e51be5ce36e55c0002cff196849ba874ac5865`, og stagingtag v5.5.2 eksisterer. Broen og flere Discord-/mediefunktioner blev allerede aktiveret under tidligere særskilt mandat. Denne milestone-opgave har ikke foretaget produktionsdeployment eller ny aktivering. Ældre OFF-/manglende-tag-bemærkninger beskriver tidligere tilstand.
+
+Ejerens mikrofon/svar/stop-prøve er bekræftet. Faktisk backup-restore og Discord-kanalprøve er dokumenteret i [aktuel evidens](observed-acceptance-2026-11-07.json). Nye kandidatændringer skal gennem normale PR-kontroller før særskilt staging-release; eksisterende tags bevares.
+
+Fortsat åben M16 kræver konkret sikker butikssession og eksplicit adressevalg, før kontaktoplysninger kan sendes. Native OpenClaw-browser må ikke aktiveres uden verificeret egressisolation. Selvreleasegodkendelse forbliver OFF uden uafhængige beskyttede kontroller. Disse begrænsninger ændres ikke af Discord-administratorrettigheden.

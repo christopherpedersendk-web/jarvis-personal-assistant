@@ -84,3 +84,13 @@ Rollback: slå de nye flags fra i staging, stop opgaver og bevar journal/session
 Se [konkret konfiguration, telefonkommandoer og genstartshåndtering](codex-bridge.md). Broen er leveret som kode i PR #24 og er ikke installeret i den aktive tjeneste. Installeret Codex 0.167.0, eksisterende login, netværksløs Docker og typed GitHub-publicering er faktisk afprøvet separat fra produktionsbotten; [liverapport](codex-bridge-live.json).
 
 Brug eksisterende bot, ejeridentifikation, joblager og kø. Opret ikke en ekstra bot eller offentlig App Server-port. Kopiér aldrig produktions-.env til agenten. Genstart afspiller ingen kode-/publiceringshandlinger; ukendt udfald kræver inspektion. Stop er først “stoppet” efter bekræftet afbrydelse og afsluttede lokale værktøjer. Eksempel-dropin ændrer ingen tjeneste ved sin tilstedeværelse i repository. Ingen merge/release/deployment er udført som del af denne leverance.
+
+### Verificeret serverstatus 2026-11-07
+
+Se [dateret accept og installationsstatus](observed-acceptance-2026-11-07.json). Discord-administratorrettigheder er verificeret; bed ikke om tildeling igen. Privat JARVIS-stemme har ejerbekræftet mikrofon/svar/stop. Ingen nye produktionsændringer er foretaget i den efterfølgende milestone-opgave.
+
+På denne host krævede den installerede OpenClaw-opstart omtrent 1,5 GiB. Den verificerede tjeneste bruger MemoryHigh=1536M og MemoryMax=2G; eksemplet følger nu denne observation. Lifecycle-forberedelse skal udføres i isoleret staging før installation i skrivebeskyttet runtime. Genbrug den fastlåste version og installationens rapport, og start ikke et ekstra produktionsgateway med samme credential.
+
+Voice- og semantic-runtimeafhængigheder er separate låste pakker. En ny release skal have disse afhængigheder forberedt i staging, før allerede aktiverede flags overføres; en ren checkout indeholder dem ikke. Brug de eksisterende package-lock-filer, ikke flydende npm-versioner. Modelmappen er fælles og skal hashverificeres, ikke downloades igen, når den allerede er korrekt.
+
+Den eksisterende restic-prøve beviser gendannelse af snapshot-rødderne, ikke backup af alle efterfølgende eksterne installationer. Inddrag OpenClaw-servicekonfiguration/credentials og Codex-runtime/auth i en særskilt sikker backupplan før fuld katastrofegendannelsesaccept. Credentials må ikke indgå i offentlige releaseartefakter.

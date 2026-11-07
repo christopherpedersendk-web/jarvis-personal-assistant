@@ -4,6 +4,29 @@ Status: ikke startet, under implementering, implementeret men ikke verificeret, 
 
 Alle åbne M1–M14-kriterier og deres betydninger videreføres uændret fra [v5.4 acceptance-register](../v5.4/acceptance-register.md), [inherited-acceptance](../v5.4/inherited-acceptance.md), [v5.2 register](../v5.2/acceptance-register.md) og v5.3-dokumenterne. Ejerens bekræftelse af Discord-tekst og rapportlevering bevares; dette er ikke bevis for kanalstyring eller voice.
 
+## Aktuel oversigt — observeret 2026-11-07
+
+De daterede opfølgninger har forrang for ældre installationsbemærkninger. Ingen hel milestone lukkes på baggrund af en enkelt prøve.
+
+| Område | Aktuel accept | Konkret rest |
+|---|---|---|
+| M1 | Faktisk restore og netværksløs genopstart verificeret | Backup af nye eksterne runtimekonfigurationer; fysisk mobilaccept |
+| M2 | Durable stop og reservationer implementeret og testet | Providerens faktiske fjernlukning og fuldt målt forbrug |
+| M3/M7 | Installeret fastlåst OpenClaw og faktisk lokal research verificeret | Samlet ejeraccept; dedikeret native browserisolation er separat |
+| M4/M17 | Fælles plan, variation og listekode verificeret; faktisk Nemlig-læsning | Ejerretning af samme plan i web/Discord og eksplicit overførsel |
+| M5 | Ejer har bekræftet mikrofon, talt svar og stop i privat kanal | Øvrige fejlsituationer og providerlukning dokumenteres særskilt |
+| M6/M10 | Faktisk baseline/hybrid 30+30 scenarier gennemført | Menneskelig rubric/27 af 30 og alle kritiske; ukendt forbrug er ukendt |
+| M8/M9 | Research med kilder faktisk observeret | Ejeraccept og kvalitet på hver procedure |
+| M11/M15 | Fælles kladder, revisioner, privat lagring og UI-kontrol | Fysisk mobil/DM-review og samlet ejeraccept |
+| M12 | Administrator verificeret; afgrænset faktisk create/rename/delete og mobilsvar bestået | Ejerens gateway-/opskriftsreview; varigt rapportkanalvalg |
+| M13/M14 | Decodercontainment bestået; opskriftsmodel faktisk observeret | Ejerens egne medier og video-/lydforståelse |
+| M16 | Faktisk offentlig søgning, sammenligning og anonym kurv med readback | Login/valgte adresser, fragt og levering til 2900 samt færdig checkout |
+| M18 | Installeret Codex, samme session, isoleret ændring/tests og JARVIS-publiceret PR verificeret | Ejerens telefonforløb; uafhængige releasekontroller og særskilt deploymentmandat |
+
+Se [aktuel installationsevidens](observed-acceptance-2026-11-07.json). Historiske revisionsbundne resultater nedenfor bevares som historik.
+
+## Historisk register ved første next-leverance
+
 | ID/kriterium | Status | Filer/evidens og begrænsning | Næste handling |
 |---|---|---|---|
 | M12.4 kanaldiagnose og danske intents | verificeret | discord-channels.mjs, integration-catalog.mjs, server.mjs; fokuserede regressioner | Ejer ser konkret diagnose i integrationer |
@@ -141,6 +164,18 @@ Grundlag er aktuel main `a0a076018429cb87c8d2a0b4d497b95a8738df16` og uændret s
 | M12/M16 | Broen kan modtage afgrænsede ændringsopgaver til de eksisterende kanal-/opskrifts- og Proshop-moduler. | M12's ejer-/iPhone-/reviewaccept og M16's autentificerede login, adresse, 2900-fragt/levering og fuldt klargjort checkout er fortsat åbne. Ingen nye butikskøb eller Discord REST-prøver i denne leverance. |
 
 36 nye unikke fokuserede lokale tests og 23 nødvendige eksisterende regressioner er fordelt på kildeændringernes kørsler. De sidste genstarts-/adgangsrettelser er verificeret med tre målrettede cases; beståede uændrede tests er genbrugt. Simuleret Discord/GitHub/protokol er adskilt fra den faktiske model/Docker/GitHub-prøve i [revisionsbundet evidens](evidence.json) og [liverapport](codex-bridge-live.json). Ingen hel milestone lukkes. [Drift og aktivering](codex-bridge.md).
+
+## Observeret installation og ejerprøve 2026-11-07
+
+Denne daterede opfølgning opdaterer tidligere installationsbemærkninger; den ændrer ikke M1–M18 eller historiske testrevisioner. [Struktureret evidens](observed-acceptance-2026-11-07.json).
+
+- **M1:** Faktisk krypteret restic-snapshot `6d709c94…` gendannet og verificeret (3.787 filer) i isoleret målmappe. En afledt kopi startede 5.5.2 i netværksløs container med fjernede eksterne credentials og bevarede samlingsantal. Ingen produktionsdata overskrevet. Nye OpenClaw-/Codex-konfigurationers backupdækning og fysisk telefonaccept er særskilte åbne kriterier.
+- **M5:** Ejeren gennemførte prøven i privat JARVIS-stemme og bekræftede: “Jeg fik et talt svar og har stoppet”. Serveren viste efterfølgende afbrudt stemmeforbindelse. Dette er ejeraccept af den konkrete mikrofon-/svar-/stopprøve, ikke bevis for alle fejl-, ressource- eller providerlukningsforløb. Ingen optagelse gemt.
+- **M12:** Effektiv administratorrettighed er bekræftet. Afgrænset REST-prøve bestod navnefortsættelse, godkendt privat oprettelse/omdøbning, isoleret rapportkanalvalg, læsbart svar med pris/link samt sletning og oprydningskontrol. Ingen ekstra gateway-bot. Ejerens opskriftsreview og øvrig telefonaccept er fortsat særskilt.
+- **M17:** Faktisk læsning af Nemlig-kurv gav HTTP 200. Ingen kurvændring eller overførsel udført; den særskilte ejerhandling “Overfør til Nemlig” er ikke accepteret alene ved læseprøven.
+- **M18:** PR #24 er merget med forventet head `908b80d…` som `77e51be…`; de syv eksisterende grønne workflows blev genbrugt, da app/workflow-bytes var identiske. Broen var allerede aktiveret før denne opgave. Ejerens fulde Discord-opgave til draft-PR og uafhængige releasekontroller forbliver særskilte.
+
+OpenClaw 2026.11.1 kører allerede lokalt med særskilt DynamicUser og Node 24.16.0. Installeret Codex er 0.167.0. Den nye opgave har ikke deployet eller aktiveret produktionsfunktioner. Native OpenClaw-shoppingbrowser og selvreleasegodkendelse er fortsat deaktiveret af konkrete isolation-/kontrolårsager.
 
 ## M6–M10: faktisk dansk baseline/hybrid-evaluering 2026-11-07
 
