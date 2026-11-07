@@ -563,5 +563,19 @@
     },
     "productionActivated": false,
     "milestonesClosed": []
+  },
+  "languageLiveEvaluation": {
+    "evidence": "language-live-evidence.json",
+    "review": "language-review.md",
+    "data": "language-review-data.json",
+    "fullEvaluationCommit": "77e51be5ce36e55c0002cff196849ba874ac5865",
+    "regressionCommit": "a1b00d2d5f239f2353bea678651cdd2a87e5d2e4",
+    "fullScenariosPerBackend": 30,
+    "changedScenariosRetestedPerBackend": [
+      "DA10",
+      "DA11"
+    ],
+    "humanQualityAcceptance": false,
+    "milestonesClosed": []
   }
 }
