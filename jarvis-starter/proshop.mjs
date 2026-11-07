@@ -6,11 +6,11 @@ const text=html=>decode(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').r
 export function proshopProduct(html,url,now=new Date().toISOString()){
  const u=proshopProductUrl(url),id=u.pathname.split('/').at(-1);let product;
  for(const [,raw]of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)){
-  try{const parsed=JSON.parse(raw);if(parsed['@type']==='Product'&&String(parsed.sku)===id){if(product)throw Error('duplicate');product=parsed;}}catch{}
+  let parsed;try{parsed=JSON.parse(raw);}catch{continue;}if(parsed['@type']==='Product'&&String(parsed.sku)===id){if(product)throw Error('Modstridende eller gentagne produktdata. Gennemgå en ny observation.');product=parsed;}
  }
  const offer=product?.offers;
  if(!product||Array.isArray(offer)||offer?.priceCurrency!=='DKK'||!/^\d+(?:\.\d{1,2})?$/.test(String(offer.price))||typeof product.name!=='string'||!product.name.trim()||typeof offer.seller?.name!=='string')throw Error('Proshops produktkontrakt kunne ikke bekræftes.');
- const unitPriceMinor=Math.round(Number(offer.price)*100),plain=text(html);
+ const unitPriceMinor=Math.round(Number(offer.price)*100),plain=text(html);if(!Number.isSafeInteger(unitPriceMinor)||unitPriceMinor<0||unitPriceMinor>10000000)throw Error('Produktprisen er ugyldig eller uden for grænsen.');
  const shipping=/Billigste fragt \(privatkunde\)\s*(\d+(?:[.,]\d{2})?)\s*kr\./i.exec(plain);
  const delivery=/(?:På lager\s*[-–]\s*Leveres [a-zæøå]+)|(?:På lager\s*[-–]\s*)?\d+(?:\s*[-–]\s*\d+)?\s*dages levering/i.exec(plain)?.[0]||null;
  return {store:'proshop',productId:id,url:u.href,title:product.name.slice(0,160),seller:offer.seller.name.slice(0,160),unitPriceMinor,currency:'DKK',
@@ -49,4 +49,16 @@ export function proshopDetails(raw){
  const data=JSON.parse(raw);if(data.Currency!=='DKK'||!Array.isArray(data.Lines)||data.IsAnonymous!==true||!/^[a-zA-Z0-9-]{1,100}$/.test(data.ShareLink))throw Error('Anonym kurvedeling kunne ikke bekræftes.');
  const lines=data.Lines.map(i=>{if(!/^\d{7}$/.test(i.ProductId)||!Number.isSafeInteger(i.Quantity)||i.Quantity<1||typeof i.PriceWithVat!=='number'||!Number.isFinite(i.PriceWithVat)||i.PriceWithVat<0)throw Error('Ugyldig faktisk kurvedetalje.');return {productId:i.ProductId,quantity:i.Quantity,unitPriceMinor:Math.round(i.PriceWithVat*100)};});
  return {lines,shareUrl:'https://www.proshop.dk/Basket/Shared/'+data.ShareLink,sourceHash:digest(raw),shippingMinor:null,deliveryToPostalCode:null};
+}
+
+// Observed anonymous customer-details step, 2026-11-07. This identifies the
+// read-only contract; it grants no right to register, log in or submit an order.
+export function proshopCheckout(html){
+ if(typeof html!=='string'||Buffer.byteLength(html)>1000000)throw Error('Ugyldigt checkoutgrundlag.');
+ const forms=[...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)].filter(([,attrs])=>/\baction=["']\/Basket\/CheckOut\/Register["']/i.test(attrs)&&/\bmethod=["']post["']/i.test(attrs));
+ if(forms.length!==1)return {stage:'unconfirmed',guestSupported:false,sourceHash:digest(html),shippingMinor:null,totalMinor:null};
+ const names=[...forms[0][2].matchAll(/<(?:input|select)\b[^>]*\bname=["']([^"']+)["']/gi)].map(([,name])=>decode(name));
+ const required=['__RequestVerificationToken','ControllerName','MethodName','Name','Address1','ZipCode','City','CountryCode','Phone','AnonymousUser.Email','AnonymousUser.ConfirmEmail'];
+ const supported=required.every(name=>names.filter(n=>n===name).length===1);
+ return {stage:supported?'customer_details':'unconfirmed',guestSupported:supported,sourceHash:digest(html),shippingMinor:null,totalMinor:null};
 }

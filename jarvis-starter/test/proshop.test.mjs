@@ -1,12 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {proshopProduct,proshopAddForm,proshopBasket,assertProshopBasket} from '../proshop.mjs';
+import {proshopProduct,proshopAddForm,proshopBasket,assertProshopBasket,proshopCheckout} from '../proshop.mjs';
 import {Commerce} from '../commerce.mjs';import {DurableState} from '../durable-state.mjs';import {ProviderControl} from '../provider-control.mjs';
 import {replaceMasterData,emptyMasterData} from '../master-data.mjs';
 const url='https://www.proshop.dk/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156';
 const productHtml=(price='57.00')=>`<script type="application/ld+json">${JSON.stringify({'@type':'Product',sku:'3298156',name:'Sandberg USB-C to USB-C - 1m',offers:{price,priceCurrency:'DKK',seller:{name:'Proshop'}}})}</script><p>Farve Hvid</p><p>Kabel længde 1 m</p><p>Billigste fragt (privatkunde) 39,00 kr.</p><p>På lager - 1-2 dages levering</p><form action="/Basket/AddItem" method="post"><input name="token" value="synthetic-token"><input name="productId" value="3298156"></form>`;
 const basketHtml=(items=[])=>`<a href="/Basket/CheckOut" data-gtm-click="${JSON.stringify({event:'begin_checkout',ecommerce:{items}}).replace(/"/g,'&quot;')}">Gå til kassen</a>`;
 const line={item_id:'3298156',quantity:1,price:57,item_name:'Sandberg USB-C to USB-C - 1m'};
-const checkoutHtml='<form action="/Basket/CheckOut/Register" method="post"></form>';
+const checkoutHtml='<form action="/Basket/CheckOut/Register" method="post">'+['__RequestVerificationToken','ControllerName','MethodName','Name','Address1','ZipCode','City','CountryCode','Phone','AnonymousUser.Email','AnonymousUser.ConfirmEmail'].map(name=>'<input name="'+name+'">').join('')+'</form>';
 async function fixture(){const store=new DurableState({initial:{},write:async()=>{}});await store.initialize();const state=store.state,save=()=>store.save(),transact=(...a)=>store.transact(...a),control=new ProviderControl({state,save,transact});let data=replaceMasterData(emptyMasterData(),{expectedRevision:0,defaultProfileId:'home',profiles:[{id:'home',label:'Test',name:'Test Person',phone:'12345678',email:'test@example.org',delivery:{street:'Testvej 1',postalCode:'2900',city:'Hellerup',country:'DK'},billing:null}]});let added=false;const calls=[];const session={basket:async()=>({html:basketHtml(added?[line]:[])}),product:async()=>({html:productHtml()}),add:async input=>{assert.equal(work.rows()[0].status,'preparing','durable consume precedes write');calls.push(input);added=true;return {status:302};},details:async()=>({html:JSON.stringify({Currency:'DKK',IsAnonymous:true,ShareLink:'synthetic-cart',Lines:[{ProductId:'3298156',Quantity:1,PriceWithVat:57}]})}),checkout:async()=>({status:200,html:checkoutHtml})};
  const work=new Commerce({state,save,transact,control,masterData:()=>data,enabled:true,proshopSession:()=>session});const input={store:'proshop',profileId:'home',profileRevision:1,billingChoice:'same-as-delivery',currency:'DKK',shippingMinor:3900,paymentMethod:'manual',observedAt:new Date().toISOString(),items:[{url,title:'Sandberg USB-C to USB-C - 1m',seller:'Proshop',variant:'Hvid, 1 m, USB-C til USB-C',quantity:1,unitPriceMinor:5700}]};return {work,input,state,control,calls,session,changeAddress:()=>{data={...data,revision:2};}};}
 const review=r=>({expectedRevision:r.revision,reviewHash:r.reviewHash});
@@ -18,3 +18,20 @@ test('unknown write and restart cannot replay, and block later cart operations',
 test('stop during write prevents completion even after transport returns successfully',async()=>{const f=await fixture(),r=await f.work.propose(f.input);const original=f.session.add;f.session.add=async input=>{await original(input);await f.control.stop(true);await f.control.stop(false);};await assert.rejects(f.work.prepareProshop(r.id,review(r)));assert.equal(f.work.rows()[0].status,'unknown');assert.equal(f.calls.length,1);});
 test('research performs only observed searches/reads and never invents destination totals',async()=>{const f=await fixture();f.session.search=async query=>{assert.equal(query,'Sandberg USB-C');return {html:'<a href="/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156">Kabel</a><a href="https://evil.example/USB-kabel/x/1234567">bad</a>'};};const s=await f.work.researchProshop({query:'Sandberg USB-C'});assert.equal(s.candidates.length,1);assert.equal(s.candidates[0].url,url);const c=await f.work.researchProshop({urls:[url]});assert.equal(c.products[0].totalMinor,null);assert.equal(c.products[0].minimumShippingMinor,3900);assert.equal(f.calls.length,0);await assert.rejects(f.work.researchProshop({urls:[url,url,url,url]}));});
 test('payment claims and billing choice cannot be silently widened',async()=>{const f=await fixture();for(const paymentMethod of ['mobilepay','paypal','vipps'])await assert.rejects(f.work.propose({...f.input,paymentMethod}));const r=await f.work.propose(f.input);await f.work.revise(r.id,{expectedRevision:1,order:{...f.input,billingChoice:'profile-billing'}});await assert.rejects(f.work.prepareProshop(r.id,review(r)));assert.equal(f.calls.length,0);});
+
+test('a reviewed anonymous cart may be prepared while destination freight is explicitly unknown',async()=>{
+ const f=await fixture();const row=await f.work.propose({...f.input,shippingMinor:null});const result=await f.work.prepareProshop(row.id,review(row));
+ assert.equal(f.calls.length,1);assert.equal(result.order.totalMinor,null);assert.equal(result.order.cart.shippingMinor,null);assert.equal(result.order.cart.handoffReady,false);
+});
+
+test('ambiguous source prices and unsafe numeric quotes are never treated as verified',()=>{
+ assert.throws(()=>proshopProduct(productHtml()+productHtml('58.00'),url),/produktdata/);
+ assert.throws(()=>proshopProduct(productHtml('999999999999999999999999999.00'),url),/pris/);
+});
+test('guest checkout detection requires the observed complete field contract and never claims a final quote',()=>{
+ const fields=['__RequestVerificationToken','ControllerName','MethodName','Name','Address1','ZipCode','City','CountryCode','Phone','AnonymousUser.Email','AnonymousUser.ConfirmEmail'];
+ const html='<form action="/Basket/CheckOut/Register" method="post">'+fields.map(name=>'<input name="'+name+'">').join('')+'</form>';
+ const r=proshopCheckout(html);assert.equal(r.guestSupported,true);assert.equal(r.stage,'customer_details');assert.equal(r.totalMinor,null);assert.equal(r.shippingMinor,null);
+ assert.equal(proshopCheckout(html.replace('name="Name"','name="Unexpected"')).guestSupported,false);
+ assert.equal(proshopCheckout(html+html).guestSupported,false);assert.equal(proshopCheckout('<form action="/Order/Submit"></form>').guestSupported,false);
+});

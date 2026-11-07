@@ -20,7 +20,7 @@ try{
  const comparison=await commerce.researchProshop({urls});report.comparison=comparison.products;report.cases.push('actual product comparison; destination totals remain null');
  if(process.argv.includes('--cart')){
   const p=comparison.products[0];if(p.unitPriceMinor!==5700||p.minimumShippingMinor!==3900)throw Error('Observed test price changed; review before any write.');
-  const row=await commerce.propose({store:'proshop',profileId:'synthetic',profileRevision:1,billingChoice:'same-as-delivery',currency:'DKK',paymentMethod:'manual',shippingMinor:3900,observedAt:p.observedAt,items:[{url:p.url,title:p.title,seller:p.seller,variant:'Hvid, 1 m, USB-C til USB-C',quantity:1,unitPriceMinor:5700}]});
+  const row=await commerce.propose({store:'proshop',profileId:'synthetic',profileRevision:1,billingChoice:'same-as-delivery',currency:'DKK',paymentMethod:'manual',shippingMinor:null,observedAt:p.observedAt,items:[{url:p.url,title:p.title,seller:p.seller,variant:'Hvid, 1 m, USB-C til USB-C',quantity:1,unitPriceMinor:5700}]});
   const result=await commerce.prepareProshop(row.id,{expectedRevision:row.revision,reviewHash:row.reviewHash});
   report.cart={status:result.order.status,lines:result.order.cart.lines,checkoutStage:result.order.cart.checkoutStage,sharedBasketLinkPresent:!!result.order.cart.shareUrl,handoffReady:result.order.cart.handoffReady,shippingMinor:result.order.cart.shippingMinor,deliveryToPostalCode:result.order.cart.deliveryToPostalCode};
   report.cases.push('actual Commerce review -> durable consume -> observed AddItem -> HTML and JSON readback -> GET checkout; no retry');
