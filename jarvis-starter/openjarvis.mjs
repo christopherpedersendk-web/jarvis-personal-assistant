@@ -1,3 +1,4 @@
+import {openJarvisDiagnostics} from './openjarvis-diagnostics.mjs';
 import { boundedJson, localEndpoint, OpenJarvisError } from './openjarvis-transport.mjs';
 import { rejectSecrets, redactSecrets, containsSecret } from './privacy.mjs';
 
@@ -64,11 +65,11 @@ export function createOpenJarvis({ env = process.env, fetcher = fetch, control }
       if(inspection)return inspection;
       if(observed.lastCheckedAt && Date.now()-Date.parse(observed.lastCheckedAt)<5000)return;
       inspection=(async()=>{try{await control.controlled(signal=>check(signal));}
-        catch{observed={connectionStatus:'unavailable',lastCheckedAt:new Date().toISOString(),connectionError:'Gatewayen er utilgængelig, stoppet eller inkompatibel. Ingen research er startet.'};}
+        catch(error){observed={connectionStatus:'unavailable',lastCheckedAt:new Date().toISOString(),connectionError:({AUTH_REJECTED:'Researchcredential blev afvist.',VERSION_MISMATCH:'Runtimeversion eller værktøjer matcher ikke kontrakten.',TIMEOUT:'Gatewaykontrollen overskred tidsgrænsen.',STOPPED:'Gatewaykontrollen blev stoppet.'})[error.code]||'Gatewayen er utilgængelig eller afviste kontrollen. Ingen research er startet.'};}
         finally{inspection=null;}})();
       return inspection;
     },
-    status: () => ({ ...observed, product: 'OpenJarvis', enabled, contractVersion: 1, gatewayMode: restricted ? 'restricted-v1' : 'legacy-unverified', expectedVersion, capabilities: enabled ? ['public-web-search'] : [],
+    status: () => ({ ...observed, diagnostics:openJarvisDiagnostics(env,observed), product: 'OpenJarvis', enabled, contractVersion: 1, gatewayMode: restricted ? 'restricted-v1' : 'legacy-unverified', expectedVersion, capabilities: enabled ? ['public-web-search'] : [],
       dataOwner: 'jarvis', discordOwner: 'jarvis', browserAutomation: 'not-enabled' }),
     async search(query) {
       if (!enabled) throw new Error('OpenJarvis er ikke aktiveret.');
@@ -97,3 +98,4 @@ export function createOpenJarvis({ env = process.env, fetcher = fetch, control }
     },
   };
 }
+
