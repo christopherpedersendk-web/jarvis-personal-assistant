@@ -285,5 +285,13 @@
     "cause": "GUI fixture waited for an already-existing last order rather than completion of creation at the next viewport. Application assertions unchanged.",
     "fix": "Wait for order count to increase before reading the newly created order.",
     "localVerification": "Changed browser test passed Chromium 156 and WebKit 27.2 at 320, 390 and 1280 pixels in networkless container; no application code changed."
+  },
+  "ciStartupFollowup": {
+    "failedHead": "6827d6e0d215bf69ba5a80bc01db87887edefbde",
+    "run": 42396329947,
+    "cause": "Existing read-only recipe HTTP fixture took baseline before asynchronous startup voice-stop persisted generation; only voice generation and state revision differed.",
+    "fix": "Await explicit stop transaction in disposable synthetic fixture before baseline; preserve full deep-equality assertion after all recipe reads.",
+    "localVerification": "Only failed actual voice browser dispatcher/authenticated HTTP case rerun in networkless Node 22 container; passed. Commerce browser job and other six workflows already passed on 6827d6e.",
+    "applicationSourceUnchanged": true
   }
 }
