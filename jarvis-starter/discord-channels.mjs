@@ -3,10 +3,10 @@ const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const snow = x => typeof x === 'string' && /^\d{17,20}$/.test(x);
 const fail = message => Object.assign(new Error(message), { code: 'DISCORD_CHANNEL_REVIEW' });
 export function discordChannelCommand(message) {
- const text=String(message||'').trim();
+ const text=String(message||'').trim().replace(/^(?:kan du |vil du |jarvis[, ]+)(?:venligst )?/iu,'').replace(/ venligst[.!?]?$/iu,'');
  if(/^!kanal(?:\s|$)/iu.test(text))return text;
  if(/^(?:vis|list) (?:mine |vores )?(?:discord[- ]?)?kanaler[.!?]?$/iu.test(text))return '!kanal liste';
- let m=/^opret (?:en )?(?:privat )?(?:discord[- ]?)?(?:tekst)?kanal (?:med navnet )?([a-z0-9æøå-]{1,100})[.!]?$/iu.exec(text);
+ let m=/^opret(?:te)? (?:en )?(?:privat )?(?:discord[- ]?)?(?:tekst)?kanal (?:(?:med navnet|der hedder|som hedder) )?([a-z0-9æøå-]{1,100})[.!]?$/iu.exec(text);
  if(m)return '!kanal opret '+m[1].toLocaleLowerCase('da');
  m=/^(omdøb|slet) (?:discord[- ]?)?kanal (\d{17,20})(?: til ([a-z0-9æøå-]{1,100}))?[.!]?$/iu.exec(text);
  if(m)return `!kanal ${m[1].toLocaleLowerCase('da')} ${m[2]}${m[3]?' '+m[3].toLocaleLowerCase('da'):''}`;
@@ -20,9 +20,14 @@ export class DiscordChannels {
     Object.assign(this,{state,transact,save,control,config,enabled,voiceChannelId,selectReportChannel,fetcher,now}); this.boot=randomUUID();
   }
   rows(){return this.state.discordChannelActions || [];}
+  status(){
+    const c=this.config();
+    const reason=!this.enabled?'Kanalstyring er deaktiveret. Operatøren skal sætte JARVIS_DISCORD_CHANNELS=yes og genstarte tjenesten.':!c.enabled?'Discord-botten er deaktiveret i Indstillinger → Integrationer.':!c.token?'Discord-bottens credential mangler. Konfigurér det sikkert under Integrationer.':!snow(c.userId)?'Discord ejer-ID mangler eller er ugyldigt.':!snow(c.guildId)?'Discord Server ID mangler eller er ugyldigt. Brug serverens ID, ikke kanalens ID.':'';
+    return {enabled:this.enabled,ready:!reason,reason,permissionsVerified:false,requiredPermissions:['Manage Channels','View Channel','Send Messages','Read Message History']};
+  }
   auth(meta){
     const c=this.config();
-    if(!this.enabled || !c.enabled || !c.token || !snow(c.userId) || !snow(c.guildId)) throw fail('Kanalstyring er ikke aktiveret og konfigureret.');
+    const status=this.status();if(!status.ready)throw fail(status.reason);
     if(meta.ownerId!==c.userId || meta.guildId!==c.guildId || !snow(meta.channelId)) throw fail('Kun ejeren i den valgte server kan styre kanaler.');
     this.control.assertAllowed(); return {...c};
   }
@@ -31,7 +36,7 @@ export class DiscordChannels {
     return this.control.controlled(async signal=>{
       const response=await this.fetcher('https://discord.com/api/v10'+path,{method,redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),
         headers:{Authorization:`Bot ${c.token}`,'Content-Type':'application/json','X-Audit-Log-Reason':'Jarvis%20owner%20review'},...(body?{body:JSON.stringify(body)}:{})});
-      if(!response.ok){await response.body?.cancel();throw fail(`Discord afviste kaldet (${Number(response.status)||0}). Intet automatisk genforsøg.`);}
+      if(!response.ok){await response.body?.cancel();const hint=({401:'Botcredential er ugyldigt eller udløbet.',403:'Botten mangler adgang eller Manage Channels. Kontrollér server- og kanalrettigheder; Administrator er ikke nødvendigt.',404:'Serveren eller kanalen findes ikke eller er utilgængelig for botten.',429:'Discords kaldgrænse er nået. Gennemgå status før et nyt forsøg.'})[response.status]||'Kontrollér Discord-forbindelsen.';throw fail(`Discord afviste kaldet (${Number(response.status)||0}). ${hint} Intet automatisk genforsøg.`);}
       const reader=response.body.getReader();let size=0;const parts=[];
       try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1000000)throw fail('Discord-svaret er for stort.');parts.push(value);}}finally{await reader.cancel();}
       return JSON.parse(Buffer.concat(parts).toString('utf8'));

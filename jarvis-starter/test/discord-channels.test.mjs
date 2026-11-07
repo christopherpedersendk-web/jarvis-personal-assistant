@@ -102,3 +102,15 @@ test('M12 private report destination changes once; public destination is rejecte
  const id=await f.preview('rapport '+target);assert.equal(changes,0);await f.confirm(id);assert.equal(changes,1);await assert.rejects(f.confirm(id));
  assert.equal(f.calls.some(c=>c.method!=='GET'),false,'destination choice only changes existing local settings');
 });
+
+test('channel diagnosis distinguishes configuration failures without exposing credentials',async()=>{
+ const f=await fixture({enabled:false});assert.match(f.work.status().reason,/JARVIS_DISCORD_CHANNELS=yes/);
+ f.work.enabled=true;f.config.guildId='';assert.match(f.work.status().reason,/Server ID/);
+ f.config.guildId=guild;f.config.token='';assert.match(f.work.status().reason,/credential/);
+ f.config.token='private-test-token';assert.equal(f.work.status().ready,true);assert.equal(JSON.stringify(f.work.status()).includes(f.config.token),false);
+ assert.equal(f.work.status().permissionsVerified,false);
+});
+test('natural Danish requests enter the existing reviewed controller',async()=>{
+ const f=await fixture();const result=await f.work.command('Kan du oprette en kanal der hedder rapporter',meta);
+ assert.match(result,/Godkend/);assert.equal(f.calls.some(x=>x.method==='POST'),false);
+});

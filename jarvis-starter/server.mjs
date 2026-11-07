@@ -1330,7 +1330,7 @@ async function route(req, res) {
     }
     if (req.method === 'GET' && path === '/api/integrations') return json(res, 200, { integrations: integrationCatalog({
       discordStatus: discord.snapshot().status, discordConfigured: Boolean(discordConfig.enabled && discordConfig.token),
-      discordSnapshot: discord.snapshot(), googleCalendarStatus: googleCalendar.status(),
+      discordSnapshot: {...discord.snapshot(),channelManagement:discordChannels.status()}, googleCalendarStatus: googleCalendar.status(),
       huePaired: Boolean(hueConfig.applicationKey && hueConfig.certificateFingerprint), sonosConfigured: Boolean(homeConfig.sonosToken),
       hueStatus: hue.status(hueConfig), sonosStatus: smartHome.snapshot(homeConfig).sonos,
       googleCalendarConnected: googleCalendar.status().connected, googleCalendarConfigured: googleCalendar.configured(), nemligStatus: nemlig.status() }) });
