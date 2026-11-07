@@ -83,3 +83,7 @@ Kodekandidat: `1ecdb7031369e0202b7ca729a3da2176aa556a5d`, direkte fra main `1249
 26 unikke fokuserede tests bestået, nul fejl/skips. Filhashes og de enkelte kørsler står i evidence.json under reviewableDrafts. Intet helt milestone lukkes. UI viser kun manuel betalingsoverdragelse; MobilePay/PayPal præsenteres ikke som implementerede betalingsflows.
 
 De tidligere målhost- og ejerprøver ovenfor er udestående acceptkrav, ikke denne PR's arbejdsplan. Den aktuelle afgrænsning og de resterende konkrete produktmangler er i next-package.md.
+
+## Staging-sammenlægning
+
+Ejer har efter udviklingsleverancen autoriseret merge og staging-release. PR #9, #20 og #21 er merget; versionen klargøres som 5.5.0, schema 1/readableFrom 0. De tidligere formuleringer om ingen merge/release beskriver det oprindelige udviklingsmandat. Ingen nye hele milestones lukkes. Se [samlet staging-evidens og begrænsninger](../releases/v5.5.0-staging.md). Ingen deployment eller produktionsaktivering.
