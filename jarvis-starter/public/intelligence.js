@@ -252,6 +252,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
     card.dataset.skillId = skill.name; card.dataset.skillVersion = skill.version;
     const heading = node('strong'), description = node('p', '', 'muted small-text'), triggers = node('span', '', 'micro muted');
     const binding = node('p', '', 'micro'), unavailable = node('p', '', 'micro v5-conflict');
+    unavailable.setAttribute('role','status');
     const disclosure = node('details'), summary = node('summary', 'Læs den præcise procedure');
     const message = node('p', 'Procedureteksten hentes lokalt, når du åbner den.', 'micro'); message.setAttribute('role', 'status');
     const body = node('pre', '', 'skill-procedure');
@@ -261,8 +262,9 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
     const trial=node('button','Prøv skill','secondary compact-button'); trial.type='button';
     trial.addEventListener('click',()=>{
       const record=slots.skills.rows.find(item=>keyOf(item)===keyOf(skill));
-      if(!session() || !record || record.current!==true || !record.availability?.available || slotExpired())return;
-      try{trySkill(record);write(message,'Eksemplet er åbnet som kladde. Tilpas det og send selv.');}catch(error){write(message,error.message);}
+      if(!session() || !record || record.current!==true || !record.availability?.available)return;
+      if(slotExpired()){write(unavailable,'Katalogets status er forældet. Hent kataloget igen, før du vælger eksemplet.');return;}
+      try{trySkill(record);write(unavailable,'Eksemplet er åbnet som kladde. Tilpas det og send selv.');}catch(error){write(unavailable,error.message);}
     });
     const link = node('a', 'Åbn denne version som kilde');
     const sourceId = `skill:${skill.name}:${skill.version}`;
@@ -317,7 +319,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
         write(parts.availability,availability?`${record.source==='openclaw'?'OpenClaw':'Jarvis'} · ${availability.available?'Klar til anmodning':availability.reason} · Liveaccept: ${availability.tested?'Dokumenteret':'Ikke dokumenteret'}`:'Tilgængelighed er ikke dokumenteret.');
         parts.trial.disabled=!record.current||!availability?.available||!record.examples?.length||slotExpired();
         write(parts.metadataBody,[
-          `Installeret: ${availability?.installed?'ja':'ukendt'} · Konfigureret: ${availability?.configured?'ja':'nej'} · Aktiveret: ${availability?.enabled?'ja':'nej'}`,
+          `Procedure installeret: ${availability?.installed?'ja':'ukendt'} · Konfigureret: ${availability?.configured?'ja':'nej'} · Aktiveret: ${availability?.enabled?'ja':'nej'}`,
           `Seneste liveprøve: ${availability?.lastTest||'Ingen dokumenteret'} · Forbindelseskontrol: ${availability?.connectionCheckedAt||'Ikke udført'}`,
           `Kanaler: ${(record.channels||[]).join(', ')}`,
           `Datadeling: ${record.dataSharing||'Se procedure'}`,

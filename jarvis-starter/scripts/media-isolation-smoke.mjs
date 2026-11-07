@@ -5,11 +5,13 @@ import {mkdtemp,readFile,rm,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createIsolatedMedia,mediaContainerArgs} from '../isolated-media.mjs';
-const root=await mkdtemp(join(tmpdir(),'jarvis-media-smoke-')),report={at:new Date().toISOString(),candidate:process.env.GITHUB_SHA||null,status:'running',model:'not_run',cases:[]};
+const root=await mkdtemp(join(tmpdir(),'jarvis-media-smoke-')),report={at:new Date().toISOString(),candidate:process.env.JARVIS_CANDIDATE_SHA||null,image:process.env.JARVIS_MEDIA_IMAGE,status:'running',model:'not_run',cases:[]};
 const image=process.env.JARVIS_MEDIA_IMAGE;
 function run(binary,args){return new Promise((resolve,reject)=>{const child=spawn(binary,args,{stdio:['ignore','pipe','pipe'],env:{PATH:process.env.PATH},shell:false});let data='';const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('Synthetic probe timeout'));},60000);child.stdout.on('data',x=>data+=x);child.stderr.on('data',x=>data+=x);child.on('error',reject);child.on('close',c=>{clearTimeout(timer);c===0?resolve(data):reject(new Error(data.slice(-3000)));});});}
 const normalize=createIsolatedMedia({env:{PATH:process.env.PATH,JARVIS_DISCORD_MEDIA:'yes',JARVIS_MEDIA_IMAGE:image}});
 try{
+ const actual=(await run('git',['rev-parse','HEAD'])).trim();if(report.candidate)assert.equal(actual,report.candidate);report.candidate=actual;
+ report.decoderVersion=(await run('docker',['run','--rm','--network=none','--entrypoint','ffmpeg',image,'-version'])).split('\n')[0];
  const args=mediaContainerArgs(image,'jarvis-media-containment');args.pop();args.push('--entrypoint','node',image,'-e',`
  const fs=require('fs'),net=require('net'),assert=require('assert/strict');
  assert.notEqual(process.getuid(),0);assert.equal(process.env.OPENAI_API_KEY,undefined);

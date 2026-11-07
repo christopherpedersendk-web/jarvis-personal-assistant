@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {discordMediaMetadata,mediaCdnUrl,downloadDiscordMedia,mediaMagic} from '../discord-media-boundary.mjs';
 import {DiscordMedia,mediaAnalysisRequest} from '../discord-media.mjs';
 import {mediaContainerArgs,createIsolatedMedia,validateNormalizedMedia} from '../isolated-media.mjs';
-import {inspectMedia,normalizeMedia} from '../media-runtime/worker.mjs';
+import {inspectMedia,normalizeMedia,packetDuration} from '../media-runtime/worker.mjs';
 import {DurableState} from '../durable-state.mjs';
 import {ProviderControl} from '../provider-control.mjs';
 import {DiscordGateway} from '../discord-gateway.mjs';
@@ -90,6 +90,11 @@ test('M13 decoder temp directory is removed on both success and corrupt input',a
 test('M13 container requires exact local image and no network, capabilities, mounts or host env',()=>{
  const args=mediaContainerArgs('sha256:'+'a'.repeat(64),'synthetic');for(const flag of ['--network=none','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--pull=never'])assert.ok(args.includes(flag));
  assert.equal(args.some(a=>a==='-v'||a==='--privileged'||a==='--env'),false);assert.throws(()=>mediaContainerArgs('latest','test'));assert.equal(createIsolatedMedia({env:{}}),null);
+});
+test('M14 packet timeline cannot hide >60 seconds behind false short container metadata',()=>{
+ assert.equal(packetDuration({packets:[{pts_time:'0',duration_time:'1'},{pts_time:'9',duration_time:'1'}]}),10);
+ assert.throws(()=>packetDuration({packets:[{pts_time:'0',duration_time:'1'},{pts_time:'61',duration_time:'1'}]}));
+ assert.throws(()=>packetDuration({packets:[{pts_time:'N/A'}]}));assert.throws(()=>packetDuration({packets:[]}));
 });
 const video={...normalized,kind:'video',duration:10,hasAudio:false,frames:[{seconds:2.5,data:jpeg.toString('base64')},{seconds:7.5,data:jpeg.toString('base64')}]};
 const vm={...meta,...discordMediaMetadata([{...attachment,filename:'sample.mp4',content_type:'video/mp4',size:100}],channel)};

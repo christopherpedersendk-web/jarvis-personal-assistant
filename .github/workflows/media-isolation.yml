@@ -24,7 +24,7 @@ jobs:
       - name: Exercise actual isolated decoder and stop containment
         working-directory: jarvis-starter
         env:
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           export JARVIS_MEDIA_IMAGE="$(docker image inspect jarvis-media-test --format '{{.Id}}')"
           node scripts/media-isolation-smoke.mjs

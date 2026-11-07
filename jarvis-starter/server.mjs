@@ -878,7 +878,10 @@ async function route(req, res) {
       try {
         const input=await bodyJson(req);
         if(input.action==='stop')await discordVoice.stop('owner_web_stop');
-        else if(input.action==='start')await discordVoice.join({ownerId:discordConfig.userId,guildId:discordConfig.guildId,textChannelId:input.textChannelId});
+        else if(input.action==='start'){
+          if(!Number.isSafeInteger(input.expectedGeneration))throw new Error('Hent aktuel stemmestatus før tilslutning.');
+          await discordVoice.join({ownerId:discordConfig.userId,guildId:discordConfig.guildId,textChannelId:input.textChannelId,expectedGeneration:input.expectedGeneration});
+        }
         else throw new Error('Vælg start eller stop.');
         return json(res,200,discordVoice.snapshot());
       }catch(error){return json(res,409,{error:error.message});}

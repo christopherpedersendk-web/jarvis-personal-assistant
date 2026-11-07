@@ -16,6 +16,11 @@ async function fixture(overrides={}){
  return {voice,state,control,seen,connection};
 }
 const identity={ownerId,guildId,textChannelId};
+test('M5 stop before delayed HTTP join and restart revoke the prior voice generation',async()=>{
+ const f=await fixture(),generation=f.voice.snapshot().generation;await f.voice.stop();
+ await assert.rejects(f.voice.join({...identity,expectedGeneration:generation}),/ændret eller stoppet/);assert.deepEqual(f.seen,[]);
+ const before=f.voice.snapshot().generation;await f.voice.recover();assert.ok(f.voice.snapshot().generation>before);assert.equal(f.state.discordVoiceControl.generation,f.voice.snapshot().generation);
+});
 test('M5 text-channel validation and config revision changes revoke a pending join',async()=>{
  const config={enabled:true,token:'synthetic',userId:ownerId,guildId,configurationRevision:1};
  const f=await fixture({config:()=>config,validateTextChannel:async()=>{config.configurationRevision++;}});

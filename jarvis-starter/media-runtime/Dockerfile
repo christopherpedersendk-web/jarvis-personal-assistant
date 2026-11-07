@@ -14,11 +14,14 @@ WORKDIR /build/ffmpeg-9.0.2
 # cannot fetch HTTP, HLS, DASH, SSH, crypto, concat, playlists or devices.
 RUN ./configure --prefix=/opt/decoder --disable-everything --disable-network --disable-autodetect --disable-doc --disable-debug --disable-x86asm \
     --enable-ffmpeg --enable-ffprobe --enable-zlib --enable-protocol=file,pipe \
-    --enable-demuxer=mov,matroska,png_pipe,jpeg_pipe,webp_pipe \
+    --enable-demuxer=mov,matroska,image_png_pipe,image_jpeg_pipe,image_webp_pipe \
     --enable-parser=h264,hevc,av1,vp8,vp9,mjpeg,png,webp,aac,opus,vorbis,mpegaudio,flac \
     --enable-decoder=h264,hevc,av1,vp8,vp9,mjpeg,png,webp,aac,opus,vorbis,mp3,flac,pcm_s16le \
     --enable-encoder=mjpeg,pcm_s16le --enable-muxer=image2,wav \
     --enable-filter=scale,format,aresample,anull,null,trim,atrim,aformat && make -j2 && make install
+RUN /opt/decoder/bin/ffmpeg -hide_banner -demuxers | grep 'jpeg_pipe' && \
+    /opt/decoder/bin/ffmpeg -hide_banner -demuxers | grep 'png_pipe' && \
+    /opt/decoder/bin/ffmpeg -hide_banner -demuxers | grep 'webp_pipe'
 FROM node:24.22.1-trixie-slim
 COPY --from=decoder /opt/decoder/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=decoder /opt/decoder/bin/ffprobe /usr/local/bin/ffprobe

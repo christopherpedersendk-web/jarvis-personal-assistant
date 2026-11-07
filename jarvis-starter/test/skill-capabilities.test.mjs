@@ -15,6 +15,10 @@ test('M11 OpenClaw manifest is descriptive, versioned and never marks a live tes
   assert.equal(describeSkill(skill,{...env,openJarvis:{...env.openJarvis,gatewayMode:'legacy-unverified'}}).availability.available,false);
  }
 });
+test('M11 user examples are everyday requests, not internal contract test cases',()=>{
+ const card=describeSkill({name:'meal-planning',contract:{examples:[{input:'Syntetisk fixture med credentialtekst'}]}});
+ assert.match(card.examples[0],/madplan/);assert.doesNotMatch(card.examples.join(' '),/Syntetisk|fixture|credential/);assert.equal(card.availability.tested,false);
+});
 test('M11 catalog health checks never invoke research and expose failure without raw provider details',async()=>{
  const paths=[];const adapter=createOpenJarvis({env:{OPENJARVIS_ENABLED:'yes',OPENJARVIS_GATEWAY_MODE:'restricted-v1',OPENJARVIS_GATEWAY_TOKEN:'test-credential',OPENJARVIS_GATEWAY_URL:'http://127.0.0.1:18790'},
   control:{controlled:fn=>fn(new AbortController().signal)},fetcher:async url=>{paths.push(new URL(url).pathname);return new Response('private upstream error',{status:502});}});

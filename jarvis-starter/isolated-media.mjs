@@ -44,7 +44,9 @@ export function createIsolatedMedia({env=process.env,spawnProcess=spawn,run=runB
     child.stdout.on('data',chunk=>{size+=chunk.length;if(size>3_100_000)return finish(new Error('Mediecontainerens outputgrænse er nået.'));chunks.push(chunk);});
     child.stderr.on('data',chunk=>{size+=chunk.length;if(size>3_100_000)finish(new Error('Mediecontainerens outputgrænse er nået.'));});
     child.on('close',code=>{
-     try{if(code!==0)throw new Error();const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));finish(null,validateNormalizedMedia(parsed));}
+     try{const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if(code!==0&&['missing_component','missing_library','runtime_constraint','invalid_media'].includes(parsed.code))return finish(new Error('Mediecontainer afviste filen: '+parsed.code+'. Ingen analyse er sendt.'));
+      if(code!==0)throw new Error();finish(null,validateNormalizedMedia(parsed));}
      catch{finish(new Error('Mediet kunne ikke valideres eller dekodes. Ingen analyse er sendt.'));}
     });
     child.stdin.end(JSON.stringify({version:1,contentType,data:buffer.toString('base64')}));

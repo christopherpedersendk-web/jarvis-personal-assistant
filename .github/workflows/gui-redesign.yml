@@ -139,7 +139,7 @@ jobs:
         working-directory: jarvis-starter
         env:
           JARVIS_REQUIRE_WEBKIT: 'yes'
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
         run: |
           export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
           node scripts/skills-menu-smoke.mjs

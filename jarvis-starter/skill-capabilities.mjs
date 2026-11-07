@@ -27,6 +27,12 @@ export function reviewedResearchSkills() {
   });
 }
 const localTitles={'daily-briefing':'Dagens overblik','personal-follow-up':'Opgaver og opfølgning','gift-planning':'Gaveplanlægning','meal-planning':'Madplan'};
+const localExamples={
+ 'daily-briefing':['Giv mig et kort overblik over i dag med opgaver og manglende oplysninger.','Hvilke opfølgninger skal jeg tage stilling til denne uge?'],
+ 'personal-follow-up':['Hjælp mig med at prioritere mine åbne opgaver for i morgen.','Vis mine opfølgninger, og fortæl hvilke der mangler en dato.'],
+ 'gift-planning':['Hjælp mig med gaveidéer til næste fødselsdag på min liste. Spørg om budget, hvis det mangler.','Find mine gemte gaveidéer og deres kilder.'],
+ 'meal-planning':['Foreslå en enkel madplan til den kommende uge ud fra mine gemte præferencer. Spørg om hvem der spiser med, hvis det ikke er bekræftet.','Vis den aktive madplan og hjælp mig med at ændre én ret.'],
+};
 export function describeSkill(skill,{openJarvis={},modelConfigured=false,stopped=false,voiceEnabled=false}={}) {
   const hybrid=skill.presentation?.source==='openclaw';
   const enabled=!hybrid||openJarvis.enabled===true;
@@ -36,7 +42,7 @@ export function describeSkill(skill,{openJarvis={},modelConfigured=false,stopped
   const reason=stopped?'Assistenten er stoppet.':!enabled?'OpenClaw er deaktiveret.':!modelConfigured?'Modeladgang er ikke konfigureret.':!configured?'Kræver den begrænsede gatewaykontrakt.':!connected?(openJarvis.connectionError||'Gatewayforbindelsen er endnu ikke kontrolleret.') : '';
   return {title:localTitles[skill.name]||skill.presentation?.title||skill.name,
     source:hybrid?'openclaw':'jarvis',category:hybrid?'research':skill.name==='meal-planning'?'madplan':'personlig',
-    examples:skill.presentation?.examples||skill.contract?.examples?.map(x=>x.input)||[],
+    examples:skill.presentation?.examples||localExamples[skill.name]||[],
     channels:['webchat','discord',...(voiceEnabled?['discord-voice']:[])],
     provenance:hybrid?upstream:{product:'Jarvis',license:'repository',integration:'Lokalt versionsstyret procedure'},
     availability:{installed:true,configured,enabled,available,status:available?'ready':enabled?'blocked':'disabled',reason,

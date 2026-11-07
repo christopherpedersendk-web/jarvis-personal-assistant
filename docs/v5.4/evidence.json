@@ -1,0 +1,84 @@
+{
+  "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
+  "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
+  "appTree": "1e2ae85e9d92caadc8b16099cc1ab70bcc6bc893",
+  "commitBinding": "PR head whose jarvis-starter tree equals appTree; CI on exact head is authoritative",
+  "localTests": {
+    "command": "npm test",
+    "passed": 1246,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "e4f149cc4238ee6ffdfea70258322f2724dcb33992c08328b845759456f7e763"
+  },
+  "localBrowser": {
+    "status": "blocked",
+    "reason": "Pinned browser download returned invalid archive; installed Chromium failed IPC socket with EPERM"
+  },
+  "localContainment": {
+    "status": "blocked",
+    "reason": "No Docker CLI/daemon; bubblewrap unshare network denied NETLINK_ROUTE socket"
+  },
+  "localOpenClaw": {
+    "at": "2026-11-06T22:36:57.898Z",
+    "runtime": "2026.11.1",
+    "policy": "passed",
+    "research": "failed",
+    "live": true,
+    "sourceCount": 0,
+    "policyStatuses": {
+      "exec": 404,
+      "browser": 404,
+      "web_fetch": 404,
+      "cron": 404,
+      "sessions_spawn": 404,
+      "wrongCredential": 401
+    },
+    "errorCode": "SEARCH_FAILED"
+  },
+  "firstCandidateCI": {
+    "openclaw": {
+      "run": 42342238536,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42342238565,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42342238566,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42342238604,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42342238543,
+      "status": "failed",
+      "reason": "New Skills smoke expected a different status label; existing GUI/deep-v5/control steps passed"
+    },
+    "media": {
+      "run": 42342238637,
+      "status": "failed",
+      "reason": "Minimal FFmpeg build omitted image pipe demuxers; isolation and signature verification passed"
+    }
+  },
+  "modelEvaluation": {
+    "baseline": "not_run",
+    "hybrid": "not_run",
+    "score": null,
+    "reason": "No legitimate model credential available"
+  },
+  "liveDiscord": "not_run",
+  "physicalIPhone": "not_run",
+  "actualBackupRestore": "not_run",
+  "targetSystemdIsolation": "not_run",
+  "productionActivated": false,
+  "dependencyAudit": {
+    "moderate": 34,
+    "high": 0,
+    "critical": 0,
+    "limitation": "npm bundled glob/minimatch remain affected; direct minimatch pinned to 11.0.1"
+  }
+}

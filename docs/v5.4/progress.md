@@ -30,3 +30,10 @@ modelkvalitet og prøver på ejerens installation er forskellige evidenstyper.
 Ingen hel milestone er afsluttet. Manglende modeladgang, Discord-testserver/-lyd,
 faktisk backup, fysisk iPhone og målhostens systemd-isolation er konkrete blokeringer.
 Ingen merge, tag, deployment eller produktionsaktivering er udført.
+
+CI på første kandidat 5cfb3637d71b3b248ef12467e5df2f322dc94baa:
+OpenClaw research bestod med fem kilder, forkert credential 401 og fem forbudte
+tools 404. Browserisolation, stemmeruntime og eksisterende GUI-forløb bestod.
+Nye medie-/Skills-tests fandt manglende billeddemuxere og en forkert testtekst;
+rettelserne får en ny kandidat. Yderligere review rettede stop under forsinket
+Discord-webtilslutning, med varig generation og UI-regression.
