@@ -30,6 +30,7 @@ try{
  let expectingOwnPage=false,ownedPage;
  context.on('page',page=>{if(expectingOwnPage&&!ownedPage)ownedPage=page;else{blocked.popups++;page.close().catch(()=>{});}page.on('dialog',d=>d.dismiss().catch(()=>{}));page.on('download',d=>d.cancel().catch(()=>{}));});
  stage='navigation';expectingOwnPage=true;const opened=await call('/tabs/open',{method:'POST',body:{url:approved.href}});expectingOwnPage=false;target=opened.suggestedTargetId||opened.targetId;if(typeof target!=='string'||!target||target.length>160)throw Error('Missing own tab');
+ await ownedPage?.waitForLoadState('networkidle',{timeout:2500}).catch(()=>{});
  const check=async()=>{const tabs=await call('/tabs'),tab=(Array.isArray(tabs)?tabs:tabs.tabs)?.find(t=>t.targetId===target||t.suggestedTargetId===target);if(!tab||tab.url!==approved.href)throw Error('Destination changed');};
  await check();stage='snapshot';const result=await call('/snapshot?targetId='+encodeURIComponent(target)+'&format=ai&maxChars=20000');await check();if(typeof result.snapshot!=='string'||result.snapshot.length>25000)throw Error('Invalid snapshot');
  stage='cleanup';await call('/tabs/'+encodeURIComponent(target),{method:'DELETE',timeoutMs:5000});target=null;

@@ -47,7 +47,7 @@ export function createContainedOpenClawBrowser({env=process.env,control,fetchRes
         if(m.type==='error')return finish(Error('Isoleret OpenClaw-browser fejlede under '+(['startup','launch','navigation','snapshot','cleanup'].includes(m.stage)?m.stage:'runtime')+'.'));
         if(m.type==='result'){
          if(m.runtime!=='2026.11.1'||m.url!==approved.href||typeof m.snapshot!=='string'||m.snapshot.length>25000||m.snapshotHash!==digest(m.snapshot))return finish(Error('Ugyldigt eller ændret browsergrundlag.'));
-         return finish(null,{url:approved.href,requestedUrl:approved.href,observedAt:new Date(now()).toISOString(),snapshot:m.snapshot,snapshotHash:m.snapshotHash,trust:'untrusted-web-data',authority:'none',source:'openclaw-contained-browser',runtime:m.runtime,usage:{operationReservations:1,brokerRequests:requests,brokerBytes:bytes,tokens:null,cost:null}});
+         return finish(null,{url:approved.href,requestedUrl:approved.href,observedAt:new Date(now()).toISOString(),snapshot:m.snapshot,snapshotHash:m.snapshotHash,trust:'untrusted-web-data',authority:'none',source:'openclaw-contained-browser',runtime:m.runtime,blocked:Object.fromEntries(['requests','writes','websockets','popups'].map(k=>[k,Number.isSafeInteger(m.blocked?.[k])&&m.blocked[k]>=0&&m.blocked[k]<=10000?m.blocked[k]:null])),usage:{operationReservations:1,brokerRequests:requests,brokerBytes:bytes,tokens:null,cost:null}});
         }
         if(m.type!=='request'||!Number.isSafeInteger(m.id)||m.id<1||++requests>25)return finish(Error('Browserens ressourcegrænse er nået.'));
         queue=queue.then(async()=>{try{
