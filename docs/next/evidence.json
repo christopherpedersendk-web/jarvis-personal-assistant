@@ -564,10 +564,9 @@
     "productionActivated": false,
     "milestonesClosed": []
   },
-  "observedInstallation20261107": {
-    "report": "observed-acceptance-2026-11-07.json",
-    "voiceOwnerAcceptance": "Spoken answer received and session stopped; user confirmation in this session",
-    "productionDeploymentInThisTask": false,
+  "m16FreightCorrection": {
+    "evidence": "docs/next/m16-freight-evidence.json",
+    "codeCommit": "fafcbad4617b38e7e8edf9f53cf46865e3485073",
     "milestonesClosed": []
   },
   "languageLiveEvaluation": {
@@ -582,6 +581,12 @@
       "DA11"
     ],
     "humanQualityAcceptance": false,
+    "milestonesClosed": []
+  },
+  "observedInstallation20261107": {
+    "report": "observed-acceptance-2026-11-07.json",
+    "voiceOwnerAcceptance": "Spoken answer received and session stopped; user confirmation in this session",
+    "productionDeploymentInThisTask": false,
     "milestonesClosed": []
   }
 }

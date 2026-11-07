@@ -1,0 +1,297 @@
+{
+  "baseline": "77e51be5ce36e55c0002cff196849ba874ac5865",
+  "codeCommit": "fafcbad4617b38e7e8edf9f53cf46865e3485073",
+  "sourceSha256": {
+    "commerce.mjs": "f96777df93202b662f03c88de8b352423a502fb4e1c1242dcf2688ddf53bf83b",
+    "proshop.mjs": "c5586d1755bddeb46067ab97f99fce0471c13a65efdebba92b86f57851d6e8b8",
+    "public/commerce.js": "5a66a4e4b914c6a7bf5526ec4f80fe3c6e0339a520ad8823ed0335c26ea9a3a3",
+    "scripts/commerce-ui-smoke.mjs": "2dfab93ad06b63755ab854e96c34e35df094d814cb8bddde03ec5eeee4bac6e5",
+    "test/commerce.test.mjs": "a43a8ed207ca0c2208e04af368e1c5c254ef4042cdc12e6dd0d3798706680698",
+    "test/proshop.test.mjs": "4263de673341c45d004649a3c1b0330f31f61b2e089ad5cdec101e20bbd9b1df"
+  },
+  "focused": {
+    "commerceUniquePassed": 11,
+    "proshopUniquePassed": 11,
+    "fixtureFollowup": "One old fixture exposed only a bare form; updated to observed field names and only failing cart/readback case rerun, passed. No assertions removed.",
+    "contractScope": "HTTP/session/model/Discord are simulated in unit tests"
+  },
+  "browser": {
+    "status": "passed",
+    "scope": "Synthetic owner, no model, merchant, payment or Discord connection",
+    "checks": [
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 320,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 390,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 1280,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 320,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 390,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 1280,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "unknownFreight": "null-preserved-and-explicit-zero-edit",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      }
+    ]
+  },
+  "actualCheckoutObservation": {
+    "at": "2026-11-07T16:57:31.714Z",
+    "status": "observed",
+    "scope": "New anonymous disposable checkout-contract observation; one nonbinding cable add only; no contact/address/login/registration/payment/order submission",
+    "checkoutStatus": 200,
+    "redirect": null,
+    "forms": [
+      {
+        "action": "/Basket/CheckOut/Register",
+        "method": "post",
+        "fields": [
+          {
+            "name": "__RequestVerificationToken",
+            "type": "hidden"
+          },
+          {
+            "name": "ControllerName",
+            "type": "hidden"
+          },
+          {
+            "name": "MethodName",
+            "type": "hidden"
+          },
+          {
+            "name": "Name",
+            "type": "",
+            "autocomplete": "name"
+          },
+          {
+            "name": "Address1",
+            "type": "",
+            "autocomplete": "street-address"
+          },
+          {
+            "name": "Address2",
+            "type": ""
+          },
+          {
+            "name": "ZipCode",
+            "type": "",
+            "autocomplete": "postal-code"
+          },
+          {
+            "name": "City",
+            "type": "",
+            "autocomplete": "address-level2"
+          },
+          {
+            "name": "CountryCode"
+          },
+          {
+            "name": "Phone",
+            "type": "tel",
+            "autocomplete": "tel"
+          },
+          {
+            "name": "Mobile",
+            "type": "tel"
+          },
+          {
+            "name": "AnonymousUser.Email",
+            "type": "",
+            "autocomplete": "email"
+          },
+          {
+            "name": "AnonymousUser.ConfirmEmail",
+            "type": "email"
+          }
+        ],
+        "buttons": []
+      },
+      {
+        "action": "/Basket/CheckOut/RegisterCompany",
+        "method": "post",
+        "fields": [
+          {
+            "name": "__RequestVerificationToken",
+            "type": "hidden"
+          },
+          {
+            "name": "Company.Name",
+            "type": "",
+            "autocomplete": "organization"
+          },
+          {
+            "name": "Company.Attention",
+            "type": "",
+            "autocomplete": "name"
+          },
+          {
+            "name": "Company.Address1",
+            "type": "",
+            "autocomplete": "street-address"
+          },
+          {
+            "name": "Company.Address2",
+            "type": ""
+          },
+          {
+            "name": "Company.ZipCode",
+            "type": "",
+            "autocomplete": "postal-code"
+          },
+          {
+            "name": "Company.City",
+            "type": "",
+            "autocomplete": "address-level2"
+          },
+          {
+            "name": "Company.CountryCode"
+          },
+          {
+            "name": "Company.Phone",
+            "type": "tel",
+            "autocomplete": "tel"
+          },
+          {
+            "name": "Company.Mobile",
+            "type": "tel"
+          },
+          {
+            "name": "Company.VatNumber",
+            "type": ""
+          },
+          {
+            "name": "Company.EanNumber",
+            "type": ""
+          },
+          {
+            "name": "Company.AnonymousUser.Email",
+            "type": "",
+            "autocomplete": "email"
+          },
+          {
+            "name": "Company.AnonymousUser.ConfirmEmail",
+            "type": "email"
+          }
+        ],
+        "buttons": []
+      },
+      {
+        "action": "/CustomerCenter/Newsletter/Subscribe",
+        "method": "get",
+        "fields": [
+          {
+            "name": "__RequestVerificationToken",
+            "type": "hidden"
+          },
+          {
+            "name": "Email",
+            "type": "email"
+          },
+          {
+            "name": "source",
+            "type": "hidden"
+          }
+        ],
+        "buttons": [
+          {
+            "type": "submit",
+            "text": ""
+          }
+        ]
+      }
+    ],
+    "scripts": [
+      "/onsite/js/klaviyo.js",
+      "/Content/v-712273948/checkout.bundle.js",
+      "/dist/js/register.bd574f0c.js",
+      "/dist/js/shared.bc3877ad.js",
+      "/dist/js/showmo.2.edc81594.js",
+      "/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092"
+    ]
+  },
+  "actualCheckoutParser": {
+    "stage": "customer_details",
+    "guestSupported": true,
+    "sourceHash": "dc852cdef1cf565de7dd74eb43add067632fae9a5f926a3f05cb150f2b9d81d3",
+    "shippingMinor": null,
+    "totalMinor": null
+  },
+  "remaining": [
+    "No customer/address form submitted",
+    "Authenticated login/address transfer, postal freight/arrival and complete checkout still open",
+    "No production deployment or activation in this task"
+  ],
+  "ciFollowup": {
+    "failedHead": "8c8363c3bbd8e7a3de4f4a88d76e0e042835a9fa",
+    "run": 42395010391,
+    "cause": "GUI fixture waited for an already-existing last order rather than completion of creation at the next viewport. Application assertions unchanged.",
+    "fix": "Wait for order count to increase before reading the newly created order.",
+    "localVerification": "Changed browser test passed Chromium 156 and WebKit 27.2 at 320, 390 and 1280 pixels in networkless container; no application code changed."
+  },
+  "ciStartupFollowup": {
+    "failedHead": "6827d6e0d215bf69ba5a80bc01db87887edefbde",
+    "run": 42396329947,
+    "cause": "Existing read-only recipe HTTP fixture took baseline before asynchronous startup voice-stop persisted generation; only voice generation and state revision differed.",
+    "fix": "Await explicit stop transaction in disposable synthetic fixture before baseline; preserve full deep-equality assertion after all recipe reads.",
+    "localVerification": "Only failed actual voice browser dispatcher/authenticated HTTP case rerun in networkless Node 22 container; passed. Commerce browser job and other six workflows already passed on 6827d6e.",
+    "applicationSourceUnchanged": true
+  }
+}

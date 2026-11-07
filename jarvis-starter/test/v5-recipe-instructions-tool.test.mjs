@@ -244,6 +244,12 @@ async function httpFixture(t) {
     await delay(40);
   }
   assert.ok(ready, logs.join('').slice(-3000));
+  // /health can answer while the disabled gateway's startup stop is still
+  // persisting its generation. An awaited stop is a transaction barrier in
+  // this disposable fixture; take the read-only baseline only afterwards.
+  const stopped=await fetch(base+'/api/discord/voice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'stop'}),signal:AbortSignal.timeout(4000)});
+  assert.equal(stopped.status,200,'fixture voice cleanup must finish before the read-only baseline');
+  assert.equal((await stopped.json()).status,'disconnected');
   async function api(path, options = {}, expected = 200, auth = true) {
     assert.equal(path, '/api/planning/tool', 'the voice dispatcher must use its fixed authenticated route');
     const response = await fetch(base + path, { ...options, headers: { ...options.headers,
