@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "e07c21105f6491fdfd8a6bd512475c12b29009e6",
+  "observedOwnerJob": "75f302d8",
+  "actualOwnerGateway": "Created and completed one bounded test-only code change; no successful recorded test or publication in the active bot.",
+  "rootCause": "Protected contract selection used only modified program-file basenames; a generated test importing an unchanged approved probe had no selected canonical contract. The runner was not reached.",
+  "fix": "Include canonical contract for explicit imports of an already allowlisted module in the task test. Known preflight contract rejection is not_run/failed without clearing any prior unknown receipt.",
+  "focusedLocal": {
+    "newUniqueCases": 4,
+    "necessaryExistingRegressionCases": 4,
+    "passedUniqueCases": 8,
+    "failedFinal": 0,
+    "skippedFinal": 0,
+    "initialEnvironmentCorrection": "Two worktree cases initially failed because a container mounted only jarvis-starter and omitted its repository parent. Only these two were rerun with the correct layout; six passing cases reused."
+  },
+  "actualReproduction": "codex-test-only-live.json",
+  "productionJobModified": false,
+  "productionActivated": false,
+  "ownerToDraftPRAcceptance": false,
+  "milestonesClosed": [],
+  "sourceHashes": {
+    "codex-worktree.mjs": "357b2072882a02fccd19dfadda4f22f4dbbd9d36625c6974fa7a81ee0802461c",
+    "codex-bridge.mjs": "249eb51ee81f5ef4f1dd97510e56b123ab03704161e6ac825201846dabf3e60e",
+    "test/codex-worktree.test.mjs": "42aee8af1194cf3230dc089e32f3aa8d12a1599f6248d8f3fb98f1476f136d22",
+    "test/codex-bridge.test.mjs": "b72094d9f44ef6b5b53f2dd2c353fcc8692f0148ff6c2d08d0be9d8538fd5e78"
+  }
+}
