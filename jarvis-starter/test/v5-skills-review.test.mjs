@@ -26,6 +26,12 @@ test('H2 exact skill details expose the entire matching procedure without versio
   assert.deepEqual(first.triggers, ['syntetisk']); assert.notEqual(registry.detail(first.name, first.version).body, detail.body);
   registry.catalog()[0].triggers.push('heller ikke'); assert.deepEqual(first.triggers, ['syntetisk']);
 });
+test('M11 an explicit skill draft keeps its exact version; unknown versions never fall back',()=>{
+ const registry=new SkillsRegistry([sample('1.0.0'),sample('2.0.0')]);
+ assert.equal(registry.relevant('Brug synthetic-procedure version 1.0.0: syntetisk')[0].version,'1.0.0');
+ assert.throws(()=>registry.relevant('Brug synthetic-procedure version 9.0.0: test'),/findes ikke/);
+ assert.match(registry.selectionGuide(),/afklarende spørgsmål/);assert.match(registry.selectionGuide(),/ingen nye rettigheder/);
+});
 
 test('H2 displayed skill hash is byte-compatible with existing job bindings and changes with permissions or the complete body', async () => {
   const registry = await loadBundledSkills(fileURLToPath(new URL('../', import.meta.url)));

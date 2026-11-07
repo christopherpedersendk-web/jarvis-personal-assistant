@@ -1,0 +1,37 @@
+name: Isolated Discord media
+on:
+  pull_request:
+    branches: [main]
+    paths: ['jarvis-starter/**', 'docs/v5.4/**', '.github/workflows/media-isolation.yml']
+permissions:
+  contents: read
+jobs:
+  containment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build pinned minimal decoder and verify official release signature
+        run: docker build -t jarvis-media-test jarvis-starter/media-runtime
+      - name: Install generator for trusted synthetic fixtures only
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Exercise actual isolated decoder and stop containment
+        working-directory: jarvis-starter
+        env:
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          export JARVIS_MEDIA_IMAGE="$(docker image inspect jarvis-media-test --format '{{.Id}}')"
+          node scripts/media-isolation-smoke.mjs
+      - name: Keep candidate-bound containment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-${{ github.event.pull_request.head.sha }}
+          path: jarvis-starter/artifacts/media/
+          retention-days: 30

@@ -20,6 +20,7 @@ for (const [address, prefix] of [['2001::', 23], ['2001:db8::', 32], ['2002::', 
 }
 const SNOWFLAKE = /^\d{15,22}$/;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const MEDIA_TYPES = new Set([...IMAGE_TYPES, 'video/mp4', 'video/webm']);
 
 export class RecipeFetchError extends Error {
   constructor(code, message) { super(message); this.name = 'RecipeFetchError'; this.code = code; }
@@ -126,7 +127,7 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind, signa
     try {
       req = request(url, { method: 'GET', agent: false, family: address.family, lookup: pinnedLookup,
         ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized: true,
-        headers: { Accept: kind === 'image' ? 'image/png,image/jpeg,image/webp' : 'text/html,application/xhtml+xml',
+        headers: { Accept: kind === 'media' ? [...MEDIA_TYPES].join(',') : kind === 'image' ? 'image/png,image/jpeg,image/webp' : 'text/html,application/xhtml+xml',
           'Accept-Encoding': 'identity', 'User-Agent': 'JARVIS-RecipeMemory/4.9' } }, response => {
         if (finished) { response.destroy(); return; }
         const status = response.statusCode;
@@ -139,7 +140,7 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind, signa
         if (status !== 200) { response.destroy(); finish(null, new RecipeFetchError('unavailable', 'Hjemmesiden tillod ikke hentning.')); return; }
         const contentType = String(response.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
         const encoding = String(response.headers['content-encoding'] || 'identity').toLowerCase();
-        const allowed = kind === 'image' ? IMAGE_TYPES.has(contentType) : (kind === 'browser'
+        const allowed = kind === 'media' ? MEDIA_TYPES.has(contentType) : kind === 'image' ? IMAGE_TYPES.has(contentType) : (kind === 'browser'
           ? ['text/html','application/xhtml+xml','text/css','text/javascript','application/javascript','application/json']
           : ['text/html','application/xhtml+xml']).includes(contentType);
         const declaredLength = Number(response.headers['content-length']);
@@ -165,7 +166,8 @@ function requestPinned(url, address, { request, remaining, maxBytes, kind, signa
 
 export async function fetchRecipeResource(value, { kind = 'html', lookup = dnsLookup, request = httpsRequest,
   timeoutMs = 10_000, maxBytes = kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES, allowUrl = () => true, signal } = {}) {
-  if (!['html', 'image', 'browser'].includes(kind)) throw new RecipeFetchError('blocked', 'Ukendt ressourcetype.');
+  if (!['html', 'image', 'browser', 'media'].includes(kind)) throw new RecipeFetchError('blocked', 'Ukendt ressourcetype.');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RecipeFetchError('blocked', 'Ugyldig størrelsesgrænse.');
   const deadline = Date.now() + Math.max(50, Math.min(15_000, timeoutMs));
   let url = recipeUrl(value);
   for (let redirects = 0; redirects <= 2; redirects++) {
@@ -176,7 +178,7 @@ export async function fetchRecipeResource(value, { kind = 'html', lookup = dnsLo
     const address = await resolvePublic(host, lookup, Math.max(1, deadline - Date.now()), signal);
     if (Date.now() >= deadline) throw new RecipeFetchError('unavailable', 'Hentning tog for lang tid.');
     const result = await requestPinned(url, address, { request, remaining: deadline - Date.now(),
-      maxBytes: Math.min(maxBytes, kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES), kind, signal });
+      maxBytes: Math.min(maxBytes, kind === 'media' ? 30 * 1024 * 1024 : kind === 'image' ? MAX_RECIPE_IMAGE_BYTES : MAX_HTML_BYTES), kind, signal });
     if (!result.redirect) return result;
     url = recipeUrl(new URL(result.redirect, url).href);
   }

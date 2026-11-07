@@ -370,7 +370,7 @@ async function verifyCase(browser, engine, width, mode) {
     await navigate(page, 'settings', 'integrations');
     await page.locator('[data-integration-id="home-assistant"]').waitFor({ state: 'visible' });
     assert.match(await page.locator('[data-integration-id="home-assistant"]').innerText(), /ikke implementeret|forberedt/i);
-    for (const section of ['profile', 'notifications', 'automations', 'system', 'device']) {
+    for (const section of ['profile', 'notifications', 'skills', 'automations', 'system', 'device']) {
       await page.locator(`[data-settings-tab="${section}"]`).click();
       await page.locator(`#settings-${section}`).waitFor({ state: 'visible' });
       await layout(page, evidence, `settings-${section}`, section === 'system');

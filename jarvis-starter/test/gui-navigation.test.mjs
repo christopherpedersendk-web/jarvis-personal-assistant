@@ -28,7 +28,7 @@ test('GUI-T02 legacy destinations retain their domains without adding primary ta
 test('GUI-T01/T02 precise old source links open the original domain rather than an overlaid search', () => {
   const expected = {
     'memory:one': ['settings', 'profile', null], 'claim:one': ['settings', 'profile', null],
-    'skill:daily-briefing:1.0.0': ['settings', 'automations', null],
+    'skill:daily-briefing:1.0.0': ['settings', 'skills', null],
     'organizer:list:item': ['plan', 'notes', null], 'project:one': ['plan', 'tasks', 'projects'],
     'task:one': ['plan', 'tasks', 'agent'], 'personal-task:one': ['plan', 'tasks', 'personal'],
     'follow-up:one': ['plan', 'tasks', 'personal'], 'recipe:one': ['plan', 'meals', null],

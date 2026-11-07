@@ -205,7 +205,11 @@ test('Discord metadata passes only validated owner image attachments and explici
   assert.equal(authorizedDiscordMessage(event, { userId }), true);
   assert.equal(authorizedDiscordMessage({ ...event, author: { id: '999999999999999999' } }, { userId }), false);
   assert.equal(authorizedDiscordMessage({ ...event, webhook_id: '777777777777777777' }, { userId }), false);
-  assert.equal(authorizedDiscordMessage({ ...event, attachments: [{ ...attachment, content_type: 'image/svg+xml' }] }, { userId }), false);
+  const unsupported = { ...event, attachments: [{ ...attachment, content_type: 'image/svg+xml' }] };
+  assert.equal(authorizedDiscordMessage(unsupported, { userId }), true, 'authorized sender receives a useful unsupported-file error');
+  assert.equal(discordMessageMetadata(unsupported).attachments.length, 0);
+  assert.equal(discordMessageMetadata(unsupported).mediaAttachments.length, 0);
+  assert.match(discordMessageMetadata(unsupported).mediaError, /Andre vedhæftninger/);
   const metadata = discordMessageMetadata({ ...event, attachments: [{ ...attachment, secret: 'not passed' }] });
   assert.equal(metadata.attachments[0].secret, undefined);
   assert.equal(isRecipeCaptureRequest('Gem opskrift: min tacos'), true);

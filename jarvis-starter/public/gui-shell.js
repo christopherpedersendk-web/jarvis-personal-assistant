@@ -32,7 +32,7 @@
   function settingsGroups() {
     for (const [selector, target] of [
       ['#memory-workbench', 'settings-profile'], ['.notes-panel', 'settings-profile'],
-      ['#skills-catalog', 'settings-automations'], ['#integrations-catalog', 'settings-integrations'],
+      ['#skills-catalog', 'settings-skills'], ['#integrations-catalog', 'settings-integrations'],
       ['#proactive-form', 'settings-notifications'], ['#tab-system', 'settings-system'],
     ]) {
       const item = document.querySelector(selector);

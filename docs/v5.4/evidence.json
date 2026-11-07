@@ -1,0 +1,166 @@
+{
+  "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
+  "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
+  "appTree": "db4044d81401ee5fee8d5c9da82cb04c916f2a67",
+  "commitBinding": "Documentation-only follow-ups must preserve appTree. The six workflows on the exact final PR HEAD and their candidate-bound artifacts are the final acceptance evidence; intermediate run status here is historical, not a release approval.",
+  "localTests": {
+    "command": "npm test",
+    "passed": 1248,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "4a05c2e0b981aa29bd5aa29535a8c30d9b616281694f06a039833b88b5b3a5e1"
+  },
+  "localBrowser": {
+    "status": "blocked",
+    "reason": "Pinned browser download returned invalid archive; installed Chromium failed IPC socket with EPERM"
+  },
+  "localContainment": {
+    "status": "blocked",
+    "reason": "No Docker CLI/daemon; bubblewrap unshare network denied NETLINK_ROUTE socket"
+  },
+  "localOpenClaw": {
+    "at": "2026-11-06T22:36:57.898Z",
+    "runtime": "2026.11.1",
+    "policy": "passed",
+    "research": "failed",
+    "live": true,
+    "sourceCount": 0,
+    "policyStatuses": {
+      "exec": 404,
+      "browser": 404,
+      "web_fetch": 404,
+      "cron": 404,
+      "sessions_spawn": 404,
+      "wrongCredential": 401
+    },
+    "errorCode": "SEARCH_FAILED"
+  },
+  "firstCandidateCI": {
+    "openclaw": {
+      "run": 42342238536,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42342238565,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42342238566,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42342238604,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42342238543,
+      "status": "failed",
+      "reason": "New Skills smoke expected a different status label; existing GUI/deep-v5/control steps passed"
+    },
+    "media": {
+      "run": 42342238637,
+      "status": "failed",
+      "reason": "Minimal FFmpeg build omitted image pipe demuxers; isolation and signature verification passed"
+    }
+  },
+  "modelEvaluation": {
+    "baseline": "not_run",
+    "hybrid": "not_run",
+    "score": null,
+    "reason": "No legitimate model credential available"
+  },
+  "liveDiscord": "not_run",
+  "physicalIPhone": "not_run",
+  "actualBackupRestore": "not_run",
+  "targetSystemdIsolation": "not_run",
+  "productionActivated": false,
+  "dependencyAudit": {
+    "moderate": 34,
+    "high": 0,
+    "critical": 0,
+    "limitation": "npm bundled glob/minimatch remain affected; direct minimatch pinned to 11.0.1"
+  },
+  "secondCandidate": "42fde6da33ce713f2896d1d0b7b1d6baa6136759",
+  "secondCandidateCI": {
+    "openclaw": {
+      "run": 42343014053,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42343014005,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42343014011,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42343014027,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42343014124,
+      "status": "failed",
+      "reason": "New Skills smoke tried logout without navigating to This device. First Chromium 320px filters, draft creation/reload and overwrite protection passed; full matrix not completed."
+    },
+    "media": {
+      "run": 42343014031,
+      "status": "passed",
+      "image": "sha256:e9fb47ab54e2ad91ef2f70294a2561e71c2c44d91d9dc1921da3fb11fb6b23f1",
+      "decoder": "FFmpeg 9.0.2",
+      "scope": "Actual isolated decoder, synthetic JPEG/PNG/WebP and five MP4/WebM cases; no model quality test"
+    }
+  },
+  "thirdCandidate": "f06c9d6d3be40172ac1c4515e09f636f1e396de9",
+  "thirdCandidateGUI": {
+    "run": 42343901811,
+    "skillsStep": "failed",
+    "otherSteps": "pending at follow-up commit",
+    "localReproduction": "HTTP historical availability count was 0 instead of 4; current flag was not forwarded to descriptor. Regression failed before the server fix, full 1248 suite passed after."
+  },
+  "thirdCandidateMedia": {
+    "run": 42343901837,
+    "status": "passed",
+    "scope": "Actual decoder plus deterministic confirmed-running hung-worker cancellation; no remaining containers"
+  },
+  "fourthCandidate": "d4fd9ef359120a578ddd1b642fb7c72670a30f77",
+  "fourthCandidateMedia": {
+    "run": 42344131207,
+    "status": "failed",
+    "reason": "Official FFmpeg detached signature GET timed out before compilation; no verification bypass. Follow-up bounds connect timeout and two transient public-GET retries."
+  },
+  "codeCandidate": "07ef694b05d7134ccd39c5844f7d84c862bd9e03",
+  "codeCandidateCI": {
+    "openclaw": {
+      "run": 42344361863,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42344361897,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42344361827,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42344361828,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42344361877,
+      "skillsStep": "passed",
+      "unitTests": 1248,
+      "status": "in_progress at evidence update",
+      "scope": "Chromium/WebKit 320,390,1280px; full legacy matrix also required"
+    },
+    "media": {
+      "run": 42344361902,
+      "attempt1": "failed: official signing-key GET timeout then TLS connection reset before compilation",
+      "attempt2": "in_progress at evidence update"
+    }
+  }
+}

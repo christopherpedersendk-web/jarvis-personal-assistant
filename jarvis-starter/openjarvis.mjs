@@ -43,6 +43,8 @@ export function createOpenJarvis({ env = process.env, fetcher = fetch, control }
     throw new Error('Ukendt OpenJarvis gateway-kontrakt.');
   const expectedVersion = '2026.11.1';
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  let observed={connectionStatus:'unchecked',lastCheckedAt:null,connectionError:null};
+  let inspection;
   async function check(signal) {
     if (!enabled) throw new OpenJarvisError('DISABLED', 'OpenJarvis er ikke aktiveret.');
     if (!restricted) return {status:'unverified', reason:'Legacy gateway har ingen verificeret runtime-kontrakt.'};
@@ -51,12 +53,22 @@ export function createOpenJarvis({ env = process.env, fetcher = fetch, control }
         JSON.stringify(health?.tools) !== JSON.stringify(['web_search']))
       throw new OpenJarvisError('VERSION_MISMATCH', 'OpenClaw-version eller tilladte værktøjer matcher ikke den gennemgåede kontrakt.');
     if (health.status !== 'ready') throw new OpenJarvisError('NOT_READY', 'OpenClaw er ikke klar.');
+    observed={connectionStatus:'ready',lastCheckedAt:new Date().toISOString(),connectionError:null};
     return health;
   }
 
   return {
     check,
-    status: () => ({ product: 'OpenJarvis', enabled, contractVersion: 1, gatewayMode: restricted ? 'restricted-v1' : 'legacy-unverified', expectedVersion, capabilities: enabled ? ['public-web-search'] : [],
+    async inspect() {
+      if(!enabled || !restricted)return;
+      if(inspection)return inspection;
+      if(observed.lastCheckedAt && Date.now()-Date.parse(observed.lastCheckedAt)<5000)return;
+      inspection=(async()=>{try{await control.controlled(signal=>check(signal));}
+        catch{observed={connectionStatus:'unavailable',lastCheckedAt:new Date().toISOString(),connectionError:'Gatewayen er utilgængelig, stoppet eller inkompatibel. Ingen research er startet.'};}
+        finally{inspection=null;}})();
+      return inspection;
+    },
+    status: () => ({ ...observed, product: 'OpenJarvis', enabled, contractVersion: 1, gatewayMode: restricted ? 'restricted-v1' : 'legacy-unverified', expectedVersion, capabilities: enabled ? ['public-web-search'] : [],
       dataOwner: 'jarvis', discordOwner: 'jarvis', browserAutomation: 'not-enabled' }),
     async search(query) {
       if (!enabled) throw new Error('OpenJarvis er ikke aktiveret.');

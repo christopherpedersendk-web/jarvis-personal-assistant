@@ -321,12 +321,14 @@
         <nav class="gui-settings-nav" aria-label="Indstillingskategorier"><button type="button" class="gui-settings-tab active" data-settings-tab="profile" aria-controls="settings-profile" aria-pressed="true">Om dig og hukommelse</button>
 <button type="button" class="gui-settings-tab" data-settings-tab="notifications" aria-controls="settings-notifications" aria-pressed="false">Notifikationer</button>
 <button type="button" class="gui-settings-tab" data-settings-tab="integrations" aria-controls="settings-integrations" aria-pressed="false">Integrationer</button>
+<button type="button" class="gui-settings-tab" data-settings-tab="skills" aria-controls="settings-skills" aria-pressed="false">Skills</button>
 <button type="button" class="gui-settings-tab" data-settings-tab="automations" aria-controls="settings-automations" aria-pressed="false">Automatiseringer</button>
 <button type="button" class="gui-settings-tab" data-settings-tab="system" aria-controls="settings-system" aria-pressed="false">System og opdateringer</button>
 <button type="button" class="gui-settings-tab" data-settings-tab="device" aria-controls="settings-device" aria-pressed="false">Denne enhed</button></nav>
         <div class="gui-settings-content"><section id="settings-profile" class="settings-subview" aria-label="Om dig og hukommelse"></section>
 <section id="settings-notifications" class="settings-subview hidden" aria-label="Notifikationer"></section>
 <section id="settings-integrations" class="settings-subview hidden" aria-label="Integrationer"></section>
+<section id="settings-skills" class="settings-subview hidden" aria-label="Skills"></section>
 <section id="settings-automations" class="settings-subview hidden" aria-label="Automatiseringer"></section>
 <section id="settings-system" class="settings-subview hidden" aria-label="System og opdateringer">
   <section class="panel gui-settings-group" aria-labelledby="assistant-control-title">
@@ -336,6 +338,13 @@
     <button id="assistant-control-refresh" type="button">Hent status</button>
     <button id="assistant-control-stop" type="button" disabled>Stop model- og webarbejde</button>
     <button id="assistant-control-resume" type="button" disabled>Genoptag nye anmodninger</button>
+  </section>
+  <section class="panel gui-settings-group" id="discord-voice-controls">
+    <h3>Discord-stemme</h3><p>Gå selv ind i den konfigurerede stemmekanal. Kun dig og botten må deltage. Vælg tekstkanalen til svar og kilder.</p>
+    <label for="discord-voice-text-channel">Tekstkanal-ID til svar</label><input id="discord-voice-text-channel" inputmode="numeric" maxlength="20" />
+    <button type="button" id="discord-voice-start" class="secondary">Tilslut Discord-stemme</button>
+    <button type="button" id="discord-voice-stop" class="secondary">Afbryd Discord-stemme</button>
+    <p id="discord-voice-action-status" role="status"></p>
   </section>
   <section id="ai-setup" class="panel gui-settings-group" tabindex="-1" aria-labelledby="ai-setup-title">
     <h2 id="ai-setup-title">AI-forbindelse på serveren</h2>
@@ -500,10 +509,16 @@
           <div id="claim-list" class="v5-record-list"></div>
         </section>
         <section id="skills-panel" class="panel intelligence-panel">
-          <div class="section-heading"><h2>JARVIS' arbejdsprocedurer</h2><span class="tiny-label">Versionsstyrede procedurer</span></div>
+          <div class="section-heading"><h2>Skills</h2><span class="tiny-label">Versionsstyrede procedurer</span></div>
           <p class="muted small-text">Versionsstyrede skills er metoder til gentagelige opgaver – ikke ny personlig hukommelse og ikke eksekverbar kode.</p>
           <p id="skills-catalog-status" class="muted micro" role="status" aria-live="polite"></p>
           <button id="skills-catalog-refresh" type="button" class="secondary compact-button">Opdater procedurekatalog</button>
+          <div class="skill-filters">
+            <label for="skills-query">Søg efter skill</label><input id="skills-query" type="search" maxlength="240" placeholder="Fx madplan, research eller gave" />
+            <label for="skills-source">Kilde</label><select id="skills-source"><option value="">Alle</option><option value="jarvis">Jarvis</option><option value="openclaw">OpenClaw</option></select>
+            <label for="skills-category">Kategori</label><select id="skills-category"><option value="">Alle</option><option value="personlig">Personlig</option><option value="madplan">Madplan</option><option value="research">Undersøgelser</option></select>
+            <label for="skills-state">Tilgængelighed</label><select id="skills-state"><option value="">Alle</option><option value="ready">Klar til anmodning</option><option value="disabled">Deaktiveret</option><option value="blocked">Blokeret</option><option value="historical">Historisk version</option></select>
+          </div><p id="skills-filter-status" class="micro" role="status"></p>
           <div id="skills-catalog" class="catalog-grid"></div>
         </section>
         <section id="tab-organizer" class="organizer-workbench" aria-label="Noter og lister">

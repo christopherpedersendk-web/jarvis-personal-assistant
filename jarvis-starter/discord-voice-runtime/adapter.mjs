@@ -16,12 +16,14 @@ export async function connectDiscordVoice({gateway,guildId,channelId,ownerId,onA
  connection.receiver.speaking.on('start',userId=>{
   if(closed||!listening||capture||userId!==ownerId)return;
   listening=false;
-  const stream=connection.receiver.subscribe(ownerId,{end:{behavior:EndBehaviorType.AfterSilence,duration:800}});capture=stream;
+  const stream=connection.receiver.subscribe(ownerId,{end:{behavior:EndBehaviorType.AfterSilence,duration:800}});
   const decoder=new prism.opus.Decoder({rate:48000,channels:2,frameSize:960});
   let bytes=0,tooLong=false,chunks=[],done=false;
   const timer=setTimeout(()=>{tooLong=true;stream.destroy();decoder.destroy();finish();},20000);timer.unref();
+  capture={destroy(){clearTimeout(timer);stream.unpipe(decoder);stream.destroy();decoder.destroy();}};
   const finish=()=>{if(done)return;done=true;clearTimeout(timer);stream.unpipe(decoder);stream.destroy();decoder.destroy();capture=null;
    const pcm=tooLong?null:Buffer.concat(chunks);chunks=[];
+   if(!closed&&!pcm){close();Promise.resolve(onDisconnect('decoder_failed')).catch(()=>{});return;}
    Promise.resolve(!closed&&pcm?onAudio(pcm):undefined).catch(()=>{}).finally(()=>{if(!closed)listening=true;});};
   stream.on('error',()=>{tooLong=true;finish();});decoder.on('error',()=>{tooLong=true;finish();});decoder.on('end',finish);
   decoder.on('data',chunk=>{bytes+=chunk.length;if(bytes>3840000){tooLong=true;finish();}else chunks.push(chunk);});

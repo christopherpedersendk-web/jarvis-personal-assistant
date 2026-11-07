@@ -28,10 +28,10 @@ class Element {
   async emit(name, detail = {}) { for (const handler of this.events.get(name) || []) await handler({ preventDefault() {}, ...detail }); }
 }
 
-function fixture({ beforeRead = async () => {}, initialView = 'home' } = {}) {
+function fixture({ beforeRead = async () => {}, trySkill = () => {}, initialView = 'home' } = {}) {
   const nodes = new Map(), document = { hidden: false, activeElement: null, createElement: tag => new Element(tag), getElementById: id => nodes.get(id) };
   for (const id of ['workspace', 'tab-knowledge', 'tab-settings', 'skills-catalog', 'integrations-catalog',
-    'skills-catalog-status', 'integrations-catalog-status', 'skills-catalog-refresh', 'integrations-catalog-refresh']) nodes.set(id, new Element('div'));
+    'skills-catalog-status', 'integrations-catalog-status', 'skills-catalog-refresh', 'integrations-catalog-refresh', 'skills-query', 'skills-source', 'skills-category', 'skills-state', 'skills-filter-status']) nodes.set(id, new Element('div'));
   const versions = ['1.0.0', '2.0.0'].map(version => ({ name: 'daily-briefing', version, description: `Syntetisk v${version}`, triggers: ['overblik'],
     permissions: 'existing-authorized-tools-only', body: `# Syntetisk ${version}\n<script>Dette er tekst, ikke kode.</script>` }));
   let registry = new SkillsRegistry(versions), owner = 'synthetic-owner', now = 1000;
@@ -46,7 +46,7 @@ function fixture({ beforeRead = async () => {}, initialView = 'home' } = {}) {
   };
   const context = vm.createContext({ Date, Promise, Map, Set, encodeURIComponent });
   vm.runInContext(factorySource + '\nglobalThis.make = createIntelligenceCatalog;', context);
-  const ui = context.make({ document, api, getToken: () => owner, now: () => now, openSource: id => opened.push(id) });
+  const ui = context.make({ document, api, getToken: () => owner, now: () => now, trySkill, openSource: id => opened.push(id) });
   const view = name => { nodes.get('tab-knowledge').classList.toggle('hidden', name !== 'knowledge'); nodes.get('tab-settings').classList.toggle('hidden', name !== 'settings'); };
   view(initialView);
   return { ui, document, nodes, reads, opened, view, versions,
@@ -136,4 +136,15 @@ test('I5 an obsolete metadata failure cannot repopulate status after logout', as
   hold.reject(new Error('synthetic old-session read error')); await pending;
   assert.equal(f.nodes.get('skills-catalog-status').textContent, '');
   assert.equal(f.nodes.get('skills-catalog').children.length, 0);
+});
+
+
+test('M11 filters and logout clear the one catalog without executing a request',async()=>{
+ const f=fixture({initialView:'knowledge'});await f.ui.refresh();
+ f.nodes.get('skills-query').value='missing skill';await f.nodes.get('skills-query').emit('input');
+ assert.ok(f.nodes.get('skills-catalog').children.every(card=>card.hidden));
+ f.nodes.get('skills-query').value='daily';await f.nodes.get('skills-query').emit('input');
+ assert.ok(f.nodes.get('skills-catalog').children.every(card=>!card.hidden));
+ assert.deepEqual(f.reads,['/api/skills']);
+ f.ui.reset();assert.equal(f.nodes.get('skills-query').value,'');assert.equal(f.nodes.get('skills-filter-status').textContent,'');
 });
