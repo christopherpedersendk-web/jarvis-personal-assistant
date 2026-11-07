@@ -241,6 +241,8 @@ test('H1 HTTP current procedure details expose their complete contract and retai
   const f = await fixture(t), catalog = (await f.request('/api/skills')).body.skills;
   assert.equal(catalog.filter(skill => skill.current).length, 8);
   assert.equal(catalog.filter(skill => !skill.current).length, 4);
+  assert.equal(catalog.filter(skill => skill.availability.status === 'historical').length, 4);
+  for (const skill of catalog.filter(skill => !skill.current)) assert.equal(skill.availability.available, false);
   const current = await f.request('/api/skills/personal-follow-up/1.1.0');
   assert.equal(current.status, 200); assert.equal(current.body.skill.current, true);
   assert.equal(current.body.skill.contract.schemaVersion, 1);

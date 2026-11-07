@@ -1318,7 +1318,7 @@ async function route(req, res) {
     if (req.method === 'GET' && path === '/api/skills') {
       await openJarvis.inspect();
       const environment={openJarvis:openJarvis.status(),modelConfigured:validApiKey,stopped:providerControl.snapshot().stopped,voiceEnabled:discordVoiceEnabled};
-      return json(res,200,{skills:skills.catalog().map(item=>({...item,...describeSkill(skills.resolve(item.name,item.version),environment)}))});
+      return json(res,200,{skills:skills.catalog().map(item=>({...item,...describeSkill({...skills.resolve(item.name,item.version),current:item.current},environment)}))});
     }
     const skillDetail = path.match(/^\/api\/skills\/([a-z0-9-]{1,80})\/(\d+\.\d+\.\d+)$/);
     if (req.method === 'GET' && skillDetail) {

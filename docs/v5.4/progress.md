@@ -51,3 +51,8 @@ at springe logoutkontrollen over. Historiske versioner kan nu filtreres og kalde
 ikke fejlagtigt klar til en ny kladde. Hashdetaljer er bevaret i fold-ud-visningen.
 En særskilt CI-prøve venter på en bekræftet startet, syntetisk fastlåst worker før
 stop; den må ikke forveksles med timingbaseret afbrydelse under Docker-opstart.
+
+Den nye historikfilterprøve fangede en API-fejl: resolve() returnerede rå procedure
+uden katalogets current-flag. HTTP-regression reproducerede 0 historiske statusser
+i stedet for 4; serveren videresender nu current fra samme katalog. Den fulde lokale
+suite består fortsat med 1.248 tests. Browserprøven gentages på rettelsens kandidat.

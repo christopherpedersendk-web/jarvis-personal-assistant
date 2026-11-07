@@ -1,14 +1,14 @@
 {
   "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
   "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
-  "appTree": "b515b397c97f2c413c6ce563bd3de4f5e42e8331",
+  "appTree": "1bded226a3b491056d498215355f7eb79d972321",
   "commitBinding": "PR head whose jarvis-starter tree equals appTree; CI on exact head is authoritative",
   "localTests": {
     "command": "npm test",
     "passed": 1248,
     "failed": 0,
     "skipped": 0,
-    "logSha256": "335079de9d4c0c463ebbd0c1371d9dcdee7e29bb9cb33b3f2e50b6325e34b6df"
+    "logSha256": "80f74266b94fbfacb92b99fd8c7ba15a96a8148ddb858ed9997e66da6098556a"
   },
   "localBrowser": {
     "status": "blocked",
@@ -112,5 +112,12 @@
       "decoder": "FFmpeg 9.0.2",
       "scope": "Actual isolated decoder, synthetic JPEG/PNG/WebP and five MP4/WebM cases; no model quality test"
     }
+  },
+  "thirdCandidate": "f06c9d6d3be40172ac1c4515e09f636f1e396de9",
+  "thirdCandidateGUI": {
+    "run": 42343901811,
+    "skillsStep": "failed",
+    "otherSteps": "pending at follow-up commit",
+    "localReproduction": "HTTP historical availability count was 0 instead of 4; current flag was not forwarded to descriptor. Regression failed before the server fix, full 1248 suite passed after."
   }
 }
