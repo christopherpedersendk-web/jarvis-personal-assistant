@@ -4,6 +4,29 @@ Status: ikke startet, under implementering, implementeret men ikke verificeret, 
 
 Alle åbne M1–M14-kriterier og deres betydninger videreføres uændret fra [v5.4 acceptance-register](../v5.4/acceptance-register.md), [inherited-acceptance](../v5.4/inherited-acceptance.md), [v5.2 register](../v5.2/acceptance-register.md) og v5.3-dokumenterne. Ejerens bekræftelse af Discord-tekst og rapportlevering bevares; dette er ikke bevis for kanalstyring eller voice.
 
+## Aktuel oversigt — observeret 2026-11-07
+
+De daterede opfølgninger har forrang for ældre installationsbemærkninger. Ingen hel milestone lukkes på baggrund af en enkelt prøve.
+
+| Område | Aktuel accept | Konkret rest |
+|---|---|---|
+| M1 | Faktisk restore og netværksløs genopstart verificeret | Backup af nye eksterne runtimekonfigurationer; fysisk mobilaccept |
+| M2 | Durable stop og reservationer implementeret og testet | Providerens faktiske fjernlukning og fuldt målt forbrug |
+| M3/M7 | Installeret fastlåst OpenClaw og faktisk lokal research verificeret | Samlet ejeraccept; dedikeret native browserisolation er separat |
+| M4/M17 | Fælles plan, variation og listekode verificeret; faktisk Nemlig-læsning | Ejerretning af samme plan i web/Discord og eksplicit overførsel |
+| M5 | Ejer har bekræftet mikrofon, talt svar og stop i privat kanal | Øvrige fejlsituationer og providerlukning dokumenteres særskilt |
+| M6/M10 | Faktisk baseline/hybrid 30+30 scenarier gennemført | Menneskelig rubric/27 af 30 og alle kritiske; ukendt forbrug er ukendt |
+| M8/M9 | Research med kilder faktisk observeret | Ejeraccept og kvalitet på hver procedure |
+| M11/M15 | Fælles kladder, revisioner, privat lagring og UI-kontrol | Fysisk mobil/DM-review og samlet ejeraccept |
+| M12 | Administrator verificeret; afgrænset faktisk create/rename/delete og mobilsvar bestået | Ejerens gateway-/opskriftsreview; varigt rapportkanalvalg |
+| M13/M14 | Decodercontainment bestået; opskriftsmodel faktisk observeret | Ejerens egne medier og video-/lydforståelse |
+| M16 | Faktisk offentlig søgning, sammenligning og anonym kurv med readback | Login/valgte adresser, fragt og levering til 2900 samt færdig checkout |
+| M18 | Installeret Codex, samme session, isoleret ændring/tests og JARVIS-publiceret PR verificeret | Ejerens telefonforløb; uafhængige releasekontroller og særskilt deploymentmandat |
+
+Se [aktuel installationsevidens](observed-acceptance-2026-11-07.json). Historiske revisionsbundne resultater nedenfor bevares som historik.
+
+## Historisk register ved første next-leverance
+
 | ID/kriterium | Status | Filer/evidens og begrænsning | Næste handling |
 |---|---|---|---|
 | M12.4 kanaldiagnose og danske intents | verificeret | discord-channels.mjs, integration-catalog.mjs, server.mjs; fokuserede regressioner | Ejer ser konkret diagnose i integrationer |
