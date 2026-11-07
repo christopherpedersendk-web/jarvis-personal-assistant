@@ -66,3 +66,20 @@ Alle syv workflows er bestået på 7dfed08a5833982f16422b897d3d13e8077eaa8f, ink
 ## Afgrænset diagnostik-PR efter #19
 
 Se [leverance og faktisk udførte kontroller](diagnostics-delivery.md). M3/M7 får secretsikker diagnostik; M6/M10 får separat setup-/HTTP-tid og bevaret forbrugsgrundlag. 11 fokuserede lokale tests bestået, uden Docker/modeladgang. Alle øvrige M1–M18-kriterier videreføres; utilgængelige liveprøver er ikke planlagte opgaver i denne PR. Gamle næste-handling-kolonner er historiske acceptkrav, ikke en påstand om tilgængelig adgang.
+
+## Reviewbare kladder — opfølgning 2026-11-07
+
+Kodekandidat: `1ecdb7031369e0202b7ca729a3da2176aa556a5d`, direkte fra main `1249eba457ec866da00f3005e6a79b8d1aa8973f`. PR #20 på `54a54fb0272736896f1e106df55b9724cda2a530` er separat og ikke kopieret. Version/schema: 5.4.0 / 1, readableFrom 0. Historiske resultater ovenfor gælder fortsat alene deres anførte revisioner.
+
+| Eksisterende kriterium | Ny implementering og faktisk evidens | Åben begrænsning |
+|---|---|---|
+| M16.1 ordregrundlag | Redigér/annullér med revision; nyt hash/review ved ændringer; gamle reviews og afsluttede kladder afvises. 10 commerce-tests omfatter disse lokale kontroller og browserkontrakter. | Formularer syntakskontrolleret, ikke ny browser-/ejeraccept; særskilt faktureringsvalg og produktsammenligning ikke udvidet. |
+| M16.3 produktlæsning | Returnerer faktisk observeret URL, requestedUrl, tidspunkt og snapshot-hash. URL kontrolleres før/efter snapshot; skift/cleanupfejl returnerer ikke et godkendt resultat. Simuleret transport, ingen Chrome. | Ingen ny netværkscontainment eller live merchantaccept. Tekst er stadig utroværdige data. |
+| M18.1 udviklingspipeline | Lokale udviklingskladder med ønske, fil, version og acceptkriterier; revision/annullering og eksplicit start. Før/efter-kode og base-SHA bevares også ved utilgængelig isolation. 14 fokuserede tests med simuleret model/sandbox/GitHub. | Ingen ny eksekveringsrettighed; Dockerkravet for genereret kode er bevaret. |
+| M16.1 / M18.1 API | 2 tests af det faktiske routeudsnits argumentbinding og konfliktstatus. Eksisterende autentifikationsgrænse inspiceret og uændret. | Dette er routekontrakter, ikke fuld HTTP-/sikkerheds- eller GUI-accept. |
+| M1–M15 samt M17 | Betydning og eksisterende evidens uændret. Ingen nye ændringer i scheduler, hukommelse, madplan, Nemlig, Discord eller evalueringsdatasæt. | Tidligere manglende ejeraccept er fortsat åben, ikke planlagte kørsler i denne pakke. |
+| M16.2/M16.4/M16.5 og M18.2–M18.5 | Historisk status videreført; ingen nye livepåstande. | Login/session/kurv/checkout, betaling og rigtig JARVIS-produceret PR er ikke verificeret af denne leverance. |
+
+26 unikke fokuserede tests bestået, nul fejl/skips. Filhashes og de enkelte kørsler står i evidence.json under reviewableDrafts. Intet helt milestone lukkes. UI viser kun manuel betalingsoverdragelse; MobilePay/PayPal præsenteres ikke som implementerede betalingsflows.
+
+De tidligere målhost- og ejerprøver ovenfor er udestående acceptkrav, ikke denne PR's arbejdsplan. Den aktuelle afgrænsning og de resterende konkrete produktmangler er i next-package.md.
