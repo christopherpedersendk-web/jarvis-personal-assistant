@@ -1,5 +1,7 @@
 // Merchant-specific, observed 2026-11-07: POST /Basket/AddItem with productId
-// and the current product form token. No login, payment or order-submit writes.
+// and the current product form token. Explicit opt-in guest contact uses only
+// /Basket/CheckOut/Register. No login/password, payment or order-submit writes.
+import {proshopGuestPayload} from './proshop-guest.mjs';
 import {request as httpsRequest} from 'node:https';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {constants} from 'node:fs';
@@ -9,23 +11,24 @@ import {publicInternetAddress} from './recipe-fetch.mjs';
 const origin='https://www.proshop.dk';
 export function proshopProductUrl(value){const u=new URL(value);if(u.origin!==origin||u.username||u.password||u.search||u.hash||!/^\/[^/]+\/[^/]+\/\d{7}$/.test(u.pathname))throw Error('Brug et konkret offentligt Proshop-varelink.');return u;}
 // Session cookies remain outside state, model prompts, logs and API results.
-export function createProshopSession({file,lookup=dnsLookup,request=httpsRequest}={}){
+export function createProshopSession({file,lookup=dnsLookup,request=httpsRequest,allowGuestContact=false}={}){
  if(!file)throw Error('Privat Proshop-sessionsfil mangler.');let busy=false,cookies={};
  async function load(){await mkdir(dirname(file),{recursive:true,mode:0o700});const dir=await lstat(dirname(file));if(!dir.isDirectory()||dir.isSymbolicLink()||(dir.mode&0o077))throw Error('Proshop-session kræver privat mappe (0700).');try{const f=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);try{const st=await f.stat();if(!st.isFile()||(st.mode&0o077)||st.size>64000)throw Error('Ugyldig privat sessionsfil.');cookies=JSON.parse(await f.readFile('utf8'));}finally{await f.close();}}catch(e){if(e.code!=='ENOENT')throw e;}}
  async function persist(){const f=await open(file,constants.O_WRONLY|constants.O_CREAT|constants.O_TRUNC|constants.O_NOFOLLOW,0o600);try{await f.writeFile(JSON.stringify(cookies));await f.sync();}finally{await f.close();}}
- async function call(path,{productId,token,signal}={}){
+ async function call(path,{productId,token,guest,signal}={}){
   if(busy)throw Error('Proshop-sessionen er optaget.');busy=true;
   try{
    const url=new URL(path,origin),search=url.pathname==='/'&&url.searchParams.size===1&&url.searchParams.has('s')&&url.searchParams.get('s').length<=200;
    if(url.origin!==origin||url.username||url.password||(!search&&url.search)||url.hash)throw Error('Proshop-destination afvist.');
-   const writing=path==='/Basket/AddItem';
+   const adding=path==='/Basket/AddItem',contacting=path==='/Basket/CheckOut/Register'&&allowGuestContact===true,writing=adding||contacting;
+   const contactFields=contacting?proshopGuestPayload(token,guest):null;
    if(!writing&&!search&&!['/Basket','/Basket/CheckOut','/login','/api/ApiBasket/Get'].includes(path)&&!/^\/Basket\/Shared\/[a-zA-Z0-9-]{1,100}$/.test(path))proshopProductUrl(url.href);
-   if(writing&&(!/^\d{7}$/.test(productId)||typeof token!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(token)))throw Error('Butikkens aktuelle kurveformular mangler.');
+   if(adding&&(!/^\d{7}$/.test(productId)||typeof token!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(token)))throw Error('Butikkens aktuelle kurveformular mangler.');
    await load();signal?.throwIfAborted();
    const abort=AbortSignal.any([AbortSignal.timeout(15000),...(signal?[signal]:[])]);
    const addresses=await Promise.race([lookup(url.hostname,{all:true,verbatim:true}),new Promise((_,reject)=>abort.addEventListener('abort',()=>reject(Error('DNS-tidsgrænse')),{once:true}))]);
    if(!addresses.length||addresses.some(x=>!publicInternetAddress(x.address)))throw Error('Butikkens netværksadresse er ikke offentlig.');abort.throwIfAborted();
-   const address=addresses[0],body=writing?new URLSearchParams({productId,token}).toString():null;
+   const address=addresses[0],body=writing?new URLSearchParams(contacting?contactFields:{productId,token}).toString():null;
    const result=await new Promise((resolve,reject)=>{
     const req=request(url,{method:writing?'POST':'GET',agent:false,signal:abort,rejectUnauthorized:true,servername:url.hostname,
      lookup:(host,options,callback)=>host!==url.hostname?callback(Error('DNS mismatch')):options?.all?callback(null,[address]):callback(null,address.address,address.family),
@@ -46,5 +49,5 @@ export function createProshopSession({file,lookup=dnsLookup,request=httpsRequest
    return {status:result.status,html:result.html};
   }finally{busy=false;}
  }
- return {search:(query,options)=>{if(typeof query!=='string'||!query.trim()||query.length>200)throw Error('Ugyldig Proshop-søgning.');return call('/?'+new URLSearchParams({s:query}),options);},details:options=>call('/api/ApiBasket/Get',options),importShared:(key,options)=>{if(!/^[a-zA-Z0-9-]{1,100}$/.test(key))throw Error('Ugyldigt kurvelink.');return call('/Basket/Shared/'+key,options);},product:(url,options)=>call(proshopProductUrl(url).pathname,options),basket:options=>call('/Basket',options),checkout:options=>call('/Basket/CheckOut',options),add:options=>call('/Basket/AddItem',options)};
+ return {...(allowGuestContact===true?{guestContact:options=>call('/Basket/CheckOut/Register',options)}:{}),search:(query,options)=>{if(typeof query!=='string'||!query.trim()||query.length>200)throw Error('Ugyldig Proshop-søgning.');return call('/?'+new URLSearchParams({s:query}),options);},details:options=>call('/api/ApiBasket/Get',options),importShared:(key,options)=>{if(!/^[a-zA-Z0-9-]{1,100}$/.test(key))throw Error('Ugyldigt kurvelink.');return call('/Basket/Shared/'+key,options);},product:(url,options)=>call(proshopProductUrl(url).pathname,options),basket:options=>call('/Basket',options),checkout:options=>call('/Basket/CheckOut',options),add:options=>call('/Basket/AddItem',options)};
 }
