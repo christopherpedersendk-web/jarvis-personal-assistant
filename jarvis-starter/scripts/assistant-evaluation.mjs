@@ -1,6 +1,6 @@
 // Real-language evaluation against the real HTTP conversation and local domain
 // handlers. Each scenario gets an empty disposable installation, no owner data.
-import {mkdtemp,readFile,writeFile,rm,readdir} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm,readdir,lstat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -12,11 +12,20 @@ import {syntheticServerEnv} from '../test/helpers/synthetic-env.mjs';
 const root=dirname(dirname(fileURLToPath(import.meta.url)));
 const dataset=await readFile(new URL('./fixtures/danish-assistant-tasks.json',import.meta.url));
 const tasks=JSON.parse(dataset),datasetSha256=createHash('sha256').update(dataset).digest('hex');
-async function coreSourceFingerprint() {
+export async function coreSourceFingerprint(directory=root) {
  const hash=createHash('sha256');
- const files=(await readdir(root)).filter(name=>name.endsWith('.mjs')).sort();
- files.push('package.json','scripts/assistant-evaluation.mjs','scripts/fixtures/danish-assistant-tasks.json');
- for(const name of files)hash.update(name+'\0').update(await readFile(join(root,name)));
+ const files=(await readdir(directory)).filter(name=>name.endsWith('.mjs')).sort();
+ files.push('package.json','persona.md','scripts/assistant-evaluation.mjs','scripts/fixtures/danish-assistant-tasks.json');
+ async function skills(path,prefix){
+  for(const name of (await readdir(path)).sort()){
+   const relative=prefix+'/'+name,full=join(path,name),stat=await lstat(full);
+   if(stat.isSymbolicLink())throw Error('Instruction source cannot be a symlink');
+   if(stat.isDirectory())await skills(full,relative);
+   else if(stat.isFile()&&/\.(?:md|json)$/i.test(name))files.push(relative);
+  }
+ }
+ await skills(join(directory,'skills'),'skills');
+ for(const name of files.sort()){const path=join(directory,name),stat=await lstat(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>1000000)throw Error('Invalid bounded evaluation source');hash.update(name+'\0').update(await readFile(path));}
  return hash.digest('hex');
 }
 export function gradeEvaluation(report) {
@@ -28,21 +37,23 @@ export function gradeEvaluation(report) {
  };
  const passed=reviewed.filter(x=>x.passed&&executionComplete(x)).length;
  const criticalPassed=tasks.filter(x=>x.critical).every(task=>reviewed.some(x=>x.id===task.id&&x.passed&&executionComplete(x)));
- const provenance=report.datasetSha256===datasetSha256&&typeof report.model==='string'&&Boolean(report.model.trim())&&/^[a-f0-9]{64}$/.test(report.coreSourceSha256||'');
+ const provenance=report.fingerprintVersion===2&&report.datasetSha256===datasetSha256&&typeof report.model==='string'&&Boolean(report.model.trim())&&/^[a-f0-9]{64}$/.test(report.coreSourceSha256||'');
  return {reviewed:reviewed.length,passed,total:results.length,criticalPassed,
   accepted:report.live===true&&provenance&&results.length===30&&new Set(results.map(x=>x.id)).size===30&&results.every(x=>tasks.some(t=>t.id===x.id))&&reviewed.length===30&&passed>=27&&criticalPassed};
 }
-export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,apiKey=process.env.OPENAI_API_KEY,output,backend='baseline',gatewayEnv=process.env}={}) {
+export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,apiKey=process.env.OPENAI_API_KEY,output,backend='baseline',gatewayEnv=process.env,taskIds}={}) {
  if(!['baseline','hybrid'].includes(backend))throw new Error('Unknown evaluation backend');
- const report={backend,at:new Date().toISOString(),live,model:model||null,datasetSha256,coreSourceSha256:await coreSourceFingerprint(),nodeVersion:process.version,status:'not_run',
+ if(taskIds!==undefined&&(!Array.isArray(taskIds)||!taskIds.length||new Set(taskIds).size!==taskIds.length||taskIds.some(id=>!tasks.some(t=>t.id===id))))throw Error('Choose existing unique scenario IDs');
+ const selected=taskIds?tasks.filter(t=>taskIds.includes(t.id)):tasks;
+ const report={backend,at:new Date().toISOString(),live,model:model||null,datasetSha256,coreSourceSha256:await coreSourceFingerprint(),fingerprintVersion:2,selectedTaskIds:selected.map(t=>t.id),nodeVersion:process.version,status:'not_run',
   scope:'Real model + isolated front-page HTTP conversation. Not microphone/Discord gateway acceptance. Human grading of final text and actual state required.',results:[]};
- if(!live){report.plannedTasks=tasks.length;return report;}
+ if(!live){report.plannedTasks=selected.length;return report;}
  if(!output||typeof model!=='string'||!model||!apiKey?.startsWith('sk-')||apiKey.includes('synthetic'))throw new Error('Angiv output, model og API-adgang via lokalt miljø.');
  // Exclusive output creation protects earlier evidence; no API keys are saved.
  await writeFile(output,JSON.stringify(report,null,2),{flag:'wx',mode:0o600});
  if(backend==='hybrid' && (gatewayEnv.OPENJARVIS_GATEWAY_MODE!=='restricted-v1'||!gatewayEnv.OPENJARVIS_GATEWAY_TOKEN||!gatewayEnv.OPENJARVIS_GATEWAY_URL))throw new Error('Hybrid evaluation requires the restricted test gateway.');
  const checkpoint=()=>writeFile(output,JSON.stringify(report,null,2),{mode:0o600});
- for(const task of tasks){
+ for(const task of selected){
   const dir=await mkdtemp(join(tmpdir(),'jarvis-language-eval-')),token=randomBytes(32).toString('hex');let child,exit;
   const started=performance.now();let setupFinished=null;
   const result={...task,answers:[],passed:null,reviewedBy:null,reviewNote:null};report.results.push(result);
@@ -69,7 +80,7 @@ export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,a
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{const args=process.argv.slice(2),grade=args.indexOf('--grade');
   if(grade>=0){const report=JSON.parse(await readFile(resolve(args[grade+1]))),result=gradeEvaluation(report);console.log(JSON.stringify(result,null,2));if(!result.accepted)process.exitCode=2;}
-  else{const i=args.indexOf('--output'),report=await evaluate({live:args.includes('--live'),backend:args.includes('--hybrid')?'hybrid':'baseline',output:i>=0?resolve(args[i+1]):undefined});console.log(JSON.stringify({status:report.status,live:report.live,tasks:report.plannedTasks||report.results.length,grade:report.grade},null,2));}
+  else{const i=args.indexOf('--output'),report=await evaluate({live:args.includes('--live'),backend:args.includes('--hybrid')?'hybrid':'baseline',taskIds:args.includes('--tasks')?args[args.indexOf('--tasks')+1]?.split(','):undefined,output:i>=0?resolve(args[i+1]):undefined});console.log(JSON.stringify({status:report.status,live:report.live,tasks:report.plannedTasks||report.results.length,grade:report.grade},null,2));}
  }catch{console.error('Evalueringen kunne ikke gennemføres. Kontrollér lokalt modelvalg, API-adgang og en ny outputsti.');process.exitCode=1;}
 }
 

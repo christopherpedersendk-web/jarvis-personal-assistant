@@ -176,3 +176,9 @@ Denne daterede opfølgning opdaterer tidligere installationsbemærkninger; den �
 - **M18:** PR #24 er merget med forventet head `908b80d…` som `77e51be…`; de syv eksisterende grønne workflows blev genbrugt, da app/workflow-bytes var identiske. Broen var allerede aktiveret før denne opgave. Ejerens fulde Discord-opgave til draft-PR og uafhængige releasekontroller forbliver særskilte.
 
 OpenClaw 2026.11.1 kører allerede lokalt med særskilt DynamicUser og Node 24.16.0. Installeret Codex er 0.167.0. Den nye opgave har ikke deployet eller aktiveret produktionsfunktioner. Native OpenClaw-shoppingbrowser og selvreleasegodkendelse er fortsat deaktiveret af konkrete isolation-/kontrolårsager.
+
+## M6–M10: faktisk dansk baseline/hybrid-evaluering 2026-11-07
+
+Samme model og 30 syntetiske danske opgaver blev kørt mod begge backends på `77e51be5ce36e55c0002cff196849ba874ac5865`: alle 60 scenarier gennemført teknisk. To observerede fejl blev rettet i `a1b00d2d5f239f2353bea678651cdd2a87e5d2e4`: konkret fjernelse af eget listepunkt og kildeangivelse for standard/ubekræftede madpræferencer. Kun DA10/DA11 blev derefter kørt igen på begge backends; de forventede tilstandsændringer/svar blev observeret.
+
+Den nye evaluator binder også persona og historiske skillfiler og afviser delvise evalueringer som fuld accept. Første v1-evidens er historisk og kan ikke godkendes gennem den nye v2-gate. Ingen menneskelig kvalitetsscore, 27/30-accept eller besparelse påstås. Syv hybrid-forbrugsposter har ukendt tokenforbrug. [Målinger og revisioner](language-live-evidence.json), [svar til menneskelig review](language-review.md). Ingen hel milestone lukkes.

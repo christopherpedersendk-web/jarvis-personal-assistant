@@ -268,7 +268,7 @@ export function createPlanningToolHandler({ secretary, meals, recipes, shopping,
           note: memory.status === 'confirmed' ? 'Det identiske hukommelsespunkt var allerede bekræftet. Ingen ny bekræftelse er foretaget.'
             : 'Gemt som hukommelsesforslag. Bruges ikke som et personligt faktum før din bekræftelse i Hukommelse.' };
       }
-      case 'get_meal_profile': return { profile: meals.profile(), note: 'Fremmøde pr. dag skal læses i husstandskalenderen.' };
+      case 'get_meal_profile': { const profile=meals.profile(),entered=profile.source==='user-entered';return {profile,provenance:{source:entered?'user-entered':'default-or-unverified-legacy',confirmedUserPreferences:entered},note:(entered?'Brugeren har eksplicit gemt profilen.':'Profilen indeholder standarder eller ældre ubekræftede værdier; de må ikke omtales som bekræftede brugerønsker. ')+'Fremmøde pr. dag skal læses i husstandskalenderen.'}; }
       case 'update_meal_profile': {
         hasChange(args, []);
         return { profile: await meals.setProfile({ ...meals.profile(), ...args }), note: 'Madpræferencer opdateret lokalt. Gennemgå eksisterende madplaner og opret nye indkøbslister.' };
