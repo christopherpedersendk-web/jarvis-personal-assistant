@@ -1,0 +1,82 @@
+/* Calm workspace. Feature CSS and existing DOM contracts are retained. */
+:root {
+  color-scheme: light;
+  --gui-background:#f4f6f8; --gui-surface:#fff; --gui-surface-raised:#edf2f5;
+  --gui-text:#192c36; --gui-muted:#506571; --gui-separator:#dce3e8;
+  --gui-control-border:#748690; --gui-accent:#176452; --gui-accent-text:#fff;
+  --gui-success:#216647; --gui-warning:#805309; --gui-error:#a12832;
+  --gui-sidebar-width:196px; --gui-radius:16px;
+  --muted:var(--gui-muted); --border:var(--gui-separator);
+}
+body { background:var(--gui-background); }
+.shell { max-width:1440px; padding:28px 36px; }
+.topbar { padding-bottom:26px; }
+.brand { letter-spacing:.03em; color:var(--gui-text); }
+.brand small { letter-spacing:.02em; color:var(--gui-muted); }
+.brand-mark { background:var(--gui-accent); color:white; border:0; border-radius:12px; }
+.status-tag { background:white; color:var(--gui-muted); border-color:var(--gui-separator); }
+.workspace { column-gap:36px; }
+.tab-nav { background:transparent; }
+.tab-button { border-radius:10px; font-size:14px; padding:12px; }
+.tab-button.active,.tab-button[aria-current="page"] { background:#dfede7; color:#164e40; box-shadow:none; }
+.gui-nav-work { display:grid; gap:6px; padding-block:18px; margin-top:12px; border-top:1px solid var(--gui-separator); }
+.workspace-toolbar { margin-bottom:24px; padding-bottom:16px; }
+.workspace-toolbar button { background:white; }
+.workspace-stop { grid-column:2; grid-row:2; margin:0 0 24px; border-bottom:1px solid var(--gui-separator); padding-bottom:10px; }
+.workspace-stop summary { color:var(--gui-muted); font-size:13px; }
+.workspace-stop button { margin:4px 8px 12px 0; }
+.workspace-stop p { font-size:13px; margin:0; }
+.gui-content { grid-row:3; }
+#tab-home { grid-template-columns:minmax(0,1.35fr) minmax(260px,.85fr); gap:24px; }
+#home-chat-host { gap:20px; }
+#tab-home .hero-panel h1 { font-size:clamp(26px,3vw,38px); line-height:1.2; letter-spacing:-.035em; max-width:18ch; }
+#tab-home .chat-panel { border:1px solid #c6d7ce; box-shadow:0 8px 26px #18342906; padding:24px; }
+.chat-panel .section-heading h2 { font-size:14px; color:var(--gui-muted); }
+.composer textarea { background:#fafcfb; min-height:112px; border-color:#7b9387; }
+button.primary { background:var(--gui-accent); color:white; box-shadow:none; }
+button.secondary,button.quiet { color:var(--gui-text); }
+button.secondary { background:var(--gui-surface); border:1px solid var(--gui-control-border); }
+.workspace-prompts { display:flex; flex-wrap:wrap; gap:8px; }
+.workspace-prompts button { font-size:13px; border-color:var(--gui-separator); padding:8px 12px; }
+.workspace-activity { margin:0; font-size:13px; color:var(--gui-muted); }
+.workspace-shortcuts { display:flex; gap:16px; flex-wrap:wrap; font-size:14px; }
+.workspace-shortcuts a { min-height:44px; display:inline-flex; align-items:center; }
+.bubble.user { color:var(--gui-text); background:#e3efe9; border-color:#b9d0c4; }
+.bubble .meta,.bubble.user .meta { color:var(--gui-muted); }
+.source-open-status { background:#fff7e7; border-color:#cfb986; }
+.panel { box-shadow:none; }
+.panel > form { display:grid; gap:12px; }
+.panel fieldset { min-width:0; border:1px solid var(--gui-separator); border-radius:12px; margin:16px 0; padding:16px; }
+.panel label { display:block; font-size:14px; color:var(--gui-text); }
+.panel label :is(input,textarea,select) { margin-top:6px; }
+.catalog-card { padding:20px 0; border-bottom:1px solid var(--gui-separator); overflow-wrap:anywhere; }
+.catalog-card button { margin:4px 8px 4px 0; }
+pre,code { color:var(--gui-text); background:var(--gui-background); }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+:is(button,a,input,textarea,select,summary):focus-visible { outline:3px solid #176452; outline-offset:3px; }
+footer { color:var(--gui-muted); }
+@media(min-width:768px) { .tab-nav { grid-row:1 / span 3; } }
+@media(max-width:1100px) { #tab-home { grid-template-columns:minmax(0,1fr); } #home-intelligence { grid-column:1; } }
+@media(max-width:767px) {
+  .shell { padding:18px 16px calc(100px + env(safe-area-inset-bottom)); }
+  .workspace { display:flex; flex-direction:column; gap:0; }
+  .tab-nav { position:static; display:flex; flex-wrap:wrap; padding:8px 0 16px; border:0; border-bottom:1px solid var(--gui-separator); background:transparent; width:100%; height:auto; }
+  .gui-nav-primary,.gui-nav-work,.gui-nav-secondary { display:contents; }
+  .tab-nav .tab-button { display:inline-flex; width:auto; min-height:44px; padding:10px 12px; flex-direction:row; gap:6px; }
+  .tab-nav .gui-icon { display:none; }
+  .tab-nav .nav-label { display:block; font-size:13px; }
+  .workspace-toolbar { margin:16px 0; padding:0; border:0; justify-content:flex-start; }
+  .workspace-toolbar .gui-mobile-settings { display:none; }
+  .workspace-stop { width:100%; margin-bottom:20px; }
+  #tab-home { display:flex; flex-direction:column; gap:20px; }
+  #tab-home > *,#home-chat-host,#home-intelligence { width:100%; }
+  #tab-home .chat-panel { padding:18px; }
+  .composer { grid-template-columns:minmax(0,1fr); }
+  .composer textarea,.composer button { grid-column:1; }
+  .composer button { justify-self:end; min-width:120px; }
+  .gui-chat-dialog { max-height:var(--gui-viewport-height,90dvh); }
+  .panel { padding:18px; }
+  .gui-subnav { gap:4px; }
+  .gui-subnav button { padding:10px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }

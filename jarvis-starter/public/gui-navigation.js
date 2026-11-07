@@ -1,11 +1,11 @@
 // GUI routes are a projection of existing domains. Object IDs and unrelated
 // query parameters survive the migration; this module never mutates data.
 (() => {
-  const mainViews = ['home', 'plan', 'smart-home', 'watches', 'settings'];
+  const mainViews = ['home', 'plan', 'smart-home', 'watches', 'shopping', 'development', 'settings'];
   const planSections = ['tasks', 'calendar', 'meals', 'notes', 'web'];
   const taskKinds = ['personal', 'agent', 'projects'];
   const settingsSections = ['profile', 'notifications', 'integrations', 'skills', 'automations', 'system', 'device'];
-  const names = { home: 'I dag', plan: 'Planlægning', 'smart-home': 'Hjem', watches: 'Overvågninger', settings: 'Indstillinger' };
+  const names = { home: 'Overblik', shopping: 'Indkøb', development: 'Udvikling', plan: 'Planlægning', 'smart-home': 'Hjem', watches: 'Overvågninger', settings: 'Indstillinger' };
   const sectionNames = { tasks: 'Opgaver', calendar: 'Kalender', meals: 'Madplan', notes: 'Noter og lister', web: 'Webarbejde',
     profile: 'Om dig og hukommelse', notifications: 'Notifikationer', integrations: 'Integrationer',
     skills: 'Skills', automations: 'Automatiseringer', system: 'System og opdateringer', device: 'Denne enhed' };
@@ -76,3 +76,4 @@
   globalThis.JarvisNavigation = Object.freeze({ resolve, fromURL, toURL, sourceRoute, context,
     mainViews: Object.freeze(mainViews), planSections: Object.freeze(planSections), settingsSections: Object.freeze(settingsSections) });
 })();
+
