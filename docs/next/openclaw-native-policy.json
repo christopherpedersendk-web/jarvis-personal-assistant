@@ -1,0 +1,48 @@
+{
+  "url": "https://www.proshop.dk/jarvis-synthetic-policy",
+  "requestedUrl": "https://www.proshop.dk/jarvis-synthetic-policy",
+  "observedAt": "2026-11-07T20:03:41.515Z",
+  "snapshotHash": "06586d5024caa4071ad6337260850993ff1b9992db07006d2ffcb5a9928d6bfc",
+  "trust": "untrusted-web-data",
+  "authority": "none",
+  "source": "openclaw-contained-browser",
+  "runtime": "2026.11.1",
+  "blocked": {
+    "requests": 5,
+    "writes": 1,
+    "websockets": 1,
+    "popups": 0
+  },
+  "usage": {
+    "operationReservations": 1,
+    "brokerRequests": 3,
+    "brokerBytes": 799,
+    "tokens": null,
+    "cost": null
+  },
+  "status": "passed",
+  "at": "2026-11-07T20:03:41.782Z",
+  "sourceCommit": "6c56214fc757e2d3166f211293b8fe07fcfde725",
+  "sourceHashes": {
+    "contained-openclaw-browser.mjs": "54cc038ad60d230c10958d93953c44afc09a321cac140b5f27dddfd4b64d85ec",
+    "browser-runtime/openclaw-worker.mjs": "c18ffe07da423475ac96c6888454b4a79313d615e3c7775bd94626799b501b05",
+    "openclaw-runtime/commerce-browser-config.mjs": "a75243c51f5c03335b826751fa9a2b16cbf68841f1e399d76f887639e77edc41",
+    "scripts/openclaw-contained-live.mjs": "625593eddb47e7b096911e6a0cbdfb55b6dd406e38a6631e00d7b102b7ce888a"
+  },
+  "network": "none",
+  "chromiumSandbox": true,
+  "mode": "actual-native-browser-controlled-policy-fixture",
+  "policy": {
+    "rebindDeniedBeforeTLS": true,
+    "redirectDeniedBeforePrivateTLS": true,
+    "popupOutcome": "blocked-by-Chromium",
+    "brokerURLs": [
+      "https://www.proshop.dk/jarvis-synthetic-policy",
+      "https://www.proshop.dk/rebind",
+      "https://www.proshop.dk/redirect"
+    ],
+    "dnsAndRedirectUpstream": "controlled fixtures, not live merchant DNS or redirects"
+  },
+  "productionChanged": false,
+  "scope": "Actual isolated OpenClaw/Chromium; public GET only, no operator or production credentials, login/cart/contact/payment. External provider closure not measured."
+}

@@ -5,6 +5,7 @@ import {developmentGithub} from './self-development-github.mjs';
 import {createProshopSession} from './proshop-session.mjs';
 import {Commerce,STORES} from './commerce.mjs';
 import {createOpenClawBrowserReader} from './openclaw-browser-reader.mjs';
+import {createContainedOpenClawBrowser} from './contained-openclaw-browser.mjs';
 import {emptyMasterData,replaceMasterData,MasterDataReviews} from './master-data.mjs';
 import { describeSkill } from './skill-capabilities.mjs';
 import { DiscordChannels, discordChannelReply } from './discord-channels.mjs';
@@ -235,7 +236,7 @@ async function saveMasterData(input){await persistPrivateSettings(next=>{next.ma
 const masterDataReviews=new MasterDataReviews({read:()=>masterDataConfig,write:saveMasterData});
 
 const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes',proshopSession:process.env.JARVIS_PROSHOP_CART==='yes'?id=>createProshopSession({file:join(dirname(dataPath),'proshop-sessions',id+'.json')}):null});
-const commerceBrowser=createOpenClawBrowserReader({control:providerControl});
+const commerceBrowser=process.env.JARVIS_OPENCLAW_CONTAINER==='yes'?createContainedOpenClawBrowser({control:providerControl}):createOpenClawBrowserReader({control:providerControl});
 await commerce.recover();
 
 function authenticated(req) {
