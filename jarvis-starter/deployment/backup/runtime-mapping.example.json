@@ -1,17 +1,90 @@
 {
   "roots": [
-    {"id":"data","directory":"/home/administrator/jarvis/shared/data","required":["state.json","private-settings.json"]},
-    {"id":"configuration","selectedFiles":[
-      {"source":"/home/administrator/jarvis/shared/.env","name":"jarvis.env"},
-      {"source":"/etc/openjarvis-research.env","name":"openclaw-research.env"},
-      {"source":"/etc/systemd/system/openjarvis-research.service","name":"openclaw-research.service"}
-    ],"required":["jarvis.env","openclaw-research.env","openclaw-research.service"]},
-    {"id":"codex-auth","selectedFiles":[{"source":"/home/administrator/.codex/auth.json","name":"auth.json"}],"required":["auth.json"]},
-    {"id":"codex-runtime","directory":"/home/administrator/jarvis-development/jarvis-codex-runtime","required":["codex-home/auth.json"]},
-    {"id":"codex-source","directory":"/home/administrator/jarvis-development/jarvis-codex-source","required":[".git/HEAD","jarvis-starter/package.json"]},
-    {"id":"runtime-provenance","selectedFiles":[
-      {"source":"/opt/openjarvis/INSTALLATION.md","name":"openclaw-installation.md"},
-      {"source":"/var/lib/openjarvis-install/report.json","name":"openclaw-installation-report.json"}
-    ],"required":["openclaw-installation.md","openclaw-installation-report.json"]}
+    {
+      "id": "data",
+      "directory": "/home/administrator/jarvis/shared/data",
+      "required": [
+        "state.json",
+        "private-settings.json"
+      ]
+    },
+    {
+      "id": "configuration",
+      "selectedFiles": [
+        {
+          "source": "/home/administrator/jarvis/shared/.env",
+          "name": "jarvis.env"
+        },
+        {
+          "source": "/etc/openjarvis-research.env",
+          "name": "openclaw-research.env"
+        },
+        {
+          "source": "/etc/systemd/system/openjarvis-research.service",
+          "name": "openclaw-research.service"
+        }
+      ],
+      "required": [
+        "jarvis.env",
+        "openclaw-research.env",
+        "openclaw-research.service"
+      ]
+    },
+    {
+      "id": "codex-auth",
+      "selectedFiles": [
+        {
+          "source": "/home/administrator/.codex/auth.json",
+          "name": "auth.json"
+        }
+      ],
+      "required": [
+        "auth.json"
+      ]
+    },
+    {
+      "id": "github-cli",
+      "selectedFiles": [
+        {
+          "source": "/home/administrator/.config/gh/hosts.yml",
+          "name": "hosts.yml"
+        }
+      ],
+      "required": [
+        "hosts.yml"
+      ]
+    },
+    {
+      "id": "codex-runtime",
+      "directory": "/home/administrator/jarvis-development/jarvis-codex-runtime",
+      "required": [
+        "codex-home/auth.json"
+      ]
+    },
+    {
+      "id": "codex-source",
+      "directory": "/home/administrator/jarvis-development/jarvis-codex-source",
+      "required": [
+        ".git/HEAD",
+        "jarvis-starter/package.json"
+      ]
+    },
+    {
+      "id": "runtime-provenance",
+      "selectedFiles": [
+        {
+          "source": "/opt/openjarvis/INSTALLATION.md",
+          "name": "openclaw-installation.md"
+        },
+        {
+          "source": "/var/lib/openjarvis-install/report.json",
+          "name": "openclaw-installation-report.json"
+        }
+      ],
+      "required": [
+        "openclaw-installation.md",
+        "openclaw-installation-report.json"
+      ]
+    }
   ]
 }
