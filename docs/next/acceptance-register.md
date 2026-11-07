@@ -218,3 +218,7 @@ M1: Den eksisterende offlinebundle kan nu vælge enkelte konfigurationsfiler. Tr
 M18: Ejeropgave 75f302d8 viste en reel test-only-fejl i aktiv 5.5.3. Kontraktvalget og not_run/unknown-diagnosen er rettet i PR #31; præcis ejerfil/base/diff bestod faktisk beskyttet Docker i separat reproduktion. Originalopgave, unknown-kvittering og produktionskode er uændret; fuldt ejerforløb til draft-PR er fortsat åbent efter særskilt installation. [Evidens](codex-test-only-evidence.json).
 
 Ejeren har valgt gæstecheckout og vil vælge Stamdata privat. Det er ikke i sig selv samtykke til at sende adresse-/kontaktoplysninger. En konkret revisionsbundet data-/ordregennemgang kræves før en sådan handling. Ingen hel milestone lukkes.
+
+### Supplerende M16-evidens: eksplicit gæstekontakt
+
+Ejeren har valgt gæstecheckout med privat Stamdata. Se [gæstekontakt](proshop-guest.md) og [revisionsbundet evidens](proshop-guest-evidence.json). Implementeret review og én afgrænset kontakt-POST på faktisk observeret formular. Lokalt: seks controllerkontrakter, fem transporttests og seks browser/viewport-prøver; butikssvar simuleres ved afsendelse. Faktisk butik: kun anonym kurv og læsning af gæsteformular. Kontaktaccept, leverings-/betalingstrin, endelig total/levering og sessionovertagelse mangler. Ingen yderligere milestoneaccept eller produktionsaktivering.
