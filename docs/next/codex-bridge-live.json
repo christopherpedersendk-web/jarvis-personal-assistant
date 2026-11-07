@@ -1,0 +1,69 @@
+{
+  "at": "2026-11-07T15:06:58.809Z",
+  "codeHashes": {
+    "codex-app-server.mjs": "fb92a9ffe2fbe03ce0f425740f44732d9d5d132a87caa91bee69a27ec634189b",
+    "codex-worktree.mjs": "fc0974d70a4587dee2091d2dd3685a3120e4c612b6eed53e4d33e317f3ec2f19",
+    "codex-bridge.mjs": "119604d59191e706ed539fd6175358fa56da9fb2ec2d2b49482b888d9f0bd103",
+    "self-development-github.mjs": "d9a5e365528b675015debff4b4445be548c2e0bdb348d7b993922b22b8dee16c",
+    "self-development-github-cli.mjs": "764a9b5cf35e419e6beaa3f0183cb68b42ae764bd57d0e37c06288d943b94f34"
+  },
+  "cases": [
+    "actual initialize + thread/start + model tool calls + code write in isolated Git worktree + protected Docker tests",
+    "repeated Discord message cannot start a second session",
+    "actual follow-up in same Codex thread modifies behavior and passes protected/generated tests",
+    "actual turn/interrupt acknowledged, then interrupted completion confirms stopped",
+    "new bridge/process lifecycle reloads durable stopped job without replay",
+    "actual thread/resume across App Server restart keeps original session and unchanged test evidence",
+    "actual typed M18 GitHub draft publication with durable one-use exact-diff review"
+  ],
+  "scope": "real installed Codex and Docker; direct Danish Discord route with synthetic owner metadata, no actual bot connection",
+  "threadId": "01a1b68c-6e90-7570-b3a5-d7ea4589a974",
+  "sessionId": "01a1b68c-6e90-7570-b3a5-d7ea4589a974",
+  "baseSha": "467b08f348984ecdc73d1afa4fc816c417119bc6",
+  "stopInitially": "stop_requested",
+  "final": {
+    "jobId": "375ba8ac-206e-454b-92fa-2fcf60f09141",
+    "status": "completed",
+    "codeRevision": 7,
+    "test": {
+      "status": "passed",
+      "contentHash": "5759c9dc38e4e52bb69a162b442f63b1637fde6d1f9455c4da102d875a47cd4c",
+      "summary": "Alle tilgængelige isolerede tests bestod."
+    },
+    "files": [
+      {
+        "path": "jarvis-starter/test/codex-task-375ba8ac-206e-454b-92fa-2fcf60f09141.test.mjs",
+        "sha256": "2e271680c41b5c151ccc99209876eb8da4175213345e6d9ab2648aad54123c28"
+      },
+      {
+        "path": "jarvis-starter/test/fixtures/codex-bridge-probe.mjs",
+        "sha256": "6bed692f9265e0972bcfb55a7b2ae7db73b5db3e16fecd3a7720dd259c61d66a"
+      }
+    ]
+  },
+  "status": "passed",
+  "publicationCodeHashes": {
+    "codex-app-server.mjs": "fb92a9ffe2fbe03ce0f425740f44732d9d5d132a87caa91bee69a27ec634189b",
+    "codex-worktree.mjs": "fc0974d70a4587dee2091d2dd3685a3120e4c612b6eed53e4d33e317f3ec2f19",
+    "codex-bridge.mjs": "657db1bc1a4f487b2e1b63fb797975306a69ee6398b717e32908f1e7ba9cbfcf",
+    "self-development-github.mjs": "74268866359e473aceaa58d4dd4166da50a7f2cb874b7f2fe51081c8797df331",
+    "self-development-github-cli.mjs": "764a9b5cf35e419e6beaa3f0183cb68b42ae764bd57d0e37c06288d943b94f34"
+  },
+  "pr": {
+    "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/pull/24",
+    "number": 24,
+    "sha": "e98aaaf82e3b0cad249c1ffbe154a649eec3c25d"
+  },
+  "installedCodex": "0.167.0",
+  "initialFailure": {
+    "base": "7188733",
+    "reason": "Disabling code_mode_host also disables dynamic tools in installed Codex; fixed by enabling internal orchestration while shell, unified_exec, apps and plugins remain disabled.",
+    "codeChangedByFailedRun": false
+  },
+  "boundaries": [
+    "Discord commands invoked via actual dispatcher/controller with synthetic owner metadata; no second gateway or production token connection.",
+    "Installed App Server, model calls, worktree edits, networkless Docker, session resume/interrupt and GitHub draft PR were real.",
+    "Production service/config/data unchanged; bridge is delivered OFF.",
+    "M12/M16 are still open; creating development jobs does not meet merchant or owner acceptance."
+  ]
+}

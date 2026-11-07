@@ -38,3 +38,9 @@ Review den konkrete diff og begrænsningerne. Ingen credentials eller aktivering
 Resterende arbejde er ikke blot et featureflag: autentificeret Proshop-login, eksplicit adressetransfer, postnummerbundet fragt/levering og endelig checkoutkontrakt er fortsat åbne. Native kurvedeling giver manuel overtagelse af varevalget, ikke en færdig checkout. De næste observationer kræver ejerens egen sikre butikssession og valgte adresse-/kontaktgrundlag i staging. Ingen credentials efterspørges i chat. Stop altid før betaling/bindende ordre.
 
 Kandidat 5.5.1, schema 1/readableFrom 0; eksisterende v5.5.0-tag/release er verificeret og bevares. Ingen produktionsdeployment/aktivering. CI startes med normale PR-triggere efter gennemgang af workflows; ingen [skip ci] i kodeleverancen. Endelig merge/release afhænger af faktiske checks/review, ikke de historiske resultater.
+
+## Aktuel leverance: Codex-bro, kandidat 5.5.2
+
+Denne leverance erstatter den ældre oplysning om manglende faktisk M18-kandidatprøve: installeret Codex → afgrænset worktreeændring → beskyttede Docker-tests → faktisk draft-PR #24 er nu verificeret. Samme session understøtter opfølgning, interrupt og genfinding efter genstart. Se [drift](codex-bridge.md), [acceptregister](acceptance-register.md) og [liverapport](codex-bridge-live.json) for præcist omfang og kildehashes.
+
+Version 5.5.2 er alene PR-kandidat; ingen tag/release, merge eller deployment udføres i denne opgave. Broen er OFF i produktion. Telefonkommandoer kræver separat installation/aktivering på eksisterende tjeneste med egen udviklingsklon, privat Codex-home og gennemgået GitHub-transport. M12/M16's faktiske resterende ejer-/butikskrav ovenfor er uændrede.

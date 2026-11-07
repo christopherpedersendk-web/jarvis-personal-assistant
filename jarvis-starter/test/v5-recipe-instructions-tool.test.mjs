@@ -1,3 +1,4 @@
+import {discordDevelopmentReply} from '../codex-bridge.mjs';
 import {discordChannelReply} from '../discord-channels.mjs';
 import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
@@ -181,7 +182,7 @@ function textDispatcher(f, recipeId) {
     chatWorkQueue: { enqueue: (label, run) => ({ promise: run() }) },
     addMessage: async (role, text, channel) => { history.push({ role, text, channel }); },
     DiscordGateway: class { constructor(options) { this.onMessage = options.onMessage; } },
-    discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false, recipeCaptureInput: forbidden, recipes: f.recipes,
+    discordDevelopmentReply, discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false, recipeCaptureInput: forbidden, recipes: f.recipes,
   });
   return { ...dispatch, requests, history, channels };
 }

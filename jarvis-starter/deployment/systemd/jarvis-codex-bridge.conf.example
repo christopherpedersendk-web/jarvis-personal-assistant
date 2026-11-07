@@ -1,0 +1,15 @@
+# Example drop-in for the EXISTING jarvis.service. Do not start another bot.
+# Installation and activation require a separate production decision.
+[Service]
+Environment=JARVIS_CODEX_BRIDGE=yes
+Environment=JARVIS_CODEX_BINARY=/home/administrator/.local/bin/codex
+Environment=JARVIS_CODEX_AUTH_SOURCE=/home/administrator/.codex/auth.json
+Environment=JARVIS_CODEX_REPOSITORY=/home/administrator/jarvis-development/jarvis-codex-source
+Environment=JARVIS_CODEX_WORK_ROOT=/home/administrator/jarvis-development/jarvis-codex-runtime
+# Host-only gh login; never inherited by Codex or tests. Prefer a constrained
+# JARVIS_DEV_GITHUB_TOKEN when available. Neither credential goes in this file.
+Environment=JARVIS_CODEX_GITHUB_CLI=yes
+UMask=0077
+# Preserve the installed service's existing sandbox. Add these paths only if
+# that service already uses ProtectSystem/ReadWritePaths. No Docker socket is
+# mounted into an agent/test container. The host broker uses existing Docker.

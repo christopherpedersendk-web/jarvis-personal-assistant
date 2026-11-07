@@ -1,3 +1,4 @@
+import {discordDevelopmentReply} from '../codex-bridge.mjs';
 import {discordChannelReply} from '../discord-channels.mjs';
 import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
@@ -28,7 +29,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
     actionJournal: { invoke: async (call, args, dispatch, channel) => dispatch(call.name, args, { channel }) },
     chatWorkQueue: queue, addMessage: async (...args) => { await save(...args); history.push(args); },
     DiscordGateway: class { constructor(options) { this.onMessage = options.onMessage; } },
-    discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false,
+    discordDevelopmentReply, discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false,
   });
   return { ...result, calls, effects, history, queue };
 }

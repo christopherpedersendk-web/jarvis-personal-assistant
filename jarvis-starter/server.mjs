@@ -1,3 +1,5 @@
+import {configuredCodexBridge} from './codex-bridge-config.mjs';
+import {discordDevelopmentReply} from './codex-bridge.mjs';
 import {SelfDevelopment} from './self-development.mjs';
 import {developmentGithub} from './self-development-github.mjs';
 import {createProshopSession} from './proshop-session.mjs';
@@ -808,9 +810,10 @@ async function handleMasterMessage(message,metadata){
   }
  return null;
 }
-let discordVoice,discordMedia;
+let discordVoice,discordMedia,codexBridge;
 const discordVoiceEnabled=process.env.JARVIS_DISCORD_VOICE==='yes';
 const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUnavailable:()=>discordVoice?.stop('gateway_unavailable'), onMessage: async (message, metadata = {}) => {
+  const developmentAnswer=await discordDevelopmentReply(codexBridge,message,metadata);if(developmentAnswer!==null)return developmentAnswer;
   const masterAnswer=await handleMasterMessage(message,metadata);if(masterAnswer!==null)return masterAnswer;
   if(/^!medie(?:\s|$)/i.test(message)){
     const command=message.trim().toLocaleLowerCase('da');
@@ -856,6 +859,8 @@ await stateStore.initialize();
 await voiceSessions.closeAll();
 await discordVoice.recover();
 await discordMedia.recover();
+codexBridge=configuredCodexBridge({state,save,transact:mutateV5,control:providerControl,config:()=>discordConfig,queue:integrationWorkQueue,sourceRoot:dirname(root),notify:async(row,text)=>{await discord.sendReply(row.channelId,text,discord.generation);}});
+await codexBridge?.recover();
 discord.start(discordConfig);
 
 async function route(req, res) {
@@ -926,7 +931,7 @@ async function route(req, res) {
     if (req.method === 'POST' && path === '/api/assistant/control') {
       try { const stopped = (await bodyJson(req)).stopped;
         await providerControl.stop(stopped);
-        if (stopped) { masterDataReviews.clear(); await commerce.stop(); await discordMedia.stop(); await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
+        if (stopped) { masterDataReviews.clear(); await commerce.stop(); await codexBridge?.stopAll(); await discordMedia.stop(); await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
         return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot(), discordVoice: discordVoice.snapshot() }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
@@ -1353,6 +1358,7 @@ async function route(req, res) {
           : 'Manuelt angivet kapacitetsdækning eller ukendt status; ingen Google-kalenderændring' }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
+    if(path==='/api/self-development/codex'&&req.method==='GET')return json(res,200,{enabled:Boolean(codexBridge),jobs:codexBridge?.list()||[]});
     if(path==='/api/self-development'&&req.method==='GET')return json(res,200,{status:selfDevelopment.status(),jobs:selfDevelopment.rows()});
     if(path==='/api/self-development'&&req.method==='POST'){try{return json(res,201,{job:await selfDevelopment.prepare(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
     if(path==='/api/self-development/drafts'&&req.method==='POST'){try{return json(res,201,{job:await selfDevelopment.saveDraft(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
@@ -1858,7 +1864,7 @@ let shuttingDown=false;
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
  if(shuttingDown)return;shuttingDown=true;
  const force=setTimeout(()=>process.exit(1),12000);force.unref();
- Promise.allSettled([discordMedia.stop(),discordVoice.stop('shutdown'),voiceSessions.closeAll()]).finally(()=>{discord.stop();server.close(()=>process.exit(0));});
+ Promise.allSettled([codexBridge?.shutdown(),discordMedia.stop(),discordVoice.stop('shutdown'),voiceSessions.closeAll()]).finally(()=>{discord.stop();server.close(()=>process.exit(0));});
 });
 
 const scheduler = setInterval(() => taskEngine.tick().catch(error => logError('Opgavefejl:', error)), 15_000);

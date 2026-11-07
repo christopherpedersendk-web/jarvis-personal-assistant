@@ -78,3 +78,9 @@ Den verificerede varekurv kan åbnes via butikkens native delingslink, som kun d
 Reproducerbar faktisk anonym prøve: `node jarvis-starter/scripts/proshop-live.mjs --live` læser søgning/produkter; tilføj `--cart` kun med særskilt testmandat til én kurveændring ved den dokumenterede pris. Prøven bruger syntetisk adresseprofil som **aldrig** sendes og gemmer privat session/journal i /tmp. Den er ikke ejerens godkendelse af en rigtig ordre eller en 2900-fragtpris.
 
 Rollback: slå de nye flags fra i staging, stop opgaver og bevar journal/sessioner til afklaring. Slet eller genstart ikke ukendte kurveforløb. Produktionen er uændret af dette arbejde.
+
+## Codex-bro (M18), kandidat 5.5.2
+
+Se [konkret konfiguration, telefonkommandoer og genstartshåndtering](codex-bridge.md). Broen er leveret som kode i PR #24 og er ikke installeret i den aktive tjeneste. Installeret Codex 0.167.0, eksisterende login, netværksløs Docker og typed GitHub-publicering er faktisk afprøvet separat fra produktionsbotten; [liverapport](codex-bridge-live.json).
+
+Brug eksisterende bot, ejeridentifikation, joblager og kø. Opret ikke en ekstra bot eller offentlig App Server-port. Kopiér aldrig produktions-.env til agenten. Genstart afspiller ingen kode-/publiceringshandlinger; ukendt udfald kræver inspektion. Stop er først “stoppet” efter bekræftet afbrydelse og afsluttede lokale værktøjer. Eksempel-dropin ændrer ingen tjeneste ved sin tilstedeværelse i repository. Ingen merge/release/deployment er udført som del af denne leverance.
