@@ -1,0 +1,28 @@
+{
+  "base": "1249eba457ec866da00f3005e6a79b8d1aa8973f",
+  "scope": "No Docker, live model, remote host or production tests scheduled",
+  "tests": {
+    "command": "node --test test/openjarvis-diagnostics.test.mjs test/openjarvis.test.mjs test/assistant-evaluation.test.mjs",
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0
+  },
+  "otherChecks": [
+    "diagnostics CLI executed locally; unavailable packages/systemd/credential file correctly unverified",
+    "assistant-evaluation.mjs syntax checked"
+  ],
+  "sourceHashes": {
+    "jarvis-starter/openjarvis-diagnostics.mjs": "b54bd79212d27c426c34814f431ab68bb64f7c661363f4489e866dd2b122c410",
+    "jarvis-starter/openjarvis.mjs": "bb937c2879e2e93dfd8e8be689597157c07d87af2e1bac4bc137ce56e7f5d639",
+    "jarvis-starter/scripts/openjarvis-diagnostics.mjs": "54ea7993cc23ed101f7c4b429ec4c844f5d2ff136aea7ac483e43e140b54e37f",
+    "jarvis-starter/scripts/assistant-evaluation.mjs": "9e4aae8bf81544196bef0fd02761e71bfb9a99b5a16bbe3db6cb71ed3f65fad4",
+    "jarvis-starter/scripts/compare-assistant-evaluations.mjs": "df5edb79f8ac1dfd35ab267ddb5e4724decee78bd7823e13561d6e4cc94f5722",
+    "jarvis-starter/test/openjarvis-diagnostics.test.mjs": "7b0b92b479906a1549921abc302f4a39fad53d4359cd8b5db196bfd3ab29e018"
+  },
+  "liveEvaluation": {
+    "status": "not_run",
+    "score": null,
+    "costSavings": null
+  },
+  "ci": "Intentionally skipped: only locally completed focused checks are claimed."
+}

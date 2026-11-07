@@ -44,7 +44,7 @@ export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,a
  const checkpoint=()=>writeFile(output,JSON.stringify(report,null,2),{mode:0o600});
  for(const task of tasks){
   const dir=await mkdtemp(join(tmpdir(),'jarvis-language-eval-')),token=randomBytes(32).toString('hex');let child,exit;
-  const started=Date.now();
+  const started=performance.now();let setupFinished=null;
   const result={...task,answers:[],passed:null,reviewedBy:null,reviewNote:null};report.results.push(result);
   try{
    const probe=createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
@@ -55,12 +55,14 @@ export async function evaluate({live=false,model=process.env.OPENAI_TEXT_MODEL,a
    const base=`http://127.0.0.1:${port}`;
    let ready=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/ready',{signal:AbortSignal.timeout(250)})).ok){ready=true;break;}}catch{}if(child.exitCode!==null)break;await delay(50);}
    if(!ready)throw new Error('Fixture startup failed');
+   setupFinished=performance.now();result.setupDurationMs=setupFinished-started;result.turnDurationMs=[];
    const api=async(path,body)=>{const response=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(180000)});return {status:response.status,body:await response.json()};};
-   for(const message of task.turns)result.answers.push(await api('/api/message',{message}));
+   for(const message of task.turns){const turnStarted=performance.now();try{result.answers.push(await api('/api/message',{message}));}finally{result.turnDurationMs.push(performance.now()-turnStarted);}}
+   result.conversationDurationMs=result.turnDurationMs.reduce((a,b)=>a+b,0);
    result.actions=(await api('/api/actions')).body;result.finalState=(await api('/api/state')).body;result.usage=(await api('/api/assistant/control')).body;
    result.status='awaiting_human_review';
   }catch{result.status='execution_failed';result.error='Scenarioet kunne ikke gennemføres. Ingen automatisk gentagelse.';}
-  finally{result.durationMs=Date.now()-started;if(child&&child.exitCode===null){child.kill();await Promise.race([exit,delay(15000)]);if(child.exitCode===null){child.kill('SIGKILL');await exit;}}await rm(dir,{recursive:true,force:true});await checkpoint();}
+  finally{result.durationMs=performance.now()-started;result.setupDurationMs??=null;result.conversationDurationMs??=null;if(child&&child.exitCode===null){child.kill();await Promise.race([exit,delay(15000)]);if(child.exitCode===null){child.kill('SIGKILL');await exit;}}await rm(dir,{recursive:true,force:true});await checkpoint();}
  }
  report.status='awaiting_human_review';report.grade=gradeEvaluation(report);await checkpoint();return report;
 }
@@ -70,3 +72,4 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   else{const i=args.indexOf('--output'),report=await evaluate({live:args.includes('--live'),backend:args.includes('--hybrid')?'hybrid':'baseline',output:i>=0?resolve(args[i+1]):undefined});console.log(JSON.stringify({status:report.status,live:report.live,tasks:report.plannedTasks||report.results.length,grade:report.grade},null,2));}
  }catch{console.error('Evalueringen kunne ikke gennemføres. Kontrollér lokalt modelvalg, API-adgang og en ny outputsti.');process.exitCode=1;}
 }
+
