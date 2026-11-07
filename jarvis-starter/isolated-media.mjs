@@ -20,8 +20,8 @@ export function validateNormalizedMedia(value){
  return value;
 }
 
-export function createIsolatedMedia({env=process.env,spawnProcess=spawn,run=runBoundedProcess}={}){
- if(env.JARVIS_DISCORD_MEDIA!=='yes')return null;
+export function createIsolatedMedia({env=process.env,spawnProcess=spawn,run=runBoundedProcess,enabled=env.JARVIS_DISCORD_MEDIA==='yes'}={}){
+ if(!enabled)return null;
  const image=env.JARVIS_MEDIA_IMAGE||'';mediaContainerArgs(image,'validation');
  const environment=dockerProcessEnvironment(env);
  return async({buffer,contentType},{signal}={})=>{

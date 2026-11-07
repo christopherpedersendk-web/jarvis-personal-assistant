@@ -1,4 +1,4 @@
-import {discordChannelCommand} from '../discord-channels.mjs';
+import {discordChannelReply} from '../discord-channels.mjs';
 import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
 import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
@@ -28,7 +28,7 @@ function fixture({ response, save = async () => {}, configured = true } = {}) {
     actionJournal: { invoke: async (call, args, dispatch, channel) => dispatch(call.name, args, { channel }) },
     chatWorkQueue: queue, addMessage: async (...args) => { await save(...args); history.push(args); },
     DiscordGateway: class { constructor(options) { this.onMessage = options.onMessage; } },
-    discordChannelCommand, isRecipeCaptureRequest: () => false,
+    discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false,
   });
   return { ...result, calls, effects, history, queue };
 }

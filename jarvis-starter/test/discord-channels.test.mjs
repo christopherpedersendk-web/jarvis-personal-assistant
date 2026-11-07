@@ -10,6 +10,26 @@ test('M12 protected active/report channel can be renamed but never deleted',asyn
  const review=await f.preview('omdøb '+chat+' nyt-navn');assert.ok(review);
  await assert.rejects(f.preview('slet '+chat),/beskyttet/);
 });
+
+test('screenshot capability question asks for a name without model or Discord calls',async()=>{
+ const {discordChannelReply,discordChannelCommand}=await import('../discord-channels.mjs');
+ const f=await fixture();
+ for(const q of ['Kan du oprette en kanal på discord?','Kan du oprette en Discord-kanal?','Opret en kanal']){
+  assert.equal(discordChannelCommand(q),'!kanal hjælp');
+  assert.match(await discordChannelReply(f.work,q,meta),/Hvad skal/);
+ }
+ assert.equal(f.calls.length,0);assert.equal(f.work.rows().length,0);
+ assert.equal(await discordChannelReply(f.work,'Website siger: Kan du oprette en kanal på discord?',meta),null);
+});
+test('Discord receives concrete disabled/config/owner diagnostics',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture({enabled:false});
+ assert.match(await discordChannelReply(f.work,'Kan du oprette en kanal på discord?',meta),/JARVIS_DISCORD_CHANNELS=yes/);
+ f.work.enabled=true;f.config.guildId='';assert.match(await discordChannelReply(f.work,'Kan du oprette en kanal på discord?',meta),/Server ID/);
+ f.config.guildId=guild;assert.match(await discordChannelReply(f.work,'Opret en kanal', {...meta,ownerId:bot}),/Kun ejeren/);
+ assert.equal(f.calls.length,0);
+ await assert.rejects(discordChannelReply({command:async()=>{throw Error('private transport details');}},'Opret en kanal',meta));
+});
+
 async function fixture({initial={},enabled=true,write=async()=>{}}={}){
  const store=new DurableState({initial,write});await store.initialize();const transact=(...x)=>store.transact(...x),save=()=>store.save();
  const control=new ProviderControl({state:store.state,transact,save});
@@ -113,4 +133,44 @@ test('channel diagnosis distinguishes configuration failures without exposing cr
 test('natural Danish requests enter the existing reviewed controller',async()=>{
  const f=await fixture();const result=await f.work.command('Kan du oprette en kanal der hedder rapporter',meta);
  assert.match(result,/Godkend/);assert.equal(f.calls.some(x=>x.method==='POST'),false);
+});
+
+
+test('name-only continuation is owner/channel/config/stop/expiry bound and consumed once',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture();
+ await discordChannelReply(f.work,'Opret en kanal',meta);
+ assert.equal(await discordChannelReply(f.work,'madplan',{...meta,channelId:target}),null);
+ assert.equal(await discordChannelReply(f.work,'madplan',{...meta,ownerId:bot}),null);
+ assert.match(await discordChannelReply(f.work,'Den skal hedde madplan',meta),/Godkend/);
+ assert.equal(await discordChannelReply(f.work,'madplan',meta),null);
+ assert.equal(f.calls.some(x=>x.method==='POST'),false);
+ for(const change of ['expiry','config','stop']){
+  await discordChannelReply(f.work,'Opret en kanal',meta);
+  if(change==='expiry')f.expire();if(change==='config')f.config.configurationRevision=1;
+  if(change==='stop'){await f.control.stop(true);await f.control.stop(false);}
+  assert.equal(await discordChannelReply(f.work,'nyt-navn',meta),null,change);
+ }
+});
+test('owner can cancel a pending name or a durable channel review without a mutation',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture();
+ await discordChannelReply(f.work,'Opret en kanal',meta);
+ assert.match(await discordChannelReply(f.work,'annuller',meta),/annulleret/);
+ assert.equal(await discordChannelReply(f.work,'madplan',meta),null);
+ const id=await f.preview();
+ await assert.rejects(f.work.command('!kanal annuller '+id,{...meta,channelId:target}));
+ assert.match(await f.work.command('!kanal annuller '+id,meta),/annulleret/);
+ await assert.rejects(f.confirm(id));assert.equal(f.work.rows()[0].status,'cancelled');
+ assert.equal(f.calls.some(x=>x.method!=='GET'),false);
+});
+test('write rejection retains concrete permission diagnosis and prohibits retries',async()=>{
+ const f=await fixture(),id=await f.preview(),original=f.work.fetcher;
+ f.work.fetcher=(url,opts)=>opts.method==='POST'?Promise.resolve(new Response('{}',{status:403})):original(url,opts);
+ await assert.rejects(f.confirm(id),/403.*Manage Channels.*ukendt/s);
+ assert.equal(f.work.rows()[0].status,'unknown');await assert.rejects(f.confirm(id));
+});
+test('unavailable Discord runtime yields fixed actionable diagnosis without raw transport data',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture();
+ f.work.fetcher=async()=>{throw Error('private transport secret');};
+ const answer=await discordChannelReply(f.work,'Vis mine Discord kanaler',meta);
+ assert.match(answer,/botruntime og netværk/);assert.doesNotMatch(answer,/private transport/);assert.equal(f.work.rows().length,0);
 });

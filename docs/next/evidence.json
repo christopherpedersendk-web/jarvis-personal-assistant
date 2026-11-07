@@ -287,5 +287,249 @@
     "fullCandidateCI": "not_run",
     "deployment": "not_performed",
     "publication": "Prepared; final tag/release state must be verified in GitHub."
+  },
+  "discordScreenshotFollowup": {
+    "base": "14292e2338de2e18699c8910d342d71c88e88c77",
+    "command": "node --test test/discord-channels.test.mjs test/discord-format.test.mjs",
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "syntax": "node --check server.mjs",
+    "sourceHashes": {
+      "jarvis-starter/discord-channels.mjs": "7fcbe905e26cbfd8863b938b4187e74e02d314549850bac79986134dffa96687",
+      "jarvis-starter/discord-format.mjs": "86c3396875b3d1162a9cf4a584904ba1dbe384c8c685f273926bddea07ad25c4",
+      "jarvis-starter/discord-gateway.mjs": "f2c80bf5a09c88d374be26497c04821ba2e25034e59a09843827d4ed0395e693",
+      "jarvis-starter/server.mjs": "c4c48e845f5c26262f13452af25884b6fad5be76251ada174b7083d81c1a6781",
+      "jarvis-starter/test/discord-channels.test.mjs": "4f23542b41746e86b9c31270c6a16e5820cce3094814b0cd72d5c24bbbec0d33",
+      "jarvis-starter/test/discord-format.test.mjs": "a16ff1b46436e08432b9b68a95c0984f9498bbe7af57c803c1a560279b1e0f03"
+    },
+    "scope": "Real local controller/sendReply code with simulated Discord transport; exact screenshot phrase and table shape covered. No Discord messages sent.",
+    "liveBotVersion": "unknown",
+    "liveChannelAcceptance": "not_run",
+    "checkout": "not_implemented",
+    "ci": "[skip ci]; no full-suite repetition or new CI success claimed"
+  },
+  "discordMediaGuidance": {
+    "base": "3c8a8b10bef3d2bc50714efce864996f4b5daeea",
+    "command": "node --test test/discord-media-guidance.test.mjs",
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Disabled media response and preserved authorization/stop checks; no download, decode, model or persistence. Previous 19 tests not repeated; their source files unchanged.",
+    "sourceHashes": {
+      "jarvis-starter/discord-media.mjs": "38db85edcaff420364495afe72f0c62f3b490742326904d291081a39370aacac",
+      "jarvis-starter/test/discord-media-guidance.test.mjs": "16a9614e301da92a35ca95b3a6ff406ed0a2cca0cef06a1535771c5e20dfaf69"
+    },
+    "liveAcceptance": "not_run"
+  },
+  "m12M16Implementation": {
+    "codeCommit": "793d2db8c45691ef34c7ce50f3e20158e64f5732",
+    "basePr23": "2b086dd7c73a6723021fafd3a33d7e2550cc4569",
+    "verifiedRemoteMain": "14292e2338de2e18699c8910d342d71c88e88c77",
+    "verifiedExistingRelease": "v5.5.0",
+    "candidateVersion": "5.5.1",
+    "schema": 1,
+    "readableFrom": 0,
+    "sourceHashes": {
+      "jarvis-starter/.env.example": "3d3a7aea8664d52ee77678d0c489afa4ad6137c2c518bad4ddd6d7006730dd58",
+      "jarvis-starter/commerce.mjs": "a971512cc012857963faea5b0f569e221ef8b434e253f353b1c7908b44560be0",
+      "jarvis-starter/discord-channels.mjs": "9ebf553b9de41b81d67ec116bccbb5ab6a58fbe44c6ed71e2d5c6436b4071c93",
+      "jarvis-starter/discord-media.mjs": "7ed98f74c8a2532d62a9d7fb775fd711f8c41e9196df520ad58e358520df4a7d",
+      "jarvis-starter/isolated-media.mjs": "04bb8c467a33894b0d82079c13b86a249b46a8690a809472e96b0cbff18f8e97",
+      "jarvis-starter/package.json": "5eac500cb76fe0caede4f123fced0a11ac416ff614cc613a31b8f53be4eaeb1d",
+      "jarvis-starter/proshop-session.mjs": "1e70b33126e3c11537de46ed7dca795861cda59a5c13be57011eeb214a70d2ae",
+      "jarvis-starter/proshop.mjs": "5550f1611ec44997fd53d7f7f71bcdccf28bdecd2e7fefce1c52de6516e27d67",
+      "jarvis-starter/public/commerce.js": "24e3b184443f78b757c55df6dec22b1230c795c07c2c6c84c3370ca7cafe6143",
+      "jarvis-starter/recipe-extractor.mjs": "c8cebdb26d51782d18e633074e6d4f1e83f7dd3f5acf3289346f2d1faabeea63",
+      "jarvis-starter/recipe-memory.mjs": "e7e3ddd51d6be7095ee194d1fb84a6bbce58b3084af7d17d7a0adbe1325c2157",
+      "jarvis-starter/scripts/commerce-ui-smoke.mjs": "b5fae4009ad1ab47b25daa0f40d053296d1f675d26473457f74b9e51146986be",
+      "jarvis-starter/scripts/discord-channel-live.mjs": "0905037f2329928e1c432f89cd58e65336723d14d5d71dfcc7fa32ff6aeb0dca",
+      "jarvis-starter/scripts/proshop-live.mjs": "850fcf8b5e5a8389afa508b460b9d67368518b25ecaf42a32ad9a567209d0f34",
+      "jarvis-starter/server.mjs": "d20f97b9bdc53fc17ee8a89a526c8281888c798a2bd1f4e105b605b951242b80",
+      "jarvis-starter/test/commerce.test.mjs": "09a4e128db5834e557f5c5d0bbdd4fbc44cdcc262facb9ba51f8c7baa8b2b309",
+      "jarvis-starter/test/discord-channels.test.mjs": "aae008b24cbeb416b695b45798b015b31562b255f3fbd398d318ac12513561db",
+      "jarvis-starter/test/proshop-session.test.mjs": "d952dafdd393e958b8fba79d8284ecb30fc2c3eecb4d26733b7d7dbedf2e1566",
+      "jarvis-starter/test/proshop.test.mjs": "ec58d8661408e6c6de1d8aaf0f23f67bbd92f74e74c5f9da299a25f86823f6f9",
+      "jarvis-starter/test/recipe-image-containment.test.mjs": "98e01cae15cbc000e10bc03902b04902015beb4db386099ecf507e5acda64762",
+      "jarvis-starter/test/review-routes.test.mjs": "3f86f0bb3faf21618d682b33c4c14a1ac3e37fcdd84ccc3271ddda647a9d8b98"
+    },
+    "nodeLocal": "v22.22.1",
+    "focusedUniqueTests": 78,
+    "focusedTests": [
+      {
+        "file": "discord-channels.test.mjs",
+        "passed": 19,
+        "scope": "controller contracts, including new continuation/cancellation/write diagnosis; Discord transport simulated"
+      },
+      {
+        "file": "recipe-image-containment.test.mjs",
+        "passed": 3,
+        "scope": "normalization-before-model, disabled isolation, unconfirmed inbox; decoder/model simulated"
+      },
+      {
+        "file": "discord-media.test.mjs",
+        "passed": 23,
+        "scope": "necessary isolated-media factory regression; initial 22 passed/1 wording failure; only failed sender/stop case rerun after wording fix"
+      },
+      {
+        "file": "discord-media-guidance.test.mjs",
+        "passed": 2,
+        "scope": "changed disabled-media wording and unchanged authorization"
+      },
+      {
+        "file": "commerce.test.mjs",
+        "passed": 10,
+        "scope": "existing review/manual/OpenClaw contracts, simulated transport; fixture now manual payment only"
+      },
+      {
+        "file": "proshop.test.mjs",
+        "passed": 8,
+        "scope": "observed HTML/JSON shapes with synthetic values; price/billing/address/stop/dedupe/restart/research"
+      },
+      {
+        "file": "proshop-session.test.mjs",
+        "passed": 4,
+        "scope": "pinned HTTP/cookie/storage/allowlist contracts; initial new fourth case used rejects on a synchronous throw, corrected to throws and rerun alone; other three already passed"
+      },
+      {
+        "file": "v49-recipes.test.mjs",
+        "passed": 7,
+        "scope": "selected recipe/image/capture provenance and private inbox regressions"
+      },
+      {
+        "file": "review-routes.test.mjs",
+        "passed": 2,
+        "scope": "existing commerce revision/cancel case and new Proshop binding/conflict case; actual route block with injected handlers, not full HTTP auth"
+      }
+    ],
+    "commandNote": "Direct node <test-file> emitted actual subtest counts. Sandbox node --test only emitted file-level summaries; these are excluded. Targeted fixes used node --test-name-pattern. Existing unchanged discord-format tests were not repeated. Package-only 5.5.1 metadata validated after behavior tests.",
+    "liveEvidence": "docs/next/m12-m16-live.json",
+    "gui": {
+      "status": "passed",
+      "browsers": [
+        "Chromium 156.0.8078.80",
+        "WebKit 27.2"
+      ],
+      "widths": [
+        320,
+        390,
+        1280
+      ],
+      "containerNode": "v26.13.0",
+      "scope": "networkless container, synthetic server, manual handoff/profile/conflict/logout/overflow; visual Chromium 390px inspected; not physical iPhone",
+      "note": "Artifact mount permissions corrected before behavioral run. Existing stale self-development assertion updated to local drafts available, no executable task; named manual handoff selector fixed."
+    },
+    "releaseMetadata": "node jarvis-starter/scripts/check-release-version.mjs v5.5.1 passed; no tag overwritten",
+    "production": {
+      "deployed": false,
+      "activated": false,
+      "extraGatewayStarted": false,
+      "settingsChanged": false,
+      "paymentOrOrderSubmitted": false
+    },
+    "milestonesClosed": [],
+    "remaining": [
+      "M12 owner conversation/gateway and persisted report selection; physical iPhone",
+      "M16 authenticated login, selected address transfer, final freight/delivery to 2900, complete checkout handoff",
+      "Independent CI/review before merge/release",
+      "Owner-authored Discord recipe message and human review; technical combined synthetic upload/CDN/decoder/model/inbox passed separately at 14:11 UTC"
+    ],
+    "ci": "Normal PR triggers; pending on pushed head, no check bypass or new CI success claimed",
+    "ciFollowup": {
+      "codeCommit": "9a09f7649c7afe89fe0bd28079136a0b95167bc8",
+      "firstCiHead": "a20f986e63e621d77848f4ece3a8fb4dd6b6c49e",
+      "firstUnitRun": 42379734961,
+      "firstUnitResult": {
+        "passed": 1320,
+        "failed": 5,
+        "skipped": 0
+      },
+      "failures": "Four VM dispatcher fixtures omitted the real discordChannelReply/controller dependency inherited from PR23; one extractor fixture still expected raw PNG instead of contained JPEG. Fixtures corrected without removing assertions.",
+      "focusedFollowup": {
+        "passed": 6,
+        "failed": 0,
+        "scope": "Five failing cases rerun only; plus one new fixed runtime/network diagnosis test. Other passed tests not repeated locally.",
+        "commands": [
+          "node --test-name-pattern=\"bounded draft-only\" jarvis-starter/test/v49-extractor.test.mjs",
+          "node --test-name-pattern=\"discord:\" jarvis-starter/test/v5-chat-errors.test.mjs",
+          "node --test-name-pattern=\"actual discord dispatcher\" jarvis-starter/test/v5-recipe-instructions-tool.test.mjs",
+          "node --test-name-pattern=\"unavailable Discord runtime\" jarvis-starter/test/discord-channels.test.mjs"
+        ]
+      },
+      "uniqueFocusedTotal": 84,
+      "sourceHashes": {
+        "jarvis-starter/discord-channels.mjs": "5e4a9da32a011a306586f838c4740596324deaac6ed888fe9c6ada8066f28c9d",
+        "jarvis-starter/test/discord-channels.test.mjs": "edd13ccf2b85c911b1052bfe998bef3be24f70d338fcc0432a2b4cf823e4362f",
+        "jarvis-starter/test/v49-extractor.test.mjs": "652c5cb15130e56b4e7622fe6facc3e5a1fad1f6ca0d2bf96bde999f7437afbc",
+        "jarvis-starter/test/v5-chat-errors.test.mjs": "a210b85accf324a313e9eb39edae82f91c1522faf66107487a1b79934842c38d",
+        "jarvis-starter/test/v5-recipe-instructions-tool.test.mjs": "e95e01bffd21f61967d5ab67bddd3e7d547db548956a6466377788866e4c8d46"
+      },
+      "liveBinding": "Discord live controller evidence belongs to source in 793d2db. The only subsequent production change is fixed mapping of network/response errors; successful live paths unchanged. No repeated merchant/model/Discord write acceptance run.",
+      "nextCi": "Normal PR triggers for updated head; pending, no bypass."
+    },
+    "finalCi": {
+      "testedHead": "f8827c9bd0e8e731dcba80304d7ef57c723c1ac7",
+      "testedTree": "5546b6bdd560de879aef14cca8873e5ef15ca4a4",
+      "node": "v24.22.2",
+      "unit": {
+        "passed": 1326,
+        "failed": 0,
+        "skipped": 0,
+        "run": 42380124173,
+        "artifact": 13577386357,
+        "artifactSha256": "8166748817a09722a5bdbf5d34877d50293072551920ce499c9ec169a96d4967"
+      },
+      "workflows": [
+        {
+          "id": 42380124027,
+          "name": "Pinned OpenClaw contract",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124027"
+        },
+        {
+          "id": 42380124060,
+          "name": "Commerce and self-development contracts",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124060"
+        },
+        {
+          "id": 42380124124,
+          "name": "Isolated browser containment",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124124"
+        },
+        {
+          "id": 42380124224,
+          "name": "Discord voice dependency and policy checks",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124224"
+        },
+        {
+          "id": 42380123965,
+          "name": "Isolated Discord media",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380123965"
+        },
+        {
+          "id": 42380123970,
+          "name": "JARVIS v5 candidate regression and browser smoke",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380123970"
+        },
+        {
+          "id": 42380124173,
+          "name": "JARVIS GUI exact-candidate verification",
+          "conclusion": "success",
+          "url": "https://github.com/christopherpedersendk-web/jarvis-personal-assistant/actions/runs/42380124173"
+        }
+      ],
+      "artifacts": {
+        "commerceUi": 13577123554,
+        "guiBrowser": 13577641473,
+        "media": 13577123357
+      },
+      "documentationOnlyFinalization": "Only docs/next and docs/releases after this tested head. App and workflows byte identity verified with git diff. [skip ci] prevents repeating unchanged code; main has no required branch checks/reviews (protected=false), no protection/check removed. Merge must bind exact final PR head.",
+      "ownerAcceptance": "M12/M16 remain open on documented owner/login/address/postal/complete-checkout criteria; no production activation."
+    }
   }
 }

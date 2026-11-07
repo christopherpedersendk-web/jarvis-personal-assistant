@@ -1,0 +1,236 @@
+{
+  "discord": {
+    "at": "2026-11-07T13:40:23.879Z",
+    "scope": "one new private disposable channel; production configuration unchanged",
+    "cases": [
+      "name continuation + reviewed private creation (confirmed by readback)",
+      "reviewed rename",
+      "private report choice in isolated configuration only",
+      "actual REST message delivery of mobile formatted table",
+      "actual message readback preserves price/link",
+      "reviewed deletion of only newly created test channel",
+      "deletion readback"
+    ],
+    "testChannelId": "1568620906543194122",
+    "status": "passed"
+  },
+  "recipe": {
+    "at": "2026-11-07T13:44:04.084Z",
+    "browserImage": "sha256:37e6c10743059848700378b8eba7d26e24a12c06d23c0aec683d9b4bdc03a8e6",
+    "mediaImage": "sha256:5a7b5076b6aa68b0b5d365ce03cbd24fc93b3cde3483c2fbff92de0ca1f8eb4a",
+    "source": "synthetic recipe screenshot; no personal data; actual Docker decoder and model API",
+    "generalMediaEnabled": false,
+    "status": "passed",
+    "draft": {
+      "title": "Havregrød",
+      "diet": "vegan",
+      "minutes": 10,
+      "servings": 2,
+      "themes": [],
+      "ingredients": [
+        {
+          "name": "havregryn",
+          "quantity": 100,
+          "unit": "g"
+        },
+        {
+          "name": "vand",
+          "quantity": 500,
+          "unit": "ml"
+        }
+      ],
+      "instructions": "Kog havregryn og vand i 5 minutter."
+    },
+    "testedExtractorSha256": "b6a840d1db4467f17cc6488356f0e60d2cc0b9dcbffeb89b0cc718bd2991fc38",
+    "bindingNote": "Hash reconstructed from exact extractor bytes at live run; only the subsequent missing-normalizer error classification changed. Successful extraction path unchanged."
+  },
+  "proshop": {
+    "at": "2026-11-07T13:54:53.534Z",
+    "sourceHashes": {
+      "commerce.mjs": "a971512cc012857963faea5b0f569e221ef8b434e253f353b1c7908b44560be0",
+      "proshop.mjs": "5550f1611ec44997fd53d7f7f71bcdccf28bdecd2e7fefce1c52de6516e27d67",
+      "proshop-session.mjs": "1e70b33126e3c11537de46ed7dca795861cda59a5c13be57011eeb214a70d2ae"
+    },
+    "scope": "anonymous test only; checkout contact/address form never submitted; delivery/total to 2900 unknown",
+    "cases": [
+      {
+        "searchCandidates": 7
+      },
+      "actual product comparison; destination totals remain null",
+      "actual Commerce review -> durable consume -> observed AddItem -> HTML and JSON readback -> GET checkout; no retry",
+      "duplicate approval rejected"
+    ],
+    "comparison": [
+      {
+        "store": "proshop",
+        "productId": "3298156",
+        "url": "https://www.proshop.dk/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156",
+        "title": "Sandberg USB-C to USB-C - 1m",
+        "seller": "proshop.dk",
+        "unitPriceMinor": 5700,
+        "currency": "DKK",
+        "minimumShippingMinor": 3900,
+        "shippingMinor": null,
+        "totalMinor": null,
+        "delivery": "På lager - Leveres mandag",
+        "postalCode": null,
+        "deliveryToPostalCode": null,
+        "observedAt": "2026-11-07T13:54:53.972Z",
+        "sourceHash": "c7ab4f596da25a1c1def3984ca9370be272930f810d77fdb712dbcbb9a596f16",
+        "trust": "untrusted-web-data",
+        "notice": "Billigste fragt er en offentlig minimumspris. Samlet pris og levering til dit postnummer er ukendt indtil checkout."
+      },
+      {
+        "store": "proshop",
+        "productId": "3301651",
+        "url": "https://www.proshop.dk/USB-kabel/Lippa-USB-C-to-USB-C-100W-10Gbps-cable-1m-White/3301651",
+        "title": "Lippa USB-C to USB-C 100W 10Gbps cable 1m White",
+        "seller": "proshop.dk",
+        "unitPriceMinor": 9900,
+        "currency": "DKK",
+        "minimumShippingMinor": 3900,
+        "shippingMinor": null,
+        "totalMinor": null,
+        "delivery": "6-7 dages levering",
+        "postalCode": null,
+        "deliveryToPostalCode": null,
+        "observedAt": "2026-11-07T13:54:54.143Z",
+        "sourceHash": "e5e1aa813e3893112212a02fa5df1f73630c37a2f8895ff722bc3a6b23d098da",
+        "trust": "untrusted-web-data",
+        "notice": "Billigste fragt er en offentlig minimumspris. Samlet pris og levering til dit postnummer er ukendt indtil checkout."
+      }
+    ],
+    "cart": {
+      "status": "cart_verified",
+      "lines": [
+        {
+          "productId": "3298156",
+          "quantity": 1,
+          "unitPriceMinor": 5700,
+          "title": "Sandberg USB-C to USB-C - 1m"
+        }
+      ],
+      "checkoutStage": "customer_details",
+      "sharedBasketLinkPresent": true,
+      "handoffReady": false,
+      "shippingMinor": null,
+      "deliveryToPostalCode": null
+    },
+    "status": "passed"
+  },
+  "gui": {
+    "status": "passed",
+    "scope": "Synthetic owner, no model, merchant, payment or Discord connection",
+    "checks": [
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 320,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 390,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "chromium",
+        "version": "156.0.8078.80",
+        "width": 1280,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 320,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 390,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      },
+      {
+        "browser": "webkit",
+        "version": "27.2",
+        "width": 1280,
+        "privateProfile": "passed",
+        "conflictPreservesDraft": "passed",
+        "handoff": "manual-only",
+        "selfDevelopment": "disabled",
+        "logout": "passed",
+        "overflow": false
+      }
+    ]
+  },
+  "boundaries": {
+    "discord": "REST controller and sendReply, not a second gateway or a deployed owner conversation. Report selection changed isolated in-memory configuration only.",
+    "recipe": "Actual synthetic bot attachment upload, signed CDN download, container normalization, model and unconfirmed private inbox passed together on f8827c9 source hashes. Direct script intake, not an owner-authored gateway conversation or human review.",
+    "shopping": "Actual anonymous merchant transport, not authenticated OpenClaw/Chrome login. Shared basket page observed; copying into another session still requires the merchant button. No postal quote or delivery guarantee.",
+    "gui": "Actual Chromium/WebKit synthetic server, no external connectivity, not physical iPhone."
+  },
+  "combinedDiscordRecipe": {
+    "at": "2026-11-07T14:11:38.715Z",
+    "sourceHashes": {
+      "recipe-memory.mjs": "e7e3ddd51d6be7095ee194d1fb84a6bbce58b3084af7d17d7a0adbe1325c2157",
+      "recipe-extractor.mjs": "c8cebdb26d51782d18e633074e6d4f1e83f7dd3f5acf3289346f2d1faabeea63",
+      "isolated-media.mjs": "04bb8c467a33894b0d82079c13b86a249b46a8690a809472e96b0cbff18f8e97",
+      "discord-gateway.mjs": "f2c80bf5a09c88d374be26497c04821ba2e25034e59a09843827d4ed0395e693"
+    },
+    "scope": "actual synthetic attachment upload/CDN download/decoder/model/inbox; direct script intake, not owner-authored gateway message",
+    "generalMediaEnabled": false,
+    "cases": [
+      "actual private synthetic Discord upload",
+      "actual signed CDN download, networkless decoder and model extraction",
+      "private unconfirmed inbox draft, no usable recipe before owner review",
+      "temporary attachment channel deleted"
+    ],
+    "draft": {
+      "title": "Havregrød",
+      "ingredients": [
+        {
+          "name": "havregryn",
+          "quantity": 100,
+          "unit": "g"
+        },
+        {
+          "name": "vand",
+          "quantity": 500,
+          "unit": "ml"
+        }
+      ],
+      "minutes": 10,
+      "servings": 2,
+      "confirmed": false
+    },
+    "modelRequests": 1,
+    "status": "passed"
+  }
+}

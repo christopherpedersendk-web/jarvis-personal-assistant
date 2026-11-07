@@ -30,3 +30,11 @@ M1–M18 beholder deres betydning og åbne ejeraccept. Planlægning, fælles huk
 ## Ejerhandling
 
 Review den konkrete diff og begrænsningerne. Ingen credentials eller aktivering er nødvendig for review. Målhost-/købs-/produktionsbeslutninger er særskilte; dette dokument bestiller ingen utilgængelige prøver.
+
+## Aktuel leverance: M12/M16-kandidat 5.5.1
+
+Ældre afgrænsninger ovenfor er historiske. Nu er PR #23 genbrugt, kanalnavnssamtale/annullering og isoleret opskriftsbilledudtræk implementeret, og Proshop har en konkret observeret anonym kurveadapter. Faktiske Discord REST-, Docker/Chromium-, decoder/model- og Proshop-kurveprøver er udført; se [saniterede resultater](m12-m16-live.json) og [acceptregister](acceptance-register.md).
+
+Resterende arbejde er ikke blot et featureflag: autentificeret Proshop-login, eksplicit adressetransfer, postnummerbundet fragt/levering og endelig checkoutkontrakt er fortsat åbne. Native kurvedeling giver manuel overtagelse af varevalget, ikke en færdig checkout. De næste observationer kræver ejerens egen sikre butikssession og valgte adresse-/kontaktgrundlag i staging. Ingen credentials efterspørges i chat. Stop altid før betaling/bindende ordre.
+
+Kandidat 5.5.1, schema 1/readableFrom 0; eksisterende v5.5.0-tag/release er verificeret og bevares. Ingen produktionsdeployment/aktivering. CI startes med normale PR-triggere efter gennemgang af workflows; ingen [skip ci] i kodeleverancen. Endelig merge/release afhænger af faktiske checks/review, ikke de historiske resultater.

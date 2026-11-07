@@ -2,7 +2,7 @@
 
 ## Sikre standarder
 
-Ingen nye featureflags aktiveres af kodeændringen. Bevar den fungerende Jarvis-bot, datalager og scheduler. Pakkens version er stadig 5.4.0; ny release kræver separat synkron version/tag/schema-kontrol. Overskriv aldrig de eksisterende tags.
+Ingen nye featureflags aktiveres af kodeændringen. Bevar den fungerende Jarvis-bot, datalager og scheduler. Aktuel remote-release er v5.5.0 på 14292e2338de2e18699c8910d342d71c88e88c77, verificeret 2026-11-07. Ny release kræver separat synkron version/tag/schema-kontrol. Overskriv aldrig de eksisterende tags.
 
 Stamdata findes i eksisterende `private-settings.json`, mode 0600. Den fil indeholder også credentials og skal indgå i krypteret/begrænset backup, ikke vedhæftes PR/logs/chat. `state.json` indeholder kun ordre-/udviklingsjournal og adressefingerprint, ikke kontakt/adressearkivet. Sletning fjerner kontaktfelterne fra den aktive fil; historik gemmer kun tidspunkt/revision/antal. Ældre backups har selvstændig retention og er ikke fjernslettet af UI.
 
@@ -56,3 +56,25 @@ API: POST /api/commerce/:id/revise med {expectedRevision,order}; POST /api/comme
 Browserresultatet indeholder requestedUrl, url, observedAt og snapshotHash. Observationstidspunkt er ikke en garanti for pris/lager eller netværksisolation. Browseren bruger fem kontrolkald ved succes (open/list/snapshot/list/close), og faktisk antal HTTP-kald registreres. Tokens og pris forbliver null.
 
 Rollback til ældre kode kræver, at nye udviklingskladder ikke startes gennem den ældre UI, som ikke forstår deres kladdestatus. Bevar journalen; ingen migration, pakkeversion eller featureflag ændres af denne udviklingspakke. Den nye før/efter-visning er syntakskontrolleret, ikke fysisk mobil- eller browseraccept.
+
+## M12/M16-kandidat 5.5.1: afprøvet isolation og faktisk adgang
+
+Denne opfølgning erstatter ældre udsagn om utilgængelig Docker/målhost: den aktuelle vært har Docker 29.9.3. Produktionsservice `jarvis.service` var aktiv med arbejdsmappe `/home/administrator/jarvis/current/jarvis-starter`, symlink til `releases/v5.5.0`; data og `.env` ligger i `/home/administrator/jarvis/shared`. Ingen tjeneste, symlink eller produktionsfil er ændret. Ingen ekstra gateway/bot er startet. Der fandtes ingen AGENTS.md i repository eller de undersøgte forældremapper. Udviklingen skete i separat klon `/tmp/jarvis-m12-m16`, gren `implement/m12-m16`.
+
+Botcredential blev kun læst af lokalt script og sendt som Authorization til Discord. Faktisk guild-read og Manage Channels bestod, Administrator var ikke givet. Testkanal `1568620906543194122` blev oprettet privat, omdøbt, anvendt til én testbesked og slettet med readback. Første script stoppede efter bekræftet oprettelse på grund af en lokal referencekontrol; journalen blev inspiceret før fortsættelse af **samme** kanal. Ingen skrivehandling blev gentaget. Produktionsrapportkanalen blev ikke ændret.
+
+Reproducerbart, kun med separat mandat til en ny disponibel testkanal:
+`node jarvis-starter/scripts/discord-channel-live.mjs --live <privat-settings-sti>`.
+Scriptet starter ingen gateway, skriver sin egen private journal i /tmp, ændrer kun en ny `jarvis-acceptance-*`-kanal og bruger isoleret rapportkonfiguration. Ved fejl skal journal/Discord inspiceres først; recovery-argumentet accepterer kun én dokumenteret completed oprettelse. Kør ikke automatisk igen ved ukendt udfald.
+
+Opskriftsbilleder i en **separat staginginstallation**: klargør det eksisterende `media-runtime/Dockerfile`, der verificerer officiel signatur/checksum og bygger decoder uden netværksprotokoller. Kør containmentprøver før `JARVIS_RECIPE_IMAGES=yes` og `JARVIS_MEDIA_IMAGE=sha256:<præcist-lokalt-image>`. `JARVIS_DISCORD_MEDIA` behøver ikke aktiveres. Send billedet sammen med `Gem opskrift:`. Original og uverificeret kladde ligger i den eksisterende private Opskriftsindbakke; ingredienser/portioner/tid/kosttype kræver ejerreview før bekræftet opskrift og madplan. Uden decoder vises konkret diagnose; rå billedbytes sendes ikke til modellen. Målhostens samlede syntetiske billedprøve bestod faktisk Discord-upload, CDN-download, decoder/model og privat ubekræftet testindbakke, uden produktionsaktivering. Botvedhæftningen blev indtaget direkte i testscriptet; ejerens gatewaydialog og menneskelige review er fortsat åbne.
+
+Proshop i **separat staging**, ikke produktionsaktivering: `JARVIS_COMMERCE=yes` og `JARVIS_PROSHOP_CART=yes` stiller konkret anonyme HTTP-formhandlinger til rådighed. Dette udvider ikke OpenClaws læserettigheder. Ingen butikskode udføres på værten; offentlig DNS valideres og pinnes for hvert TLS-kald. Browserlæsningen blev særskilt prøvet i netværksløs Chromium gennem eksisterende ressourcebroker. Sessionscookies ligger kun i `data/proshop-sessions/<ordre-id>.json` (mappe 0700, fil 0600); medtag dem kun i begrænset/krypteret backup. Ingen cookies, kontaktdata eller rå merchant-JSON sendes til modeller eller evidensfiler.
+
+UI: Hent indkøbsstatus → Søg Proshop → vælg højst tre produkter → sammenlign → vælg vare. Ukendt fragt må ikke indtastes som nul eller en offentlig mindste fragtpris. Den konkrete kurvewritekontrakt er afgrænset til Sandberg 3298156, variant `Hvid, 1 m, USB-C til USB-C`, antal 1, DKK, manuel betaling og eksplicit faktureringsvalg. Alle ordrefelter og stamdatafingerprint bindes til engangsreview. Ikke-tom testkurv, ændret vare/pris/sælger/adresse, udløb eller stop afviser skrivning. Efter durabelt consume sendes én AddItem-POST, aldrig automatisk igen ved netværksbrud. Restart af preparing bliver unknown; unknown blokerer nye kurvewrites, indtil operatøren har inspiceret butik/session/journal. Der findes ingen automatisk clear/resume.
+
+Den verificerede varekurv kan åbnes via butikkens native delingslink, som kun deler varevalg. Brugeren skal selv vælge at kopiere indholdet hos Proshop, kontrollere egne eksisterende varer, logge ind eller indtaste kontakt/adresser og gennemgå fragt/pris. Linket eksporterer ikke cookies og er **ikke** en færdig checkout. Login-/Register-/leverings-/betalingsformularer submitter adapteren ikke. Kun offentlig produktpris og mindste fragt kendes før adressevalg; total og levering til 2900 forbliver null. MobilePay/PayPal-logoer i footer beviser ikke et brugbart betalingsflow. Intet bindende køb udføres.
+
+Reproducerbar faktisk anonym prøve: `node jarvis-starter/scripts/proshop-live.mjs --live` læser søgning/produkter; tilføj `--cart` kun med særskilt testmandat til én kurveændring ved den dokumenterede pris. Prøven bruger syntetisk adresseprofil som **aldrig** sendes og gemmer privat session/journal i /tmp. Den er ikke ejerens godkendelse af en rigtig ordre eller en 2900-fragtpris.
+
+Rollback: slå de nye flags fra i staging, stop opgaver og bevar journal/sessioner til afklaring. Slet eller genstart ikke ukendte kurveforløb. Produktionen er uændret af dette arbejde.
