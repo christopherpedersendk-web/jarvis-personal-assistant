@@ -62,3 +62,7 @@ Se [næste reviewbare pakke](next-package.md) for rækkefølge, reproducerbare e
 ## Afsluttende CI-evidens
 
 Alle syv workflows er bestået på 7dfed08a5833982f16422b897d3d13e8077eaa8f, inklusive 1.282 unit-tests uden fejl/skips og mediecontainment. Runs: 42364914938, 42364914886, 42364914951, 42364914846, 42364914875, 42364914792, 42364914842. Det afsluttende evidenscommit ændrer kun docs/next og anvender [skip ci]; applikations- og workflowindhold er identisk med den testede kandidat. Merge-SHA findes i PR #19. Dette afslutter CI-blokeringen, ikke de åbne live-/målhostkriterier.
+
+## Afgrænset diagnostik-PR efter #19
+
+Se [leverance og faktisk udførte kontroller](diagnostics-delivery.md). M3/M7 får secretsikker diagnostik; M6/M10 får separat setup-/HTTP-tid og bevaret forbrugsgrundlag. 11 fokuserede lokale tests bestået, uden Docker/modeladgang. Alle øvrige M1–M18-kriterier videreføres; utilgængelige liveprøver er ikke planlagte opgaver i denne PR. Gamle næste-handling-kolonner er historiske acceptkrav, ikke en påstand om tilgængelig adgang.
