@@ -126,6 +126,37 @@
       },
       "mediaRun": 42359891574,
       "media": "upstream source/signature TLS reset/timeouts before compilation; remains blocked, no check disabled"
+    },
+    {
+      "candidate": "b648b9808f23593bf3d159e438e399aa760eb46a",
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0,
+        "skipped": 0
+      },
+      "successfulRuns": [
+        42360165371,
+        42360165334,
+        42360165207,
+        42360165228,
+        42360165298,
+        42360165256
+      ],
+      "mediaRun": 42360165335,
+      "media": "curl exit 28 downloading pinned source archive; build and containment not executed"
     }
-  ]
+  ],
+  "mediaDownloadFollowup": {
+    "scope": "workflow only; jarvis-starter tree unchanged",
+    "status": "pending CI",
+    "local": "YAML parsing, bash -n and exact unchanged Docker verification/build/runtime suffix passed",
+    "cache": "Exact source checksum key, isolated GPG home, verification before use plus original verification inside Docker",
+    "access": {
+      "docker": false,
+      "sshAgent": false,
+      "tailscale": false,
+      "modelCredential": false,
+      "restrictedGateway": false
+    }
+  }
 }
