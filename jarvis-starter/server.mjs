@@ -1352,11 +1352,16 @@ async function route(req, res) {
     }
     if(path==='/api/self-development'&&req.method==='GET')return json(res,200,{status:selfDevelopment.status(),jobs:selfDevelopment.rows()});
     if(path==='/api/self-development'&&req.method==='POST'){try{return json(res,201,{job:await selfDevelopment.prepare(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
+    if(path==='/api/self-development/drafts'&&req.method==='POST'){try{return json(res,201,{job:await selfDevelopment.saveDraft(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
+    const selfDraft=path.match(/^\/api\/self-development\/([0-9a-f-]{36})\/(draft|cancel)$/);
+    if(selfDraft&&req.method==='POST'){try{const input=await bodyJson(req);return json(res,200,{job:selfDraft[2]==='cancel'?await selfDevelopment.cancelDraft(selfDraft[1],input):await selfDevelopment.saveDraft(input.task,{id:selfDraft[1],expectedRevision:input.expectedRevision})});}catch(error){return json(res,409,{error:error.message});}}
     const selfApproval=path.match(/^\/api\/self-development\/([0-9a-f-]{36})\/approve$/);
     if(selfApproval&&req.method==='GET')return json(res,200,await selfDevelopment.verifyApproval(selfApproval[1]));
     if(selfApproval&&req.method==='POST'){try{return json(res,200,{job:await selfDevelopment.approveRelease(selfApproval[1])});}catch(error){return json(res,409,{error:error.message});}}
     if(path==='/api/commerce'&&req.method==='GET')return json(res,200,{status:commerce.status(),stores:STORES,orders:commerce.list(),browser:commerceBrowser?.status()||{enabled:false}});
     if(path==='/api/commerce'&&req.method==='POST'){try{return json(res,201,{order:await commerce.propose(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
+    const commerceDraft=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/(revise|cancel)$/);
+    if(commerceDraft&&req.method==='POST'){try{return json(res,200,{order:await commerce[commerceDraft[2]](commerceDraft[1],await bodyJson(req))});}catch(error){return json(res,409,{error:error.message});}}
     const commerceHandoff=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/handoff$/);
     if(commerceHandoff&&req.method==='POST'){try{return json(res,200,await commerce.handoff(commerceHandoff[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
     if(path==='/api/commerce/read'&&req.method==='POST'){try{if(!commerceBrowser)throw new Error('Den særskilte isolerede OpenClaw-browser er ikke konfigureret. Offentlig research er fortsat tilgængelig gennem eksisterende funktioner.');const input=await bodyJson(req);return json(res,200,await commerceBrowser.read(input.url,input.store));}catch{return json(res,400,{error:'Produktlæsningen kunne ikke udføres sikkert. Ingen fallback, bestilling eller betaling er udført.'});}}
@@ -1872,3 +1877,4 @@ async function checkForUpdates() {
 const updateTimer = setInterval(checkForUpdates, 6 * 60 * 60_000);
 updateTimer.unref?.();
 setTimeout(checkForUpdates, 60_000).unref?.();
+
