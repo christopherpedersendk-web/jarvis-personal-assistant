@@ -434,6 +434,38 @@
       "M16 authenticated login, selected address transfer, final freight/delivery to 2900, complete checkout handoff",
       "Independent CI/review before merge/release"
     ],
-    "ci": "Normal PR triggers; pending on pushed head, no check bypass or new CI success claimed"
+    "ci": "Normal PR triggers; pending on pushed head, no check bypass or new CI success claimed",
+    "ciFollowup": {
+      "codeCommit": "9a09f7649c7afe89fe0bd28079136a0b95167bc8",
+      "firstCiHead": "a20f986e63e621d77848f4ece3a8fb4dd6b6c49e",
+      "firstUnitRun": 42379734961,
+      "firstUnitResult": {
+        "passed": 1320,
+        "failed": 5,
+        "skipped": 0
+      },
+      "failures": "Four VM dispatcher fixtures omitted the real discordChannelReply/controller dependency inherited from PR23; one extractor fixture still expected raw PNG instead of contained JPEG. Fixtures corrected without removing assertions.",
+      "focusedFollowup": {
+        "passed": 6,
+        "failed": 0,
+        "scope": "Five failing cases rerun only; plus one new fixed runtime/network diagnosis test. Other passed tests not repeated locally.",
+        "commands": [
+          "node --test-name-pattern=\"bounded draft-only\" jarvis-starter/test/v49-extractor.test.mjs",
+          "node --test-name-pattern=\"discord:\" jarvis-starter/test/v5-chat-errors.test.mjs",
+          "node --test-name-pattern=\"actual discord dispatcher\" jarvis-starter/test/v5-recipe-instructions-tool.test.mjs",
+          "node --test-name-pattern=\"unavailable Discord runtime\" jarvis-starter/test/discord-channels.test.mjs"
+        ]
+      },
+      "uniqueFocusedTotal": 84,
+      "sourceHashes": {
+        "jarvis-starter/discord-channels.mjs": "5e4a9da32a011a306586f838c4740596324deaac6ed888fe9c6ada8066f28c9d",
+        "jarvis-starter/test/discord-channels.test.mjs": "edd13ccf2b85c911b1052bfe998bef3be24f70d338fcc0432a2b4cf823e4362f",
+        "jarvis-starter/test/v49-extractor.test.mjs": "652c5cb15130e56b4e7622fe6facc3e5a1fad1f6ca0d2bf96bde999f7437afbc",
+        "jarvis-starter/test/v5-chat-errors.test.mjs": "a210b85accf324a313e9eb39edae82f91c1522faf66107487a1b79934842c38d",
+        "jarvis-starter/test/v5-recipe-instructions-tool.test.mjs": "e95e01bffd21f61967d5ab67bddd3e7d547db548956a6466377788866e4c8d46"
+      },
+      "liveBinding": "Discord live controller evidence belongs to source in 793d2db. The only subsequent production change is fixed mapping of network/response errors; successful live paths unchanged. No repeated merchant/model/Discord write acceptance run.",
+      "nextCi": "Normal PR triggers for updated head; pending, no bypass."
+    }
   }
 }
