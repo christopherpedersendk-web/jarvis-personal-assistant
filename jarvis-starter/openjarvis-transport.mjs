@@ -19,8 +19,8 @@ export async function boundedJson(fetcher, url, options, {signal, timeoutMs = 20
     response = await fetcher(url, {...options, redirect:'error', signal:combined});
     if (!response.ok) {
       await response.body?.cancel();
-      const code = response.status === 401 ? 'AUTH_REJECTED' : [403,404].includes(response.status) ? 'TOOL_FORBIDDEN' : 'GATEWAY_REJECTED';
-      throw new OpenJarvisError(code, `OpenClaw afviste anmodningen (${response.status}).`, 'rejected');
+      const code = response.status === 401 ? 'AUTH_REJECTED' : [403,404].includes(response.status) ? 'TOOL_FORBIDDEN' : response.status===429 ? 'GATEWAY_RATE_LIMIT' : 'GATEWAY_REJECTED';
+      throw new OpenJarvisError(code, code==='GATEWAY_RATE_LIMIT' ? 'OpenClaws forespørgselsgrænse er nået. Vent og prøv senere; der genforsøges ikke automatisk.' : `OpenClaw afviste anmodningen (${response.status}).`, 'rejected');
     }
     let size = 0; const chunks = [];
     if (!response.body) throw new OpenJarvisError('INVALID_RESPONSE','OpenClaw returnerede et tomt svar.', 'unknown');

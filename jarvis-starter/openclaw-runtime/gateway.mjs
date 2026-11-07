@@ -5,11 +5,13 @@ import {rejectSecrets} from '../privacy.mjs';
 
 // Jarvis gets only this credential, never the upstream operator credential.
 // No WebSocket upgrades, generic proxying, sessions, paths, headers or tool names.
-export function researchGateway({token, upstreamToken, upstreamUrl, runtimeVersion, fetcher=fetch, maxCalls=60}) {
+export function researchGateway({token, upstreamToken, upstreamUrl, runtimeVersion, fetcher=fetch, maxCalls=60, windowMs=3600000, now=()=>performance.now()}) {
   if (typeof token !== 'string' || token.length < 32 || typeof upstreamToken !== 'string' || upstreamToken.length < 32 || token === upstreamToken)
     throw new Error('Separate credentials of at least 32 characters are required.');
   const endpoint=localEndpoint(upstreamUrl), active=new Set();
-  let calls=0, stopped=false;
+  if(!Number.isSafeInteger(maxCalls)||maxCalls<1||maxCalls>10000||!Number.isSafeInteger(windowMs)||windowMs<1000||windowMs>86400000)throw new Error('Invalid bounded gateway request window');
+  let calls=0, windowCalls=0, windowStart=now(), stopped=false;
+  const remaining=()=>{const time=now();if(time-windowStart>=windowMs){windowStart=time;windowCalls=0;}return Math.max(1,Math.ceil((windowMs-(time-windowStart))/1000));};
   const authorized=value=>{
     const expected=Buffer.from(`Bearer ${token}`), actual=Buffer.from(typeof value==='string'?value:'');
     return expected.length===actual.length && timingSafeEqual(expected,actual);
@@ -25,7 +27,8 @@ export function researchGateway({token, upstreamToken, upstreamUrl, runtimeVersi
       } catch {send(503,{ok:false,error:'NOT_READY'});} return;
     }
     if(req.method!=='POST'||req.url!=='/tools/invoke'){send(404,{ok:false,error:'ROUTE_FORBIDDEN'});req.resume();return;}
-    if(active.size>=2||calls>=maxCalls){send(429,{ok:false,error:'REQUEST_LIMIT'});req.resume();return;}
+    const retryAfter=remaining();
+    if(active.size>=2||windowCalls>=maxCalls){res.setHeader('Retry-After',String(active.size>=2?1:retryAfter));send(429,{ok:false,error:'REQUEST_LIMIT',retryable:false});req.resume();return;}
     const controller=new AbortController();active.add(controller);
     const disconnect=()=>{if(!res.writableEnded)controller.abort();};res.once('close',disconnect);
     try {
@@ -40,7 +43,9 @@ export function researchGateway({token, upstreamToken, upstreamUrl, runtimeVersi
       rejectSecrets(args.query);
       if(args.query.includes(token)||args.query.includes(upstreamToken))throw new Error('Secret in query');
       controller.signal.throwIfAborted();if(stopped)throw new Error('Stopped');
-      calls++;
+      const retryAfter=remaining();
+      if(windowCalls>=maxCalls){res.setHeader('Retry-After',String(retryAfter));send(429,{ok:false,error:'REQUEST_LIMIT',retryable:false});return;}
+      calls++;windowCalls++;
       const result=await boundedJson(fetcher,new URL('/tools/invoke',endpoint),{method:'POST',
         headers:{Authorization:`Bearer ${upstreamToken}`,'Content-Type':'application/json'},
         body:JSON.stringify({tool:'web_search',args:{query:args.query.trim(),count:5}})}, {signal:controller.signal,timeoutMs:18000});
@@ -52,5 +57,5 @@ export function researchGateway({token, upstreamToken, upstreamUrl, runtimeVersi
   server.requestTimeout=5000;server.headersTimeout=5000;server.maxHeadersCount=16;
   server.on('upgrade',(_req,socket)=>socket.destroy());
   return {server,stop(){stopped=true;for(const c of active)c.abort();server.close();server.closeAllConnections();},
-    snapshot:()=>({calls,active:active.size,stopped})};
+    snapshot:()=>({calls,windowCalls,windowMs,active:active.size,stopped})};
 }

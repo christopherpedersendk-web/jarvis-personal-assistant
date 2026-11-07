@@ -198,3 +198,11 @@ Alle syv normale workflows bestod på `4c95dea867cb9f27e1fba55ec34125537cc006cf`
 M18: Ejerens faktiske statuskommando gennem aktiv gateway blev accepteret 18:15:45 UTC og besvaret med “Ingen Codex-udviklingsopgaver i denne kanal.” REST-readback bekræftede svaret. [Evidens](owner-gateway-status.json). Dette er faktisk ejer-/statusrouting, ikke fuld ejeropgave til draft-PR.
 
 M14: En syntetisk Chromium-video med rød/blå baggrund og kendt tekst blev dekodet netværksløst af det fastlåste image. De to frames ved 2,23/6,69 sekunder blev faktisk analyseret af gpt-6.1-sol, som beskrev begge korrekt og udtrykkeligt begrænsede dækningen til stikprøver. Videoens observerede varighed var 8,92 sekunder inklusive optagerens overhead. Ingen lyd, Discord-CDN-upload eller ejerindhold i denne prøve. Målt modelbrug: 494 inputtokens og 135 outputtokens; ingen pris udledt. [Kildehashes og modelsvar](video-model-live.json). Ingen hel milestone lukkes.
+
+## OpenClaw: direkte kald og sammenhængende adapterprøve
+
+Aktuel main ved start var dc72800; aktiv installation var nu 5.5.3 (ikke længere 5.5.2). Eksisterende lokal OpenClaw 2026.11.1 gav faktisk health 200, direkte web_search 200 med kilder og gennemført JARVIS-adaptersøgning med kilder. Forkert credential gav 401; exec/browser/web_fetch/cron/sessions_spawn gav 403 før upstream. Ingen ny gateway/bot eller produktionsændring.
+
+Kilde 1ef2306 (appændringer identiske med 745bdd3): fjern kun OpenClaws observerede interne envelope fra viste kildetitler; bevar rå kildedata som ubestroede. Gatewayens tidligere livstidsgrænse på 60 søgninger er erstattet af højst 60 pr. monotont timevindue og højst to aktive, uden timer/scheduler eller ændring af JARVIS' egen forbrugsjournal. Samtidigt admission er kontrolleret før upstream; 429 vises konkret uden automatisk retry. Den nye gatewaykvote er kun udviklingskode og lokale kontraktprøver, ikke installeret i den aktive researchtjeneste.
+
+Seks nye unikke lokale tests og to relevante eksisterende source-/privacyregressioner bestod. Faktisk lokal HTTP-abort og timeout lukkede forbindelsen og frigav gatewayens admission. Det er ikke bevis for ekstern providerhangup, som forbliver ukendt. [Filer, præcis evidens og liveprøver](openclaw-integration-evidence.json). Ingen hel milestone lukkes.

@@ -598,5 +598,12 @@
     "workflowTree": "c351a556b1c17c679534939e6478a6d081d6e56b",
     "productionDeployed": false,
     "milestonesClosed": []
+  },
+  "openclawNextIntegration": {
+    "evidence": "openclaw-integration-evidence.json",
+    "sourceCommit": "1ef2306cbc05ac539b05e8deb3ca3611fcf52c0d",
+    "actualExistingGatewayCalls": true,
+    "candidateGatewayDeployed": false,
+    "milestonesClosed": []
   }
 }
