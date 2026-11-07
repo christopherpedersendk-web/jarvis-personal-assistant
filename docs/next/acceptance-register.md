@@ -19,7 +19,7 @@ De daterede opfølgninger har forrang for ældre installationsbemærkninger. Ing
 | M8/M9 | Research med kilder faktisk observeret | Ejeraccept og kvalitet på hver procedure |
 | M11/M15 | Fælles kladder, revisioner, privat lagring og UI-kontrol | Fysisk mobil/DM-review og samlet ejeraccept |
 | M12 | Administrator verificeret; afgrænset faktisk create/rename/delete og mobilsvar bestået | Ejerens gateway-/opskriftsreview; varigt rapportkanalvalg |
-| M13/M14 | Decodercontainment bestået; opskriftsmodel faktisk observeret | Ejerens egne medier og video-/lydforståelse |
+| M13/M14 | Decodercontainment, opskriftsmodel og syntetisk video-modelprøve faktisk observeret | Ejerens egne medier og faktisk lydforståelse; video-CDN/gatewayaccept særskilt |
 | M16 | Faktisk offentlig søgning, sammenligning og anonym kurv med readback | Login/valgte adresser, fragt og levering til 2900 samt færdig checkout |
 | M18 | Installeret Codex, samme session, isoleret ændring/tests og JARVIS-publiceret PR verificeret | Ejerens telefonforløb; uafhængige releasekontroller og særskilt deploymentmandat |
 
@@ -190,3 +190,11 @@ OpenClaw 2026.11.1 kører allerede lokalt med særskilt DynamicUser og Node 24.1
 Samme model og 30 syntetiske danske opgaver blev kørt mod begge backends på `77e51be5ce36e55c0002cff196849ba874ac5865`: alle 60 scenarier gennemført teknisk. To observerede fejl blev rettet i `a1b00d2d5f239f2353bea678651cdd2a87e5d2e4`: konkret fjernelse af eget listepunkt og kildeangivelse for standard/ubekræftede madpræferencer. Kun DA10/DA11 blev derefter kørt igen på begge backends; de forventede tilstandsændringer/svar blev observeret.
 
 Den nye evaluator binder også persona og historiske skillfiler og afviser delvise evalueringer som fuld accept. Første v1-evidens er historisk og kan ikke godkendes gennem den nye v2-gate. Ingen menneskelig kvalitetsscore, 27/30-accept eller besparelse påstås. Syv hybrid-forbrugsposter har ukendt tokenforbrug. [Målinger og revisioner](language-live-evidence.json), [svar til menneskelig review](language-review.md). Ingen hel milestone lukkes.
+
+## Afsluttende stagingevidens 5.5.3
+
+Alle syv normale workflows bestod på `4c95dea867cb9f27e1fba55ec34125537cc006cf`: 1.373 unit-tests, nul fejl/skips. PR #25 er merget som `ec09bbc95d7c68e9c728a9b86425e77e007a9c56`. Applikations- og workflowtræer er byteidentiske; dokumentationsopfølgning ændrer ikke koden. [Præcise runs](v5.5.3-ci.json). PR #26 og #27 er også merget.
+
+M18: Ejerens faktiske statuskommando gennem aktiv gateway blev accepteret 18:15:45 UTC og besvaret med “Ingen Codex-udviklingsopgaver i denne kanal.” REST-readback bekræftede svaret. [Evidens](owner-gateway-status.json). Dette er faktisk ejer-/statusrouting, ikke fuld ejeropgave til draft-PR.
+
+M14: En syntetisk Chromium-video med rød/blå baggrund og kendt tekst blev dekodet netværksløst af det fastlåste image. De to frames ved 2,23/6,69 sekunder blev faktisk analyseret af gpt-6.1-sol, som beskrev begge korrekt og udtrykkeligt begrænsede dækningen til stikprøver. Videoens observerede varighed var 8,92 sekunder inklusive optagerens overhead. Ingen lyd, Discord-CDN-upload eller ejerindhold i denne prøve. Målt modelbrug: 494 inputtokens og 135 outputtokens; ingen pris udledt. [Kildehashes og modelsvar](video-model-live.json). Ingen hel milestone lukkes.

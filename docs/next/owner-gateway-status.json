@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-07T18:16:37.823Z",
+  "ownerCommandAt": "2026-11-07T18:15:44.921Z",
+  "command": "Status på udviklingsopgaven.",
+  "ownerCommandObserved": true,
+  "botStatusReplyObserved": true,
+  "response": "Ingen Codex-udviklingsopgaver i denne kanal.",
+  "connection": "connected",
+  "pendingMessageCount": 0,
+  "scope": "Actual existing production gateway owner status command and Discord REST readback only; no extra bot, task start, code write or publication. Full owner development-to-PR acceptance remains open.",
+  "activeVersion": "5.5.2"
+}
