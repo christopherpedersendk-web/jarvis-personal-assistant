@@ -38,14 +38,15 @@ export function describeSkill(skill,{openJarvis={},modelConfigured=false,stopped
   const enabled=!hybrid||openJarvis.enabled===true;
   const configured=modelConfigured&&(!hybrid||openJarvis.gatewayMode==='restricted-v1');
   const connected=!hybrid||openJarvis.connectionStatus==='ready';
-  const available=enabled&&configured&&connected&&!stopped;
-  const reason=stopped?'Assistenten er stoppet.':!enabled?'OpenClaw er deaktiveret.':!modelConfigured?'Modeladgang er ikke konfigureret.':!configured?'Kræver den begrænsede gatewaykontrakt.':!connected?(openJarvis.connectionError||'Gatewayforbindelsen er endnu ikke kontrolleret.') : '';
+  const historical=skill.current===false;
+  const available=!historical&&enabled&&configured&&connected&&!stopped;
+  const reason=historical?'Historisk version; vælg den aktuelle til en ny kladde. Eksisterende jobs bevarer deres version.':stopped?'Assistenten er stoppet.':!enabled?'OpenClaw er deaktiveret.':!modelConfigured?'Modeladgang er ikke konfigureret.':!configured?'Kræver den begrænsede gatewaykontrakt.':!connected?(openJarvis.connectionError||'Gatewayforbindelsen er endnu ikke kontrolleret.') : '';
   return {title:localTitles[skill.name]||skill.presentation?.title||skill.name,
     source:hybrid?'openclaw':'jarvis',category:hybrid?'research':skill.name==='meal-planning'?'madplan':'personlig',
     examples:skill.presentation?.examples||localExamples[skill.name]||[],
     channels:['webchat','discord',...(voiceEnabled?['discord-voice']:[])],
     provenance:hybrid?upstream:{product:'Jarvis',license:'repository',integration:'Lokalt versionsstyret procedure'},
-    availability:{installed:true,configured,enabled,available,status:available?'ready':enabled?'blocked':'disabled',reason,
+    availability:{installed:true,configured,enabled,available,status:historical?'historical':available?'ready':enabled?'blocked':'disabled',reason,
       tested:false,lastTest:null,testNote:'Kataloget er ikke bevis for live model-/kanalaccept.',
       connectionCheckedAt:hybrid?openJarvis.lastCheckedAt||null:null},
     dataSharing:hybrid?'Kun korte offentlige søgeord sendes til OpenClaw og søgeudbyderen. Modellen behandler opgaven under Jarvis’ eksisterende politik.':'Nødvendig opgavekontekst kan sendes til den konfigurerede model; ingen nye tilladelser.',

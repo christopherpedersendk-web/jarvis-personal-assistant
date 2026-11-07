@@ -33,8 +33,19 @@ try{
   await run('ffmpeg',['-v','error','-f','lavfi','-i',src,...(audio?['-f','lavfi','-i','sine=frequency=440:sample_rate=16000']:[]),'-t','6','-c:v',codec,'-threads','1',...(audio?['-c:a','aac','-ac','1']:['-an']),file]);
   const input={buffer:await readFile(file),contentType:ext==='mp4'?'video/mp4':'video/webm'},r=await normalize(input);
   assert.equal(r.kind,'video');assert.equal(r.frames.length,2);assert.ok(r.duration<=60);assert.equal(Boolean(r.wav),audio);assert.ok(r.frames.every(f=>f.seconds>0&&f.seconds<r.duration));report.cases.push('video '+i+': sampled frames'+(audio?' + WAV':' without audio'));
-  if(i===0){const abort=new AbortController(),pending=normalize(input,{signal:abort.signal});setTimeout(()=>abort.abort(),100);await assert.rejects(pending);report.cases.push('abort kills worker and removes container');}
+  if(i===0){const abort=new AbortController(),pending=normalize(input,{signal:abort.signal});setTimeout(()=>abort.abort(),100);await assert.rejects(pending);report.cases.push('abort during startup/decoding removes container');}
  }
+ // Deterministic active-worker stop: the same isolated image/limits, with a
+ // synthetic hung worker rather than timing an abort before Docker has started.
+ let ready;const workerReady=new Promise(r=>ready=r),abort=new AbortController();
+ const hung=createIsolatedMedia({env:{PATH:process.env.PATH,JARVIS_DISCORD_MEDIA:'yes',JARVIS_MEDIA_IMAGE:image},spawnProcess:(binary,args,options)=>{
+  const fixtureArgs=[...args];fixtureArgs.splice(fixtureArgs.lastIndexOf(image),0,'--entrypoint','node');
+  fixtureArgs.push('-e',"process.stdin.resume();process.stdin.on('end',()=>{process.stdout.write('synthetic-worker-ready');setInterval(()=>{},1000);});");
+  const child=spawn(binary,fixtureArgs,options);child.stdout.on('data',chunk=>{if(chunk.toString().includes('synthetic-worker-ready'))ready();});return child;
+ }});
+ const pending=hung({buffer:Buffer.alloc(100,1),contentType:'video/mp4'},{signal:abort.signal});
+ await Promise.race([workerReady,pending.then(()=>assert.fail('synthetic hung worker must not finish'))]);
+ abort.abort();await assert.rejects(pending);report.cases.push('confirmed running hung worker stopped and removed');
  await assert.rejects(normalize({buffer:Buffer.alloc(100,1),contentType:'video/mp4'}));report.cases.push('malformed container rejected');
  const long=root+'/long.mp4';await run('ffmpeg',['-v','error','-f','lavfi','-i','color=black:size=32x32:rate=1','-t','61','-c:v','libx264','-threads','1',long]);
  await assert.rejects(normalize({buffer:await readFile(long),contentType:'video/mp4'}));report.cases.push('actual >60-second duration rejected');

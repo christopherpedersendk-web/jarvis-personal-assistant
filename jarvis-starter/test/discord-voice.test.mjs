@@ -58,6 +58,16 @@ test('voice stop aborts pending transcription and cannot dispatch a late answer'
  await f.voice.join(identity);const receiving=f.voice.receive(f.voice.active.id,ownerId,Buffer.alloc(38400));const signal=await ready;
  await f.voice.stop();assert.equal(signal.aborted,true);release();await receiving;assert.equal(f.seen.includes('reply'),false);
 });
+test('M5 late connection cleanup awaits asynchronous failure without an unhandled rejection',async()=>{
+ let release,entered,closeEntered,rejectClose;
+ const ready=new Promise(r=>entered=r),pending=new Promise(r=>release=r),closing=new Promise(r=>closeEntered=r),closed=new Promise((_,reject)=>rejectClose=reject);
+ const f=await fixture({connect:async()=>{entered();return pending;}});
+ let settled=false;const joining=f.voice.join(identity);const rejected=assert.rejects(joining,/Tilslutningen blev stoppet/).then(()=>settled=true);
+ await ready;await f.voice.stop();release({close(){closeEntered();return closed;},listen(){assert.fail('stopped connection cannot listen');}});
+ await closing;await new Promise(r=>setImmediate(r));assert.equal(settled,false,'join waits for bounded transport cleanup');
+ rejectClose(new Error('transport cannot confirm closure'));await rejected;
+ assert.equal(f.voice.active,null);assert.deepEqual(f.voice.snapshot().lastClosure,{transport:'unknown',provider:'unknown'});
+});
 test('late join failure and disconnect from an old session cannot close its replacement',async()=>{
  let release,entered,oldOptions,calls=0;
  const ready=new Promise(r=>entered=r),pending=new Promise(r=>release=r);

@@ -19,6 +19,11 @@ test('M11 user examples are everyday requests, not internal contract test cases'
  const card=describeSkill({name:'meal-planning',contract:{examples:[{input:'Syntetisk fixture med credentialtekst'}]}});
  assert.match(card.examples[0],/madplan/);assert.doesNotMatch(card.examples.join(' '),/Syntetisk|fixture|credential/);assert.equal(card.availability.tested,false);
 });
+test('M11 historical procedures are not advertised as ready for new draft trials',()=>{
+ const skill={name:'meal-planning',current:false,version:'1.0.0'},view=describeSkill(skill,{modelConfigured:true});
+ assert.equal(view.availability.available,false);assert.equal(view.availability.status,'historical');assert.match(view.availability.reason,/Eksisterende jobs/);
+ assert.equal(describeSkill({...skill,current:true},{modelConfigured:true}).availability.available,true);
+});
 test('M11 catalog health checks never invoke research and expose failure without raw provider details',async()=>{
  const paths=[];const adapter=createOpenJarvis({env:{OPENJARVIS_ENABLED:'yes',OPENJARVIS_GATEWAY_MODE:'restricted-v1',OPENJARVIS_GATEWAY_TOKEN:'test-credential',OPENJARVIS_GATEWAY_URL:'http://127.0.0.1:18790'},
   control:{controlled:fn=>fn(new AbortController().signal)},fetcher:async url=>{paths.push(new URL(url).pathname);return new Response('private upstream error',{status:502});}});

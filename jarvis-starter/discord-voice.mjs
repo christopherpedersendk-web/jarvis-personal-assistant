@@ -2,6 +2,11 @@ import {randomUUID,createHash} from 'node:crypto';
 const snowflake=value=>/^\d{15,22}$/.test(String(value||''));
 const day=time=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Copenhagen',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(time));
 const configHash=c=>createHash('sha256').update(JSON.stringify([c.enabled,c.token,c.userId,c.guildId,c.configurationRevision||0])).digest('hex');
+async function closeTransport(connection){
+ if(!connection)return 'unknown';let timer;
+ try{await Promise.race([Promise.resolve().then(()=>connection.close()),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('close timeout')),3000);})]);return 'closed';}
+ catch{return 'unknown';}finally{clearTimeout(timer);}
+}
 // One owner, one explicitly selected guild channel, no autojoin/reconnect/replay.
 export class DiscordVoice {
  constructor({state,transact,save,control,config,connect,transcribe,reply,speak,notify,validateTextChannel=async()=>{},now=()=>Date.now(),enabled=false,channelId='',secondsPerSession=300,secondsPerDay=1800}) {
@@ -40,7 +45,7 @@ export class DiscordVoice {
     await this.stop(reason==='decoder_failed'?'decoder_failed':'connection_lost');
     await this.notify(session.textChannelId,'Stemmeforbindelsen er stoppet efter en transport- eller decoderfejl. Der optages ikke mere lyd. Start en ny session, når fejlen er afklaret.').catch(()=>{});
    }});
-   if(this.active!==session){connection.close();throw new Error('Tilslutningen blev stoppet.');}
+   if(this.active!==session){await closeTransport(connection);throw new Error('Tilslutningen blev stoppet.');}
    session.connection=connection;this.assertActive(session.id);
    await this.notify(session.textChannelId,`JARVIS er forbundet til <#${session.channelId}>. Jeg lytter kun til <@${ownerId}>; kun dig og botten må være i kanalen. Svarstemmen er AI-genereret. Skriv !stemme stop for at afbryde.`);
    this.assertActive(session.id);session.status='listening';
@@ -75,9 +80,7 @@ export class DiscordVoice {
   if(!session){await this.transact(['discordVoiceControl'],async()=>{this.state.discordVoiceControl={generation:this.generation};await this.save();});return;}
   session.status='closing';this.control.revoke(session.scope);clearTimeout(session.timer);this.audioAbort?.abort();
   // Revoke and tear down before persistence or notification can block.
-  this.active=null;let closure='unknown',timer;
-  try{if(session.connection){await Promise.race([Promise.resolve(session.connection.close()),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('close timeout')),3000);})]);closure='closed';}}
-  catch{/* No retry: local cancellation is effective, remote closure unconfirmed. */}
-  finally{clearTimeout(timer);await this.transact(['discordVoiceSessions','discordVoiceControl'],async()=>{this.state.discordVoiceControl={generation:this.generation};const e=(this.state.discordVoiceSessions||[]).find(e=>e.id===session.id);if(e){e.status='closed';e.reason=reason;e.transportClosure=closure;e.providerClosure='unknown';}await this.save();});}
+  this.active=null;const closure=await closeTransport(session.connection);
+  await this.transact(['discordVoiceSessions','discordVoiceControl'],async()=>{this.state.discordVoiceControl={generation:this.generation};const e=(this.state.discordVoiceSessions||[]).find(e=>e.id===session.id);if(e){e.status='closed';e.reason=reason;e.transportClosure=closure;e.providerClosure='unknown';}await this.save();});
  }
 }

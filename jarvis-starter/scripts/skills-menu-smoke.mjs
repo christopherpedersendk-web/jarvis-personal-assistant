@@ -26,20 +26,23 @@ try{
    await page.goto(origin+'/?view=settings&section=skills');await page.locator('#settings-skills').waitFor({state:'visible'});
    await page.locator('.catalog-card[data-skill-id="meal-planning"][data-skill-version="1.1.0"]').waitFor();
    assert.equal(await page.locator('#skills-catalog .catalog-card').count(),12);
+   await page.locator('#skills-state').selectOption('historical');assert.equal(await page.locator('#skills-catalog .catalog-card:visible').count(),4);
+   assert.equal(await page.locator('#skills-catalog .catalog-card:visible button:not(:disabled)').count(),0);await page.locator('#skills-state').selectOption('');
    await page.locator('#skills-source').selectOption('openclaw');assert.equal(await page.locator('#skills-catalog .catalog-card:visible').count(),4);
    assert.equal(await page.locator('#skills-catalog .catalog-card:visible button:not(:disabled)').count(),0,'disabled gateway cannot execute/enable skills');
    await page.locator('#skills-source').selectOption('jarvis');await page.locator('#skills-query').fill('Madplan');
    const card=page.locator('[data-skill-id="meal-planning"][data-skill-version="1.1.0"]');
    await card.getByText('Data, rettigheder og tilgængelighed',{exact:true}).click();assert.match(await card.innerText(),/Liveaccept: Ikke dokumenteret/);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'no horizontal document overflow');
-   await page.screenshot({path:`${artifacts}/${name}-${width}.png`,fullPage:true});
+   await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifacts}/${name}-${width}.png`,fullPage:true});
    const before=posts;await card.getByRole('button',{name:'Prøv skill',exact:true}).focus();await page.keyboard.press('Enter');
    await page.locator('#message').waitFor({state:'visible'});assert.match(await page.locator('#message').inputValue(),/^Brug meal-planning version 1.1.0:/);assert.equal(posts,before,'trial only opens unsent draft');
    const draft=await page.locator('#message').inputValue();await page.reload();assert.equal(await page.locator('#message').inputValue(),draft,'draft survives reload');
    await page.locator('a[data-tab="settings"]:visible').first().click();await page.locator('[data-settings-tab="skills"]').click();
    await page.locator('#skills-query').fill('');await page.locator('#skills-source').selectOption('');
    await card.getByRole('button',{name:'Prøv skill',exact:true}).click();assert.match(await card.innerText(),/allerede en kladde/);assert.equal(await page.locator('#message').inputValue(),draft);assert.equal(posts,before);
-   await page.locator('#logout').click();assert.equal(await page.locator('#skills-catalog .catalog-card').count(),0);assert.equal(await page.locator('#skills-query').inputValue(),'');
+   await page.locator('[data-settings-tab="device"]').click();await page.locator('#logout').click();
+   assert.equal(await page.locator('#skills-catalog .catalog-card').count(),0);assert.equal(await page.locator('#skills-query').inputValue(),'');
    report.checks.push({engine:name,version:browser.version(),width,filters:'passed',keyboard:'passed',draft:'passed',logout:'passed',overflow:false});await context.close();
   }
   await browser.close();browser=null;

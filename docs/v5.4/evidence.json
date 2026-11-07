@@ -1,14 +1,14 @@
 {
   "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
   "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
-  "appTree": "1e2ae85e9d92caadc8b16099cc1ab70bcc6bc893",
+  "appTree": "b515b397c97f2c413c6ce563bd3de4f5e42e8331",
   "commitBinding": "PR head whose jarvis-starter tree equals appTree; CI on exact head is authoritative",
   "localTests": {
     "command": "npm test",
-    "passed": 1246,
+    "passed": 1248,
     "failed": 0,
     "skipped": 0,
-    "logSha256": "e4f149cc4238ee6ffdfea70258322f2724dcb33992c08328b845759456f7e763"
+    "logSha256": "335079de9d4c0c463ebbd0c1371d9dcdee7e29bb9cb33b3f2e50b6325e34b6df"
   },
   "localBrowser": {
     "status": "blocked",
@@ -80,5 +80,37 @@
     "high": 0,
     "critical": 0,
     "limitation": "npm bundled glob/minimatch remain affected; direct minimatch pinned to 11.0.1"
+  },
+  "secondCandidate": "42fde6da33ce713f2896d1d0b7b1d6baa6136759",
+  "secondCandidateCI": {
+    "openclaw": {
+      "run": 42343014053,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42343014005,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42343014011,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42343014027,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42343014124,
+      "status": "failed",
+      "reason": "New Skills smoke tried logout without navigating to This device. First Chromium 320px filters, draft creation/reload and overwrite protection passed; full matrix not completed."
+    },
+    "media": {
+      "run": 42343014031,
+      "status": "passed",
+      "image": "sha256:e9fb47ab54e2ad91ef2f70294a2561e71c2c44d91d9dc1921da3fb11fb6b23f1",
+      "decoder": "FFmpeg 9.0.2",
+      "scope": "Actual isolated decoder, synthetic JPEG/PNG/WebP and five MP4/WebM cases; no model quality test"
+    }
   }
 }

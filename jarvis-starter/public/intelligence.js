@@ -273,11 +273,10 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
       if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); openSource(sourceId);
     });
-    disclosure.append(summary, message, body);
+    disclosure.append(summary, triggers, binding,
+      node('span', 'Proceduren giver ingen nye tilladelser, datakilder eller modtagere. Jobbets gennemgåede politik gælder.', 'micro muted'), message, body);
     disclosure.addEventListener('toggle', () => { if (disclosure.open) loadDetail(skill.name, skill.version).catch(() => {}); });
-    card.append(heading, description, triggers, binding,
-      node('span', 'Proceduren giver ingen nye tilladelser, datakilder eller modtagere. Jobbets gennemgåede politik gælder.', 'micro muted'),
-      availability, metadata, trial, disclosure, link, unavailable);
+    card.append(heading, description, availability, metadata, trial, disclosure, link, unavailable);
     card.catalogParts = { heading, description, triggers, binding, unavailable, disclosure, message, body, availability, metadataBody, trial };
     return card;
   }

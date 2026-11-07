@@ -37,3 +37,17 @@ tools 404. Browserisolation, stemmeruntime og eksisterende GUI-forløb bestod.
 Nye medie-/Skills-tests fandt manglende billeddemuxere og en forkert testtekst;
 rettelserne får en ny kandidat. Yderligere review rettede stop under forsinket
 Discord-webtilslutning, med varig generation og UI-regression.
+
+Anden kodekandidat 42fde6da33ce713f2896d1d0b7b1d6baa6136759 bestod den rigtige
+Docker-medieprøve: JPEG/PNG/WebP, fem korte MP4/WebM-forløb, WAV, malformed/for lang
+video, isolation, afbrydelse og ingen efterladte containere. OpenClaw gav igen fem
+kilder. En efterfølgende regression sikrer, at asynkron oprydningsfejl fra en
+forsinket stemmetilslutning afventes og ikke bliver en ubehandlet procesfejl.
+Den samlede lokale suite efter denne rettelse: 1.248 bestået, 0 fejl, 0 sprunget over.
+
+Anden Skills-browserprøve bestod filtre og kladdebeskyttelse på Chromium 320 px,
+men testens logout-trin manglede navigation til “Denne enhed”. Det er rettet uden
+at springe logoutkontrollen over. Historiske versioner kan nu filtreres og kaldes
+ikke fejlagtigt klar til en ny kladde. Hashdetaljer er bevaret i fold-ud-visningen.
+En særskilt CI-prøve venter på en bekræftet startet, syntetisk fastlåst worker før
+stop; den må ikke forveksles med timingbaseret afbrydelse under Docker-opstart.
