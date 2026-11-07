@@ -546,7 +546,7 @@
     "finalSourceSha256": {
       "codex-app-server.mjs": "fb92a9ffe2fbe03ce0f425740f44732d9d5d132a87caa91bee69a27ec634189b",
       "codex-worktree.mjs": "fc0974d70a4587dee2091d2dd3685a3120e4c612b6eed53e4d33e317f3ec2f19",
-      "codex-bridge.mjs": "5656844cd92738330941df40041f09db20dec160ce9933b3a67d36a2b5556d9d",
+      "codex-bridge.mjs": "0d06138ae6ed74f4abb256307985447e5215e2f4e60d4b0a2dd06980666ecd38",
       "codex-bridge-config.mjs": "4a5faf3703f485d7bd561de93831c06cec10b6e57ef341996bc55a19d488896b",
       "self-development-github.mjs": "74268866359e473aceaa58d4dd4166da50a7f2cb874b7f2fe51081c8797df331",
       "self-development-github-cli.mjs": "764a9b5cf35e419e6beaa3f0183cb68b42ae764bd57d0e37c06288d943b94f34",
@@ -555,10 +555,10 @@
       "server.mjs": "924d7ac70004218d567aa2e9c4ae40ec630e85c1dd4877a0eafde7fbcd975bba"
     },
     "focusedLocal": {
-      "newUniqueCases": 35,
+      "newUniqueCases": 36,
       "necessaryExistingRegressionsUniqueCases": 23,
       "scope": "Executed in focused batches as the corresponding code changed. Earlier passing unchanged tests reused. Protocol/Discord/GitHub failure cases are contracts; live evidence is separate.",
-      "additionalFinalRecoveryCheck": "restart preserves stop request and unknown publication; 1 passed, no failures/skips, controller source hash as above",
+      "additionalFinalChecks": "Restart/unknown publication: 1 passed; follow-up shared admission and publication preview: 2 passed, no failures/skips; source hashes as above",
       "ci": "Normal PR workflows required; final head results will be linked in PR #24, not inferred from historical runs."
     },
     "productionActivated": false,
