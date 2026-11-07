@@ -563,5 +563,11 @@
     },
     "productionActivated": false,
     "milestonesClosed": []
+  },
+  "observedInstallation20261107": {
+    "report": "observed-acceptance-2026-11-07.json",
+    "voiceOwnerAcceptance": "Spoken answer received and session stopped; user confirmation in this session",
+    "productionDeploymentInThisTask": false,
+    "milestonesClosed": []
   }
 }

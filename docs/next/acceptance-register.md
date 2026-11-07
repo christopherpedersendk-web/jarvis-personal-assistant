@@ -141,3 +141,15 @@ Grundlag er aktuel main `a0a076018429cb87c8d2a0b4d497b95a8738df16` og uændret s
 | M12/M16 | Broen kan modtage afgrænsede ændringsopgaver til de eksisterende kanal-/opskrifts- og Proshop-moduler. | M12's ejer-/iPhone-/reviewaccept og M16's autentificerede login, adresse, 2900-fragt/levering og fuldt klargjort checkout er fortsat åbne. Ingen nye butikskøb eller Discord REST-prøver i denne leverance. |
 
 36 nye unikke fokuserede lokale tests og 23 nødvendige eksisterende regressioner er fordelt på kildeændringernes kørsler. De sidste genstarts-/adgangsrettelser er verificeret med tre målrettede cases; beståede uændrede tests er genbrugt. Simuleret Discord/GitHub/protokol er adskilt fra den faktiske model/Docker/GitHub-prøve i [revisionsbundet evidens](evidence.json) og [liverapport](codex-bridge-live.json). Ingen hel milestone lukkes. [Drift og aktivering](codex-bridge.md).
+
+## Observeret installation og ejerprøve 2026-11-07
+
+Denne daterede opfølgning opdaterer tidligere installationsbemærkninger; den ændrer ikke M1–M18 eller historiske testrevisioner. [Struktureret evidens](observed-acceptance-2026-11-07.json).
+
+- **M1:** Faktisk krypteret restic-snapshot `6d709c94…` gendannet og verificeret (3.787 filer) i isoleret målmappe. En afledt kopi startede 5.5.2 i netværksløs container med fjernede eksterne credentials og bevarede samlingsantal. Ingen produktionsdata overskrevet. Nye OpenClaw-/Codex-konfigurationers backupdækning og fysisk telefonaccept er særskilte åbne kriterier.
+- **M5:** Ejeren gennemførte prøven i privat JARVIS-stemme og bekræftede: “Jeg fik et talt svar og har stoppet”. Serveren viste efterfølgende afbrudt stemmeforbindelse. Dette er ejeraccept af den konkrete mikrofon-/svar-/stopprøve, ikke bevis for alle fejl-, ressource- eller providerlukningsforløb. Ingen optagelse gemt.
+- **M12:** Effektiv administratorrettighed er bekræftet. Afgrænset REST-prøve bestod navnefortsættelse, godkendt privat oprettelse/omdøbning, isoleret rapportkanalvalg, læsbart svar med pris/link samt sletning og oprydningskontrol. Ingen ekstra gateway-bot. Ejerens opskriftsreview og øvrig telefonaccept er fortsat særskilt.
+- **M17:** Faktisk læsning af Nemlig-kurv gav HTTP 200. Ingen kurvændring eller overførsel udført; den særskilte ejerhandling “Overfør til Nemlig” er ikke accepteret alene ved læseprøven.
+- **M18:** PR #24 er merget med forventet head `908b80d…` som `77e51be…`; de syv eksisterende grønne workflows blev genbrugt, da app/workflow-bytes var identiske. Broen var allerede aktiveret før denne opgave. Ejerens fulde Discord-opgave til draft-PR og uafhængige releasekontroller forbliver særskilte.
+
+OpenClaw 2026.11.1 kører allerede lokalt med særskilt DynamicUser og Node 24.16.0. Installeret Codex er 0.167.0. Den nye opgave har ikke deployet eller aktiveret produktionsfunktioner. Native OpenClaw-shoppingbrowser og selvreleasegodkendelse er fortsat deaktiveret af konkrete isolation-/kontrolårsager.
