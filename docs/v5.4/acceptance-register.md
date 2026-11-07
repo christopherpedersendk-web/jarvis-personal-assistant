@@ -7,7 +7,7 @@ Historiske M1–M10-filer ændres ikke; se [videreførte kriterier](inherited-ac
 | ID | Kriterium | Status | Filer / verifikation | Begrænsning og næste handling |
 |---|---|---|---|---|
 | M11.1 | Ét katalog, filtre, oprindelse, version, årsag til blokering | verificeret | skill-capabilities.mjs, public/intelligence.js; katalog-/HTTP-tests | Ingen faktisk modeltest vises som bestået; sidste live test er ukendt |
-| M11.2 | Mobil/keyboard, prøvekladde uden afsendelse, logout/stale | implementeret men ikke verificeret | scripts/skills-menu-smoke.mjs, gui-visual-smoke.mjs, v5-intelligence-catalog-ui.test.mjs | Lokal Chromium nægtes IPC-socket; CI Chromium/WebKit skal bestå, fysisk iPhone mangler |
+| M11.2 | Mobil/keyboard, prøvekladde uden afsendelse, logout/stale | verificeret | scripts/skills-menu-smoke.mjs; Skills-trin bestod i CI 42344361877 på 07ef694 | Chromium/WebKit ved 320/390/1280 px, filtre, uafsendt kladde, bevaret kladde og logout. Stale dækkes af UI-regression. Fysisk iPhone mangler |
 | M11.3 | Eksakte gamle versioner/hashes og fælles dansk skillvalg | verificeret | skills-registry.mjs, v5-skills-review/v5-settings-http tests | Deterministisk versionsvalg og instruktion; rigtig dansk forståelse følger M10.2 |
 | M11.4 | Modelforståelse og hensigtsbaseret skillvalg | blokeret | selectionGuide; eksisterende 30-opgave-harness | Ingen legitim modelcredential; score=null, not_run |
 | M12.1 | Liste/opret/omdøb/slet/rapportkanal via samme handler | verificeret | discord-channels.mjs, server.mjs; kanaltests | REST-fixtures, ingen virkelig kanalændring |
@@ -21,7 +21,7 @@ Historiske M1–M10-filer ændres ikke; se [videreførte kriterier](inherited-ac
 | M13.4 | Screenshot/kvittering/opskrift/produkt med rigtig model | blokeret | Mediefixtures dækker struktur og kontrol, ikke forståelse | Ingen legitim model-/Discord-adgang; kræver separat ejerprøve |
 | M14.1 | Uploadet MP4/WebM ≤30 MiB/60 s, ≤12 frames, ingen URL/livestream | verificeret | boundary/worker-inspection og fem video-handlercases | Rigtig decoding af syntetiske videoer er separat M13.2/CI |
 | M14.2 | Tidsstempler, delvis lyd, ingen påstand om fuld videogennemgang | verificeret | discord-media.test.mjs, mediaAnalysisRequest | Fem fixtures; ingen rigtig modelscore |
-| M14.3 | Rigtig decoder, afbrydelse og ingen efterladte containere | verificeret | media-isolation.yml; CI 42343014031 på 42fde6d | Rigtig MP4/WebM-dekodning, WAV, >60 s-afvisning og ingen efterladte containere. Ejerhost er separat accept |
+| M14.3 | Rigtig decoder, afbrydelse og ingen efterladte containere | verificeret | media-isolation.yml; CI 42343901837 på f06c9d6 | Rigtig MP4/WebM, WAV, >60 s-afvisning, bekræftet aktiv fastlåst worker og ingen efterladte containere. Ejerhost er separat accept |
 | M14.4 | Faktisk video-/lydforståelse | blokeret | operations.md | Modelcredential og godkendt Discord-testkanal mangler |
 | M7.6 fortsat | Review og patch af relevante advisories | implementeret men ikke verificeret | OpenClaw minimatch override 11.0.1; security-review.md | npm bundler fortsat sårbare glob/minimatch; 34 moderate fund, 0 high/critical i lokal audit |
 | M7.4 gentest | Offentlig research i præcis runtime | verificeret | CI 42343014053 på 42fde6d: rigtig research med fem kilder, 401/404-grænser bestod | Lokal research fejlede SEARCH_FAILED og bevares som separat evidens. Målhost mangler |

@@ -2,7 +2,7 @@
   "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
   "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
   "appTree": "db4044d81401ee5fee8d5c9da82cb04c916f2a67",
-  "commitBinding": "PR head whose jarvis-starter tree equals appTree; CI on exact head is authoritative",
+  "commitBinding": "Documentation-only follow-ups must preserve appTree. The six workflows on the exact final PR HEAD and their candidate-bound artifacts are the final acceptance evidence; intermediate run status here is historical, not a release approval.",
   "localTests": {
     "command": "npm test",
     "passed": 1248,
@@ -130,5 +130,37 @@
     "run": 42344131207,
     "status": "failed",
     "reason": "Official FFmpeg detached signature GET timed out before compilation; no verification bypass. Follow-up bounds connect timeout and two transient public-GET retries."
+  },
+  "codeCandidate": "07ef694b05d7134ccd39c5844f7d84c862bd9e03",
+  "codeCandidateCI": {
+    "openclaw": {
+      "run": 42344361863,
+      "status": "passed",
+      "sources": 5
+    },
+    "browserIsolation": {
+      "run": 42344361897,
+      "status": "passed"
+    },
+    "voice": {
+      "run": 42344361827,
+      "status": "passed"
+    },
+    "v5Regression": {
+      "run": 42344361828,
+      "status": "passed"
+    },
+    "gui": {
+      "run": 42344361877,
+      "skillsStep": "passed",
+      "unitTests": 1248,
+      "status": "in_progress at evidence update",
+      "scope": "Chromium/WebKit 320,390,1280px; full legacy matrix also required"
+    },
+    "media": {
+      "run": 42344361902,
+      "attempt1": "failed: official signing-key GET timeout then TLS connection reset before compilation",
+      "attempt2": "in_progress at evidence update"
+    }
   }
 }

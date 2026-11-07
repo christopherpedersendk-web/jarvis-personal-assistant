@@ -63,3 +63,8 @@ FFmpeg-signaturfil før kompilering. Build-GETs har nu connect-timeout og højst
 genforsøg; eksakt SHA og signatur er fortsat obligatoriske. Discords mediestatus
 vises nu på dansk, inklusive delvist og ukendt udfald. Ingen model-/handlingsretry
 er tilføjet. Den aktuelle kode afventer samlet CI; 1.248 lokale tests består.
+
+Skills-trinnet på kodekandidat 07ef694b05d7134ccd39c5844f7d84c862bd9e03 er
+verificeret i CI 42344361877 på Chromium/WebKit, 320/390/1280 px: filtre, historiske
+versioner, keyboard, uafsendt kladde, genindlæsning, ingen overskrivning og logout.
+Åbne livekrav er uændrede. Se handoff.md for ejerprøve og tilbageførsel.
