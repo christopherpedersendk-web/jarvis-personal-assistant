@@ -188,7 +188,7 @@ function shoppingBasisView(basis) {
 function planView(plan, detail = false) {
   const out = fields(plan, ['id', 'revision', 'status', 'startDate', 'createdAt', 'updatedAt', 'needsReview', 'householdStale', 'profileStale', 'recipeStale', 'staleReason', 'budgetTargetDkk', 'variation', 'shoppingRevision', 'shoppingGeneratedAt', 'shoppingNeedsReview']);
   out.dishes = list(plan.dishes).slice(0, 7).map(dish => ({
-    ...fields(dish, ['date', 'recipeId', 'title', 'minutes', 'diet', 'theme', 'servings', 'adults', 'skip', 'householdConfirmed', 'attendanceSource', 'busyDay', 'outcome', 'outcomeAt', 'cuisine', 'method']),
+    ...fields(dish, ['date', 'recipeId', 'title', 'minutes', 'diet', 'theme', 'servings', 'adults', 'skip', 'householdConfirmed', 'attendanceSource', 'busyDay', 'outcome', 'outcomeRecordedAt', 'outcomeSource', 'cuisine', 'method']),
     children: list(dish.children).slice(0, 24).map(child => fields(child, ['age', 'portion'])),
     ...(detail ? { ingredients: list(dish.ingredients).slice(0, 60).map(ingredientView),
       reasons: list(dish.reasons).slice(0, 5).map(reason => text(reason, 240)), sourceRefs: list(dish.sourceRefs).slice(0, 6).map(sourceView) } : {}),

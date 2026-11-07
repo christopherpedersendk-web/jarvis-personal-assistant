@@ -279,3 +279,18 @@ test('explicit web chat address review avoids model/history and saves exactly on
  await f.request('/api/message',{message:'!stamdata godkend '+id});assert.equal((await f.request('/api/master-data')).body.masterData.revision,1);
  assert.equal(JSON.stringify((await f.request('/api/state')).body.history).includes('!stamdata'),false);
 });
+
+test('commerce and self-development routes require owner auth and remain disabled without configuration',async t=>{
+ const f=await fixture(t);
+ for(const path of ['/api/master-data','/api/commerce','/api/self-development']){
+  assert.equal((await f.request(path,undefined,{authorized:false})).status,401);
+  assert.equal((await f.request(path,{}, {authorized:false})).status,401);
+ }
+ const commerce=await f.request('/api/commerce'),dev=await f.request('/api/self-development');
+ assert.equal(commerce.body.status.enabled,false);assert.equal(commerce.body.status.browserWritesEnabled,false);assert.equal(commerce.body.status.paymentInitiationEnabled,false);
+ assert.equal(dev.body.status.enabled,false);assert.equal(dev.body.status.automaticDeployment,false);
+ assert.equal((await f.request('/api/commerce',{})).status,400);
+ assert.equal((await f.request('/api/commerce/read',{url:'https://www.proshop.dk/test',store:'proshop'})).status,400);
+ assert.equal((await f.request('/api/self-development',{file:'jarvis-starter/meal-variety.mjs',request:'Synthetic',version:'5.4.1'})).status,400);
+ assert.equal(f.logs().includes('SYNTHETIC_NETWORK_BLOCK'),false);
+});

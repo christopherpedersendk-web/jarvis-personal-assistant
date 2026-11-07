@@ -1,13 +1,14 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {rejectSecrets} from './privacy.mjs';
 const plain=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function keys(x,allowed){if(!plain(x)||Object.keys(x).some(k=>!allowed.includes(k)))throw new Error('Uventede stamdatafelter. Betalingsoplysninger og credentials må ikke gemmes her.');}
-function text(x,max,required=true){if(typeof x!=='string'||x.length>max||/[\x00-\x1f\x7f]/u.test(x)||required&&!x.trim())throw new Error('Et stamdatafelt mangler eller er ugyldigt.');return x.trim();}
+function text(x,max,required=true){if(typeof x!=='string'||x.length>max||/[\x00-\x1f\x7f]/u.test(x)||required&&!x.trim())throw new Error('Et stamdatafelt mangler eller er ugyldigt.');rejectSecrets(x);if(/(?:\d[ -]?){16,19}/u.test(x))throw new Error('Betalingskortnumre må ikke gemmes i stamdata.');return x.trim();}
 function address(x){keys(x,['street','postalCode','city','country']);const a={street:text(x.street,160),postalCode:text(x.postalCode,20),city:text(x.city,100),country:text(x.country,2).toUpperCase()};if(!/^[A-Z]{2}$/.test(a.country))throw new Error('Land skal være en landekode på to bogstaver.');return a;}
 export const emptyMasterData=()=>({revision:0,profiles:[],defaultProfileId:null,history:[]});
 export function replaceMasterData(current,input,now=new Date().toISOString()){
  keys(input,['expectedRevision','profiles','defaultProfileId']);if(input.expectedRevision!==current.revision)throw Object.assign(new Error('Stamdata er ændret. Hent den aktuelle revision før du gemmer.'),{status:409});
  if(!Array.isArray(input.profiles)||input.profiles.length>8)throw new Error('Højst otte adresseprofiler.');
- const profiles=input.profiles.map(p=>{keys(p,['id','label','name','phone','email','delivery','billing']);const id=text(p.id,60);if(!/^[a-zA-Z0-9-]+$/.test(id))throw new Error('Ugyldigt profil-ID.');const email=text(p.email,254);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Ugyldig e-mail.');const phone=text(p.phone,30);if(!/^\+?[\d ()-]{6,30}$/.test(phone))throw new Error('Ugyldigt telefonnummer.');return {id,label:text(p.label,60),name:text(p.name,100),phone,email,delivery:address(p.delivery),billing:p.billing===null?null:address(p.billing)};});
+ const profiles=input.profiles.map(p=>{keys(p,['id','label','name','phone','email','delivery','billing']);const id=text(p.id,60);if(!/^[a-zA-Z0-9-]+$/.test(id))throw new Error('Ugyldigt profil-ID.');const email=text(p.email,254);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Ugyldig e-mail.');const phone=text(p.phone,30);if(!/^\+?[\d ()-]{6,30}$/.test(phone)||phone.replace(/\D/g,'').length>15)throw new Error('Ugyldigt telefonnummer.');return {id,label:text(p.label,60),name:text(p.name,100),phone,email,delivery:address(p.delivery),billing:p.billing===null?null:address(p.billing)};});
  if(new Set(profiles.map(p=>p.id)).size!==profiles.length)throw new Error('Profil-ID må kun forekomme én gang.');
  if(input.defaultProfileId!==null&&!profiles.some(p=>p.id===input.defaultProfileId))throw new Error('Vælg en eksisterende standardadresse eller intet standardvalg.');
  return {revision:current.revision+1,profiles,defaultProfileId:input.defaultProfileId,history:[...(current.history||[]),{revision:current.revision+1,at:now,operation:'explicit_replace',profileCount:profiles.length}].slice(-100)};

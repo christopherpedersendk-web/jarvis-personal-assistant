@@ -31,7 +31,7 @@ OFF som standard. `JARVIS_SELF_DEVELOPMENT=yes` kræver separat `JARVIS_DEV_GITH
 
 UI: Indstillinger → System → Selvudvikling. Kun meal-variety.mjs/shopping-search-list.mjs, næste patchversion, højst tre opgaver/dag UTC og én samtidig. Tests i eksisterende Docker-sandbox, ingen host-kørsel af modelkode. Kun en draft-PR oprettes. Testcredential må ikke kobles til produktionsudrulning.
 
-`JARVIS_SELF_RELEASE_APPROVAL=yes` er en separat beslutning. Agenten må efter ejerens mandat godkende sin egen kandidat, men kun præcis SHA/version/diff med alle seks historisk krævede workflows, alle krævede checks og checket `independent-security-review` fra GitHub Actions. Sidstnævnte check er endnu ikke konfigureret i repository; godkendelse forbliver derfor afvist. Reviewudsteder og branch protection skal være uafhængige af udviklingstokenet. SHA-ændring, udløb, manglende/faldende checks eller utilgængelig verifikation gør lagret godkendelse ugyldig. Ingen automatisk merge, tag eller deploy.
+`JARVIS_SELF_RELEASE_APPROVAL=yes` er en separat beslutning. Agenten må efter ejerens mandat godkende sin egen kandidat, men kun præcis SHA/version/diff med alle seks historisk krævede workflows, alle krævede checks og checket `independent-security-review` fra GitHub Actions. Sidstnævnte check er endnu ikke konfigureret i repository; godkendelse forbliver derfor afvist. Reviewudsteder og branch protection skal være uafhængige af udviklingstokenet. Stop/resume ugyldiggør godkendelsens generation permanent. SHA-ændring, udløb, manglende/faldende checks eller utilgængelig verifikation gør lagret godkendelse ugyldig. Ingen automatisk merge, tag eller deploy.
 
 ## Ressourcer
 

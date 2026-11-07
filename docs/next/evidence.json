@@ -37,15 +37,22 @@
       "modelEvaluation": false
     },
     "fullRegression": {
-      "passed": 1279,
+      "passed": 1282,
       "failed": 0,
       "skipped": 0,
       "command": "npm test",
-      "log": "next-full-tests3.log",
-      "scope": "candidate source working tree before documentation-only update; exact tree will be verified by CI"
+      "log": "next-full-tests4.log",
+      "scope": "latest source working tree; exact tree verified by CI"
     },
     "browserUI": "pending CI; local installed Chromium launch denied by host IPC permissions; pinned browser download also failed",
-    "dockerRepair": "pending CI; local Docker CLI unavailable"
+    "dockerRepair": "pending CI; local Docker CLI unavailable",
+    "postCheckpointFocused": {
+      "masterDataAndChannelTestsPassed": 35,
+      "routeAuthTestsPassed": 13,
+      "approvalStopTestsPassed": 7,
+      "overlap": "counts overlap; do not add",
+      "nativeContractBounded": "passed; same assertions, cold tool registry deadline 30s"
+    }
   },
   "notPerformed": [
     "live owner Discord channels",
@@ -70,6 +77,19 @@
       "failed": 1,
       "total": 1274,
       "resolution": "HTTP fixture readiness now checks its own authenticated settings, not an unrelated health responder; focused reproduction passed"
+    }
+  ],
+  "ciCheckpoints": [
+    {
+      "candidate": "5b8c4f671675f92aca7c659801b514de3a5897ee",
+      "run": 42359288984,
+      "isolatedSelfDevelopment": "passed",
+      "scope": "actual Docker runner with synthetic defect/model and simulated GitHub publication",
+      "openClawBrowserContract": "config/auth/profile passed; generic-tool cold initialization exceeded 2s probe timeout; bounded 30s probe prepared",
+      "mediaRun": 42359289116,
+      "media": "source archive fetched; detached signature download reset/timed out before build; no verification bypass",
+      "guiRun": 42359288816,
+      "gui": "1,279 unit tests and existing full browser matrix passed; new commerce smoke stopped at ambiguous test navigation selector (link/button). Locator narrowed to settings button; no assertion removed."
     }
   ]
 }

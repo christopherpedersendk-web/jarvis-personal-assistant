@@ -8,7 +8,7 @@ Kontroller:
 - Adressefingerprint og global arkivrevision bindes til ordreforslaget med variant, sælger, beløb, fragt, valuta, betalingsmetode, provider-generation og udløb. Enhver relevant ændring/restart/stop afviser gammel overdragelse. Samtidige dubletter giver højst én overdragelse. Ingen eksterne writes eksisterer i denne lane.
 - Offentlig produktlæser er særskilt opt-in og fast origin/profil/API. Ukendt åbning/lukning giver fejl; ingen automatisk retry/fallback. Webindhold er kun tekstdata og bliver ikke opgaveautoritet eller stamdata. Native OpenClaw SSRF-indstillinger erstatter ikke netværksisolation; egressaccept mangler, funktionen skal forblive OFF indtil faktisk hosttest.
 - Selvudvikling henter kun public repo-filer, ikke ejerdata/hukommelse. Modelkode køres kun i eksisterende Docker-sandbox uden netværk. Én af to filstier må ændres; packageversion ændres deterministisk uden dependencies/scripts/schema. Workflows, agent, policy, tests og produktionsinstallation kan ikke vælges som mål. GitHub-transporten tillader kun ny agentgren og draft-PR, aldrig main/merge/release/deploy. Unknown kan ikke genstartes automatisk.
-- Agentgodkendelse er særskilt OFF og revalideres mod præcis SHA/version/CI/security. Et dokument eller en model kan ikke udstede security-check. Uafhængigt beskyttet review og token/branch protection mangler faktisk installationsaccept. Der er ingen automatisk deploymentslutning, som kan stole blindt på journalens approval.
+- Agentgodkendelse er særskilt OFF og revalideres mod præcis SHA/version/CI/security. Globalt stop binder godkendelser til en gammel generation, også efter resume. Et dokument eller en model kan ikke udstede security-check. Uafhængigt beskyttet review og token/branch protection mangler faktisk installationsaccept. Der er ingen automatisk deploymentslutning, som kan stole blindt på journalens approval.
 
 Regressioner bevarer forkert ejer, replay, ændrede parametre, revisionskonflikter, credentials/protectedfields, redirect, cleanup, stop/restart, forbudte kodefiler og manglende CI/security. Modellens forståelse, rigtig Discord/voice, merchantflow, livecheckout og faktisk isolation er ikke dokumenteret af disse fixtures.
 
@@ -21,3 +21,5 @@ Regressioner bevarer forkert ejer, replay, ændrede parametre, revisionskonflikt
 - Opskriftsresearch peger på https://www.arla.dk/opskrifter/ , https://www.valdemarsro.dk/ og https://madensverden.dk/ . Ingen automatisk kopiering af hele sites eller paywalladgang.
 
 Releasens historiske sikkerhedsgrænser i docs/v5.2–v5.4 består. Login, kurv, bindende ordre og betalingsinitiering kræver nyt snævert skriverettighedsreview og særskilt ejerinstruktion før rigtige transaktioner.
+
+FFmpeg-verifikationsnøglen er nu fastlåst fra FFmpeg/web og kontrolleret mod den eksisterende officielle fingerprint; se media-runtime/signing-key-provenance.md. Signaturdownload er fortsat obligatorisk. Der er ikke erstattet med en ubekræftet systemdecoder.
