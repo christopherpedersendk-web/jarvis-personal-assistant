@@ -99,3 +99,9 @@ M16/præsentation: Discord-levering omskriver Markdown-tabeller til poster med f
 19 fokuserede tests bestået, nul fejl/skips; server syntakskontrolleret. Tests bruger simuleret Discord-transport og sendte ingen beskeder. Præcise kodehashes i evidence.json. Ingen hel milestone lukkes.
 
 Kurv/checkout-afslaget på billedet afspejler en reel åben M16.4-funktion, som denne routing-/formateringsrettelse ikke implementerer. Målhostens version/flag/rettigheder er stadig uverificeret. Ret kode før separat installationsbeslutning; ingen deployment eller ny release i denne opfølgning.
+
+## M13/M17 — vedhæftet opskriftsbillede uden tekst
+
+Yderligere ejerscreenshot viser “Generel medieanalyse er deaktiveret”. Det er en featuretilstand, ikke bevis for decoderfejl. Svaret er ændret til konkret vejledning: vedhæft billedet igen med “Gem opskrift:” i samme besked (PNG/JPEG/WebP, højst 2 MB) for det eksisterende separate opskriftsindtag. Automatisk udtræk loves ikke; kladden kræver gennemgang. En efterfølgende løs tekstbesked genbruger ikke en tidligere vedhæftning.
+
+Ingen medieflag er aktiveret, og ingen automatisk indholdsklassifikation eller gemning er tilføjet. To nye lokale tests bekræfter vejledning uden hentning/dekodning/model/lagring og bevaret ejer-/stopkontrol. Tidligere 19 PR-tests er ikke genkørt. Ingen liveaccept eller deployment; M13/M17 er fortsat åbne.

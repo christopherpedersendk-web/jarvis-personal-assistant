@@ -308,5 +308,18 @@
     "liveChannelAcceptance": "not_run",
     "checkout": "not_implemented",
     "ci": "[skip ci]; no full-suite repetition or new CI success claimed"
+  },
+  "discordMediaGuidance": {
+    "base": "3c8a8b10bef3d2bc50714efce864996f4b5daeea",
+    "command": "node --test test/discord-media-guidance.test.mjs",
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Disabled media response and preserved authorization/stop checks; no download, decode, model or persistence. Previous 19 tests not repeated; their source files unchanged.",
+    "sourceHashes": {
+      "jarvis-starter/discord-media.mjs": "38db85edcaff420364495afe72f0c62f3b490742326904d291081a39370aacac",
+      "jarvis-starter/test/discord-media-guidance.test.mjs": "16a9614e301da92a35ca95b3a6ff406ed0a2cca0cef06a1535771c5e20dfaf69"
+    },
+    "liveAcceptance": "not_run"
   }
 }

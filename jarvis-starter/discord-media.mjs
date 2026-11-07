@@ -38,7 +38,7 @@ export class DiscordMedia {
  async stop(){const active=this.active;if(!active)return;this.control.revoke(active.scope);active.abort.abort();await this.update(active.id,{status:active.providerStarted?'unknown':'stopped',reason:'owner_stop'});}
  async analyze(question,meta){
   const scope=this.control.current(),basis=configHash(this.config());this.authorize(meta,scope,basis);
-  if(!this.enabled)return 'Generel medieanalyse er deaktiveret. Tekstchat og eksplicit opskriftsindtag fungerer fortsat.';
+  if(!this.enabled)return 'Jeg har ikke analyseret eller gemt vedhæftningen, fordi generel medieanalyse er slået fra. Hvis du vil gemme et opskriftsbillede, så vedhæft det igen og skriv “Gem opskrift:” i samme besked (PNG, JPEG eller WebP, højst 2 MB). Det bruger den separate Opskriftsindbakke; automatisk udtræk er ikke garanteret, og kladden skal gennemgås før brug i madplanen. En tekstbesked alene henter ikke den tidligere vedhæftning. Hvis du kun vil have billedet forklaret, kræver det særskilt aktivering af medieanalyse.';
   if(meta.mediaError)return meta.mediaError;
   if(!String(question||'').trim())return 'Hvad vil du have undersøgt i billedet eller videoen? Upload det igen med dit spørgsmål. Intet er analyseret eller gemt.';
   if(typeof question!=='string'||question.length>5000)return 'Forkort spørgsmålet til højst 5.000 tegn.';
@@ -95,3 +95,4 @@ export class DiscordMedia {
   }finally{if(this.active===active)this.active=null;}
  }
 }
+
