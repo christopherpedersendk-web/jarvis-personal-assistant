@@ -5,6 +5,8 @@ const fail = message => Object.assign(new Error(message), { code: 'DISCORD_CHANN
 export function discordChannelCommand(message) {
  const text=String(message||'').trim().replace(/^(?:kan du |vil du |jarvis[, ]+)(?:venligst )?/iu,'').replace(/ venligst[.!?]?$/iu,'');
  if(/^!kanal(?:\s|$)/iu.test(text))return text;
+ // Capability questions have no name yet. Do not invent one or call the model.
+ if(/^opret(?:te)? (?:en )?(?:privat )?(?:discord[- ]?)?(?:tekst)?kanal(?: på discord)?[.!?]?$/iu.test(text))return '!kanal hjælp';
  if(/^(?:vis|list) (?:mine |vores )?(?:discord[- ]?)?kanaler[.!?]?$/iu.test(text))return '!kanal liste';
  let m=/^opret(?:te)? (?:en )?(?:privat )?(?:discord[- ]?)?(?:tekst)?kanal (?:(?:med navnet|der hedder|som hedder) )?([a-z0-9æøå-]{1,100})[.!]?$/iu.exec(text);
  if(m)return '!kanal opret '+m[1].toLocaleLowerCase('da');
@@ -14,6 +16,12 @@ export function discordChannelCommand(message) {
  return m?'!kanal rapport '+m[1]:null;
 }
 const reviewedContent=r=>hash([r.action,r.target,r.payload,r.owner,r.guild,r.channel,r.basis,r.scope,r.boot,r.expires]);
+// Only fixed, controller-owned diagnostics may be sent directly to Discord.
+export async function discordChannelReply(controller,message,metadata){
+ const command=discordChannelCommand(message);if(!command)return null;
+ try{return await controller.command(command,metadata);}
+ catch(error){if(error.code==='DISCORD_CHANNEL_REVIEW')return error.message;throw error;}
+}
 // Only explicit owner commands enter this controller. No model gets execute authority.
 export class DiscordChannels {
   constructor({state,transact,save,control,config,enabled=false,voiceChannelId='',selectReportChannel,fetcher=fetch,now=()=>Date.now()}) {
@@ -51,6 +59,7 @@ export class DiscordChannels {
   async command(message,meta){
     const c=this.auth(meta),scope=this.control.current();
     message=discordChannelCommand(message)||message;
+    if(message.trim()==='!kanal hjælp')return 'Kanalstyring er konfigureret, men Discord-rettighederne er endnu ikke kontrolleret. Hvad skal den private tekstkanal hedde? Skriv fx “Opret en privat kanal madplan”. Jeg viser et forslag, som du skal godkende her, før kanalen oprettes. Ingen kanal er oprettet.';
     if(message.trim()==='!kanal liste'){
       const list=await this.api(`/guilds/${c.guildId}/channels`,'GET',c,scope);
       if(!Array.isArray(list))throw fail('Ugyldig kanalliste.');
@@ -143,3 +152,4 @@ export class DiscordChannels {
     }
   }
 }
+

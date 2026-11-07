@@ -4,7 +4,7 @@ import {Commerce,STORES} from './commerce.mjs';
 import {createOpenClawBrowserReader} from './openclaw-browser-reader.mjs';
 import {emptyMasterData,replaceMasterData,MasterDataReviews} from './master-data.mjs';
 import { describeSkill } from './skill-capabilities.mjs';
-import { DiscordChannels, discordChannelCommand } from './discord-channels.mjs';
+import { DiscordChannels, discordChannelReply } from './discord-channels.mjs';
 import { BrowserResearch } from './browser-research.mjs';
 import { DiscordVoice } from './discord-voice.mjs';
 import { createDiscordAudio } from './discord-audio.mjs';
@@ -818,8 +818,8 @@ const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUn
     }
     return 'Brug !medie status eller !medie stop. Upload et billede eller en video med dit spørgsmål.';
   }
-  const channelCommand=discordChannelCommand(message);
-  if (channelCommand) return discordChannels.command(channelCommand, metadata);
+  const channelAnswer=await discordChannelReply(discordChannels,message,metadata);
+  if (channelAnswer!==null) return channelAnswer;
   if(/^!stemme(?:\s|$)/i.test(message)) {
     const command=message.trim().toLocaleLowerCase('da');
     if(command==='!stemme stop'){await discordVoice.stop();return 'Discord-stemmen er stoppet lokalt. Afslutning af eventuelle allerede sendte providerkald er ikke bekræftet.';}
@@ -1877,4 +1877,5 @@ async function checkForUpdates() {
 const updateTimer = setInterval(checkForUpdates, 6 * 60 * 60_000);
 updateTimer.unref?.();
 setTimeout(checkForUpdates, 60_000).unref?.();
+
 

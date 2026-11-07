@@ -9,6 +9,7 @@ import { discordMediaMetadata } from './discord-media-boundary.mjs';
 import { atomicStateWrite } from './state-schema.mjs';
 import { BoundedJobQueue } from './bounded-queue.mjs';
 import { redactSecrets } from './privacy.mjs';
+import { formatDiscordTables } from './discord-format.mjs';
 const DM_INTENTS = (1 << 12);
 const GUILD_INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
 const SNOWFLAKE = /^\d{15,22}$/;
@@ -520,7 +521,7 @@ export class DiscordGateway {
     if (!SNOWFLAKE.test(String(channelId || '')))
       throw discordError('DISCORD_CHANNEL_INVALID', 'Ugyldig Discord-kanal.', { deliveryNotAttempted: true });
     const token = this.config.token;
-    let safeText = redactSecrets(String(text || ''), [token]);
+    let safeText = formatDiscordTables(redactSecrets(String(text || ''), [token]));
     if (safeText.length > MAX_REPLY_LENGTH)
       safeText = `${safeText.slice(0, MAX_REPLY_LENGTH - 65)}\nSvaret er forkortet. Se resten i JARVIS.`;
     if (!safeText.trim()) throw discordError('DISCORD_EMPTY_REPLY', 'Assistenten returnerede intet svar.', { deliveryNotAttempted: true });
@@ -880,3 +881,4 @@ export class DiscordGateway {
     return operation;
   }
 }
+

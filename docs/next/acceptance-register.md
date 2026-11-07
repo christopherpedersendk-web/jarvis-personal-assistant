@@ -87,3 +87,15 @@ De tidligere målhost- og ejerprøver ovenfor er udestående acceptkrav, ikke de
 ## Staging-sammenlægning
 
 Ejer har efter udviklingsleverancen autoriseret merge og staging-release. PR #9, #20 og #21 er merget; versionen klargøres som 5.5.0, schema 1/readableFrom 0. De tidligere formuleringer om ingen merge/release beskriver det oprindelige udviklingsmandat. Ingen nye hele milestones lukkes. Se [samlet staging-evidens og begrænsninger](../releases/v5.5.0-staging.md). Ingen deployment eller produktionsaktivering.
+
+## Discord-ejerfund 2026-11-07 — M12/M16
+
+Ejerens screenshots viser et generisk afslag på “Kan du oprette en kanal på discord?” og en rå Markdown-tabel ved produktsammenligning. Livebotversionen kan ikke udledes af billedet. Koden på main 14292e2 havde en reproducerbar routingmangel: kanalforespørgsler uden navn faldt gennem til modellen.
+
+M12: forespørgslen går nu til eksisterende kanalcontroller. Ved gyldig opsætning spørges der efter navn, uden API-kald eller oprettelse. Ved manglende aktivering/Server ID gives konkret konfigurationsdiagnose. Controllerens faste fejl vises direkte; uventede fejl går stadig til eksisterende sikker fejlbehandling. Ejer/server/review/stop/engangsforbrug er bevaret. Dette er lokalt verificeret, ikke faktisk kanaloprettelse i ejerens guild.
+
+M16/præsentation: Discord-levering omskriver Markdown-tabeller til poster med feltnavne og bevarede links, beløb og leveringsoplysninger. Redaction, længdegrænse og mention-suppression bevares. Ingen ny påstand om korrekt livepris eller lager.
+
+19 fokuserede tests bestået, nul fejl/skips; server syntakskontrolleret. Tests bruger simuleret Discord-transport og sendte ingen beskeder. Præcise kodehashes i evidence.json. Ingen hel milestone lukkes.
+
+Kurv/checkout-afslaget på billedet afspejler en reel åben M16.4-funktion, som denne routing-/formateringsrettelse ikke implementerer. Målhostens version/flag/rettigheder er stadig uverificeret. Ret kode før separat installationsbeslutning; ingen deployment eller ny release i denne opfølgning.

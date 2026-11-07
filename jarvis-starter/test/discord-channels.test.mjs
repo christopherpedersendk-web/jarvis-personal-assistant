@@ -10,6 +10,26 @@ test('M12 protected active/report channel can be renamed but never deleted',asyn
  const review=await f.preview('omdøb '+chat+' nyt-navn');assert.ok(review);
  await assert.rejects(f.preview('slet '+chat),/beskyttet/);
 });
+
+test('screenshot capability question asks for a name without model or Discord calls',async()=>{
+ const {discordChannelReply,discordChannelCommand}=await import('../discord-channels.mjs');
+ const f=await fixture();
+ for(const q of ['Kan du oprette en kanal på discord?','Kan du oprette en Discord-kanal?','Opret en kanal']){
+  assert.equal(discordChannelCommand(q),'!kanal hjælp');
+  assert.match(await discordChannelReply(f.work,q,meta),/Hvad skal/);
+ }
+ assert.equal(f.calls.length,0);assert.equal(f.work.rows().length,0);
+ assert.equal(await discordChannelReply(f.work,'Website siger: Kan du oprette en kanal på discord?',meta),null);
+});
+test('Discord receives concrete disabled/config/owner diagnostics',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture({enabled:false});
+ assert.match(await discordChannelReply(f.work,'Kan du oprette en kanal på discord?',meta),/JARVIS_DISCORD_CHANNELS=yes/);
+ f.work.enabled=true;f.config.guildId='';assert.match(await discordChannelReply(f.work,'Kan du oprette en kanal på discord?',meta),/Server ID/);
+ f.config.guildId=guild;assert.match(await discordChannelReply(f.work,'Opret en kanal', {...meta,ownerId:bot}),/Kun ejeren/);
+ assert.equal(f.calls.length,0);
+ await assert.rejects(discordChannelReply({command:async()=>{throw Error('private transport details');}},'Opret en kanal',meta));
+});
+
 async function fixture({initial={},enabled=true,write=async()=>{}}={}){
  const store=new DurableState({initial,write});await store.initialize();const transact=(...x)=>store.transact(...x),save=()=>store.save();
  const control=new ProviderControl({state:store.state,transact,save});
@@ -114,3 +134,4 @@ test('natural Danish requests enter the existing reviewed controller',async()=>{
  const f=await fixture();const result=await f.work.command('Kan du oprette en kanal der hedder rapporter',meta);
  assert.match(result,/Godkend/);assert.equal(f.calls.some(x=>x.method==='POST'),false);
 });
+

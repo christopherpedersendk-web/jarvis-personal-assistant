@@ -287,5 +287,26 @@
     "fullCandidateCI": "not_run",
     "deployment": "not_performed",
     "publication": "Prepared; final tag/release state must be verified in GitHub."
+  },
+  "discordScreenshotFollowup": {
+    "base": "14292e2338de2e18699c8910d342d71c88e88c77",
+    "command": "node --test test/discord-channels.test.mjs test/discord-format.test.mjs",
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "syntax": "node --check server.mjs",
+    "sourceHashes": {
+      "jarvis-starter/discord-channels.mjs": "7fcbe905e26cbfd8863b938b4187e74e02d314549850bac79986134dffa96687",
+      "jarvis-starter/discord-format.mjs": "86c3396875b3d1162a9cf4a584904ba1dbe384c8c685f273926bddea07ad25c4",
+      "jarvis-starter/discord-gateway.mjs": "f2c80bf5a09c88d374be26497c04821ba2e25034e59a09843827d4ed0395e693",
+      "jarvis-starter/server.mjs": "c4c48e845f5c26262f13452af25884b6fad5be76251ada174b7083d81c1a6781",
+      "jarvis-starter/test/discord-channels.test.mjs": "4f23542b41746e86b9c31270c6a16e5820cce3094814b0cd72d5c24bbbec0d33",
+      "jarvis-starter/test/discord-format.test.mjs": "a16ff1b46436e08432b9b68a95c0984f9498bbe7af57c803c1a560279b1e0f03"
+    },
+    "scope": "Real local controller/sendReply code with simulated Discord transport; exact screenshot phrase and table shape covered. No Discord messages sent.",
+    "liveBotVersion": "unknown",
+    "liveChannelAcceptance": "not_run",
+    "checkout": "not_implemented",
+    "ci": "[skip ci]; no full-suite repetition or new CI success claimed"
   }
 }
