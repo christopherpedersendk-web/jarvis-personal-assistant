@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-07T20:24:42.490Z",
+  "status": "passed",
+  "fixCommit": "e07c21105f6491fdfd8a6bd512475c12b29009e6",
+  "originalJobId": "75f302d8",
+  "baseSha": "b62fc27a6ca9e74a71ab0ccc9c6cd7bb3336dc32",
+  "testPath": "jarvis-starter/test/codex-task-75f302d8-026f-4ac9-84dc-58a5622a3161.test.mjs",
+  "testFileSha256": "ec86b6d9248a49fe705abbbf515f8db2e7e287726ac6cf03f8f6a302d78cb861",
+  "testedDiffHash": "e1334d76b41e6f4527bd10a237a10d258c4ea809d456250963f7cad90c5e8a5d",
+  "oldFailureReproducedBeforeRunner": true,
+  "actualNetworklessDocker": "passed",
+  "protectedCanonicalContract": "codex-bridge.fixture.test.mjs",
+  "sourceHashes": {
+    "codex-worktree.mjs": "357b2072882a02fccd19dfadda4f22f4dbbd9d36625c6974fa7a81ee0802461c",
+    "codex-bridge.mjs": "249eb51ee81f5ef4f1dd97510e56b123ab03704161e6ac825201846dabf3e60e"
+  },
+  "scope": "Exact owner-generated test bytes/path and base reproduced in separate repository/worktree; new protected test selection runs actual Docker. Original production job, approvals, receipts and worktree untouched; no publication and no completed owner-to-PR acceptance."
+}

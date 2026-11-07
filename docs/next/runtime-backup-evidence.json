@@ -1,0 +1,57 @@
+{
+  "at": "2026-11-07",
+  "sourceCommit": "b164c27aa3aff950877843877bcef7d60fc16765",
+  "codeTestedCommit": "71866514889c4f5e4743044b5f0cf10c7eddd4ea",
+  "focusedLocal": {
+    "newCases": 3,
+    "necessaryExistingRegression": 1,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "environment": "networkless read-only non-root container; synthetic files only"
+  },
+  "actualRestic": {
+    "snapshot": "032d93821c5b81938ee1839ded826a281c3276a17c9acfbdde157e60ed3a9d6a",
+    "snapshotAt": "2026-11-07T20:14:29.221128569Z",
+    "filesVerified": 707,
+    "bytesProcessed": 10358875,
+    "encryptedExistingLocalRepository": true,
+    "restoredToNewPrivateTarget": true,
+    "targetMode": "0700",
+    "checkedCredentialModes": [
+      "0600",
+      "0600",
+      "0600"
+    ],
+    "selectedConfigurationByteComparison": "passed; no secret hashes or values published",
+    "includes": [
+      "OpenClaw credential and unit",
+      "Codex runtime and source repository",
+      "Codex source auth",
+      "existing typed GitHub CLI credential",
+      "JARVIS integration env and private settings",
+      "installation provenance"
+    ],
+    "productionStopped": false,
+    "productionFilesOverwritten": false,
+    "servicesStartedFromRestore": false,
+    "automaticBackupPolicyChanged": false
+  },
+  "earlierScope": {
+    "snapshot": "87d0f07b81ede287414be5db50f338eea0157cac23fe800eea7e606c6ad44f2a",
+    "filesVerified": 704,
+    "runtimeAndSourceDirectoriesComparedBeforeOwnerTask": "no differences; later owner task legitimately changes original worktree"
+  },
+  "limits": [
+    "Actual restic probe uses existing trusted restic, not the new offline bundle against live writers.",
+    "New selected-file bundle behavior tested on synthetic quiescent data.",
+    "Not an atomic offline snapshot of all active app data; regular backup policy and full cold-start/physical-mobile acceptance remain separate.",
+    "Absolute worktree/service paths require isolated review before restore activation."
+  ],
+  "milestonesClosed": [],
+  "sourceHashes": {
+    "scripts/backup-bundle.mjs": "baae414cb25b12100474d826a702148700b3e46fb73db0e036dba2f303356900",
+    "test/backup-bundle.test.mjs": "4feb7ca346d674508669996cff588d706dbc380173abe973e5e067d4926aead6",
+    "deployment/backup/runtime-mapping.example.json": "8774eb174e43be8f22a8885822f89859687eb5a3f4d3025210136640baf578c1"
+  }
+}

@@ -1,23 +1,36 @@
-import {mkdir,readFile,writeFile,lstat,realpath} from 'node:fs/promises';
-import {resolve,join,dirname} from 'node:path';
+import {mkdir,readFile,writeFile,lstat,realpath,open,chmod} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {resolve,join,dirname,isAbsolute} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {offlineSnapshot} from './offline-snapshot.mjs';
 import {verifyRestoredData,dataManifest} from './verify-restored-data.mjs';
 const role=/^[a-z][a-z0-9-]{0,39}$/;
 function roots(value){
- if(!Array.isArray(value)||!value.length||value.length>20||new Set(value.map(r=>r.id)).size!==value.length||value.some(r=>!role.test(r.id)||typeof r.directory!=='string'||!Array.isArray(r.required)||r.required.some(p=>typeof p!=='string'||p.startsWith('/')||p.split('/').some(x=>x==='..'||x==='.'))))throw new Error('Ugyldigt backupkort. Angiv id, directory og required for hver rod.');
+ const selectedValid=r=>Array.isArray(r.selectedFiles)&&r.selectedFiles.length>0&&r.selectedFiles.length<=30&&r.directory===undefined&&new Set(r.selectedFiles.map(x=>x?.name)).size===r.selectedFiles.length&&r.selectedFiles.every(x=>x&&typeof x.source==='string'&&isAbsolute(x.source)&&resolve(x.source)===x.source&&typeof x.name==='string'&&/^[a-zA-Z0-9._-]{1,100}$/.test(x.name)&&!['.','..'].includes(x.name));
+ if(!Array.isArray(value)||!value.length||value.length>20||new Set(value.map(r=>r?.id)).size!==value.length||value.some(r=>!r||!role.test(r.id)||!(typeof r.directory==='string'&&r.selectedFiles===undefined||selectedValid(r))||!Array.isArray(r.required)||r.required.some(p=>typeof p!=='string'||p.startsWith('/')||p.split('/').some(x=>x==='..'||x==='.'))))throw new Error('Ugyldigt backupkort. Angiv id, directory eller selectedFiles og required for hver rod.');
  for(const id of ['data','configuration'])if(!value.some(r=>r.id===id))throw new Error('Backupkortet skal omfatte data og configuration. Tilføj alle eksterne projektmapper særskilt.');
  return value;
 }
+async function selectedSnapshot(item,target){
+ await mkdir(target,{mode:0o700});
+ for(const entry of item.selectedFiles){
+  if(await realpath(entry.source)!==entry.source)throw new Error('Symlink i valgt konfigurationsfil.');
+  const handle=await open(entry.source,constants.O_RDONLY|constants.O_NOFOLLOW);let bytes;
+  try{const stat=await handle.stat();if(!stat.isFile()||stat.size>2000000)throw new Error('Kun afgrænsede regulære konfigurationsfiler.');bytes=await handle.readFile();const after=await handle.stat(),pathStat=await lstat(entry.source);if(after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||pathStat.ino!==stat.ino||pathStat.isSymbolicLink())throw new Error('Konfigurationsfilen ændrede sig under backup.');const to=join(target,entry.name);await writeFile(to,bytes,{flag:'wx',mode:stat.mode&0o700});await chmod(to,stat.mode&0o700);
+  }finally{bytes?.fill(0);await handle.close();}
+ }
+ const files=await dataManifest(target);if(item.required.some(name=>!files.some(f=>f.path===name)))throw new Error('En krævet valgt konfigurationsfil mangler.');
+}
+
 export async function createBackupBundle(mapping,destination,{quiescent=false}={}){
  if(!quiescent)throw new Error('Stop service og alle skrivere først.');
  const input=roots(mapping.roots);destination=resolve(destination);
  if(await realpath(dirname(destination))!==dirname(destination))throw new Error('Symlink i destinationen.');
  await mkdir(destination,{mode:0o700});
  const report={format:1,at:new Date().toISOString(),quiescence:'operator_asserted',complete:false,roots:[]};
- for(const item of input){const source=resolve(item.directory),target=join(destination,item.id);
-  await offlineSnapshot(source,target,{quiescent:true,required:item.required});
-  report.roots.push({id:item.id,originalDirectory:source,required:item.required,files:await dataManifest(target)});
+ for(const item of input){const target=join(destination,item.id);
+  if(item.selectedFiles)await selectedSnapshot(item,target);else await offlineSnapshot(resolve(item.directory),target,{quiescent:true,required:item.required});
+  report.roots.push({id:item.id,...(item.selectedFiles?{originalFiles:item.selectedFiles}:{originalDirectory:resolve(item.directory)}),required:item.required,files:await dataManifest(target)});
  }
  report.complete=true;await writeFile(join(destination,'manifest.json'),JSON.stringify(report,null,2),{mode:0o600,flag:'wx'});return {complete:true,roots:report.roots.map(x=>x.id),scope:'Offline named roots, including settings and explicit project/config directories. No service start or encryption.'};
 }
