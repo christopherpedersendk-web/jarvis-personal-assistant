@@ -10,7 +10,7 @@ Alle åbne M1–M14-kriterier og deres betydninger videreføres uændret fra [v5
 | M12.3 faktisk opret/omdøb/slet/rapportkanal | blokeret | Ingen godkendt testguild/botadgang i miljøet; fixture er ikke livebevis | Ejerprøve i særskilt server, Manage Channels uden Administrator |
 | M15.1 stamdata/revision/sletning | verificeret | master-data.mjs, v5-settings-http.test.mjs: samtidige ændringer, 0600, restart, ingen data i state/logs | UI-accept og faktisk installationsbackup |
 | M15.2 chat/DΜ-review | verificeret | Samme saveMasterData, bruger/kanal/generation/configuration-revision, 2 min engangsreview; HTTP-regression | Live DM-prøve; almindelig prosa gemmes ikke automatisk |
-| M15.3 browser-UI/logout | implementeret men ikke verificeret | public/master-data.js, scripts/commerce-ui-smoke.mjs; lokal browserinstallation forsøgt men launch nægtet af værtsmiljøet | Kandidatbundet Chromium/WebKit-CI; fysisk iPhone særskilt |
+| M15.3 browser-UI/logout | verificeret | public/master-data.js, scripts/commerce-ui-smoke.mjs; CI på f1c26ae5: Chromium/WebKit 320/390/1280, konflikt bevaret, logout/overflow bestået; se evidence.json | Præsentationsopfølgning kræver ny kandidat-CI; fysisk iPhone særskilt |
 | M16.1 ordregrundlag/manual handoff | verificeret | commerce.mjs/test: variant/sælger/pris/adresse/hash/revision/udløb/stop/restart/dubletter | UI og ejerprøve uden køb |
 | M16.2 rigtig OpenClaw kontrolkontrakt | verificeret | Pinned 2026.11.1, commerce-browser-config.mjs, openclaw-browser-contract.mjs; native config/auth/status/tool-deny bestået lokalt | Gentag i kandidatens CI; ingen merchant/Chrome bekræftet |
 | M16.3 offentlig produktlæsning/containment | implementeret men ikke verificeret | openclaw-browser-reader.mjs; fixture for faste endpoints/profil/redirect/cleanup; særskilt runtimeattestation | Godkendt isoleret host, Chrome og egressprøver før opt-in |
@@ -27,3 +27,5 @@ Alle åbne M1–M14-kriterier og deres betydninger videreføres uændret fra [v5
 | M18.5 deployment | blokeret | Ingen ny automatisk deployment eller produktionsaktivering i mandatet | Ejerbeslutning, særskilt tjeneste, backup/health/rollbackprøve |
 
 M1 restore/fysisk mobil, M2 faktisk providerstop, M3 faktisk gateway/research, M5 rigtig voice og M6/M10 mindst 30 modelopgaver er fortsat åbne på de historiske betingelser. Ingen score er opfundet. Smart Home afventer lokal agent; kalenderwrite og rigtige køb er ikke aktiveret.
+
+Supplerende buildblokering: medie-decoderens obligatoriske FFmpeg source/signature-download fejlede også i run 42359891574 (TLS reset/timeouts). Faktisk decodercontainment blev derfor ikke kørt på den kandidat. Ingen produktions-/releaseaccept uden en vellykket signaturverificeret build og containmentprøve.

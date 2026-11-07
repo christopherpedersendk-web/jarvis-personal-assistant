@@ -90,6 +90,42 @@
       "media": "source archive fetched; detached signature download reset/timed out before build; no verification bypass",
       "guiRun": 42359288816,
       "gui": "1,279 unit tests and existing full browser matrix passed; new commerce smoke stopped at ambiguous test navigation selector (link/button). Locator narrowed to settings button; no assertion removed."
+    },
+    {
+      "candidate": "f1c26ae566695be888dc5b35b6024929373c6dec",
+      "commerceRun": 42359891610,
+      "nativeContract": "passed",
+      "realDockerRepair": "passed with simulated model and GitHub",
+      "guiRun": 42359891670,
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0
+      },
+      "newCommerceUI": {
+        "artifactId": 13568659590,
+        "sha256": "50efff9d0218a1a1b2845ee71593633a2f94caba6972163b06c0499cca026b87",
+        "status": "passed",
+        "engines": [
+          "Chromium 156.0.8078.80",
+          "WebKit 27.2"
+        ],
+        "widths": [
+          320,
+          390,
+          1280
+        ],
+        "checks": [
+          "private profile",
+          "conflict preserves draft",
+          "manual handoff",
+          "disabled development",
+          "logout",
+          "no overflow"
+        ],
+        "visualReview": "forms functional; follow-up aligns spacing/check labels/buttons with existing UI"
+      },
+      "mediaRun": 42359891574,
+      "media": "upstream source/signature TLS reset/timeouts before compilation; remains blocked, no check disabled"
     }
   ]
 }
