@@ -1,0 +1,29 @@
+{
+  "baseCommit": "7758d9491105c06792ae8f22831609017c633d7c",
+  "command": "JARVIS_TEST_JSDOM=/tmp/jarvis-ui-test/node_modules/jsdom node --test jarvis-starter/scripts/verify-workspace.cjs",
+  "environment": {
+    "node": "24.22.1",
+    "jsdom": "31.0.0"
+  },
+  "result": {
+    "tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "scope": "DOM integration against actual isolated local backend; no model or external integrations",
+  "visualVerified": false,
+  "screenshots": [],
+  "files": {
+    "jarvis-starter/public/index.html": "c2ce1f93d1291e27c981072d0044805025f11a5bf4552a230c880ce832525302",
+    "jarvis-starter/public/gui-navigation.js": "8886fc2075d7791d44b8988a2ccc1ecd1c2e4c2455777cdf5b194a45ea0b1e27",
+    "jarvis-starter/public/app.js": "2b6323cfeebb35b31168464276e34be146376d7b5ba7d462b9c06b2b93ab5c77",
+    "jarvis-starter/public/commerce.js": "b3a5d30251658710dc8de09479e3280417894ebbb4caab5f7977a6af86bfb873",
+    "jarvis-starter/public/self-development.js": "90934cc6f2d024128f639bbaaa32ae1e1d1809e61b1538f4db378440a0f57ba7",
+    "jarvis-starter/public/workspace.js": "9aa364f3419c95c8e85ec43f58b4763c8c4f52247bab5f1ab75c0f4fa7f0a8f5",
+    "jarvis-starter/public/workspace.css": "170f570d4eee936f13fbb69df15fba9bd0bd3860f8f3aec71270480d84d73800",
+    "jarvis-starter/server.mjs": "073c26ed2322720db72405c8a72d79eee5da6f1ba02e0c09254af53078d9d429",
+    "jarvis-starter/scripts/verify-workspace.cjs": "78793cb31cfb823f1ea0524d927c2515cc4e884a379b23c4ad3ddb44a49b4a8d",
+    "docs/gui/command-workspace/README.md": "d99a7f26451244f43f9cb43e01546b5a6515f5c911871384176a1e8016e5f862"
+  }
+}

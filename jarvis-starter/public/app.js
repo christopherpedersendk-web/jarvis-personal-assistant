@@ -200,6 +200,7 @@ function renderOverview(state) {
   const scheduled = summary.scheduledCount ?? (state.tasks || []).filter(x => x.status === 'scheduled').length;
   const latest = summary.latestTask ?? (state.tasks || []).flatMap(t => (t.runs || []).map(r => ({ title: t.title, ...r })))
     .sort((a, b) => b.at.localeCompare(a.at))[0];
+  if ($('workspace-activity')) $('workspace-activity').textContent = `${running} arbejder · ${scheduled} planlagt · ${approvals} afventer godkendelse`;
   const root = $('home-overview');
   root.replaceChildren();
   for (const [title, value, tab] of [['Nye beskeder', inbox, 'secretary'], ['Afventer godkendelse', approvals, 'secretary'], ['Aktive opgaver', `${running} kører · ${scheduled} planlagt`, 'tasks'], ['Kodeprojekter', summary.projectCount ?? (state.projects || []).length, 'projects']]) {
@@ -751,3 +752,4 @@ $('discord-create-report-channel').addEventListener('click', async () => {
   } catch (error) { $('discord-status').textContent = error.message; }
   finally { button.disabled = false; }
 });
+

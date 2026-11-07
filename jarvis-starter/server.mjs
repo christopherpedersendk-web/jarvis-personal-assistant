@@ -1835,7 +1835,7 @@ async function route(req, res) {
   files['/v5-projects.js'] = 'v5-projects.js';
   files['/settings-drafts.js'] = 'settings-drafts.js';
   files['/chat-draft.js'] = 'chat-draft.js';
-  for (const asset of ['gui-navigation.js', 'gui-shell.js', 'gui-watches.js', 'gui-today.js', 'gui-calendar.js', 'gui.css']) files[`/${asset}`] = asset;
+  for (const asset of ['gui-navigation.js', 'gui-shell.js', 'gui-watches.js', 'gui-today.js', 'gui-calendar.js', 'gui.css', 'workspace.js', 'workspace.css']) files[`/${asset}`] = asset;
   const file = files[path];
   if (!file) return json(res, 404, { error: 'Siden findes ikke.' });
   const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';
@@ -1892,5 +1892,6 @@ async function checkForUpdates() {
 const updateTimer = setInterval(checkForUpdates, 6 * 60 * 60_000);
 updateTimer.unref?.();
 setTimeout(checkForUpdates, 60_000).unref?.();
+
 
 
