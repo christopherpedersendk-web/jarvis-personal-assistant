@@ -21,7 +21,7 @@ export class CodexBridge{
   if(row&&(row.ownerId!==meta.ownerId||row.channelId!==meta.channelId||row.guildId!==(meta.guildId||'')||row.configurationBasis!==basis(c)))throw Error('Brug opgavens oprindelige ejer/kanal; konfigurationen må ikke være ændret.');
   if(effect)this.control.assertAllowed();return c;
  }
- async record(id,patch){return this.transact(['selfDevelopmentJobs'],async()=>{const row=this.rows().find(x=>x.id===id);if(!row)throw Error('Udviklingsopgaven mangler.');Object.assign(row,patch,{updatedAt:new Date(this.now()).toISOString(),revision:row.revision+1});await this.save();return structuredClone(row);});}
+ async record(id,patch){return this.transact(['selfDevelopmentJobs'],async()=>{const row=this.rows().find(x=>x.id===id);if(!row)throw Error('Udviklingsopgaven mangler.');if(row.status==='stop_requested'&&patch.status){if(['queued','starting','running','waiting_approval'].includes(patch.status))return structuredClone(row);if(patch.status==='unknown')patch={...patch,status:'stop_requested'};}Object.assign(row,patch,{updatedAt:new Date(this.now()).toISOString(),revision:row.revision+1});await this.save();return structuredClone(row);});}
  async recover(){
   await this.transact(['selfDevelopmentJobs'],async()=>{for(const row of this.rows()){
    if(active.has(row.status)&&row.status!=='stop_requested')row.status='unknown';
@@ -74,7 +74,7 @@ export class CodexBridge{
   let row=this.check(id);if(resume)await this.client.resume(row.threadId,row.worktree);this.check(id);
   const runtime=this.runtime.get(id)||{tools:0};runtime.interrupted=false;this.runtime.set(id,runtime);
   await this.record(id,{status:'running',previousTurnId:row.turnId||null,turnId:null,pendingApproval:null,latestProgress:'Codex arbejder i den isolerede udviklingsmappe.'});
-  const result=await this.client.turn(row.threadId,prompt);const current=this.get(id);if(!result.turn?.id)throw Error('Codex-turnens udfald er ukendt.');
+  this.check(id);const result=await this.client.turn(row.threadId,prompt);const current=this.get(id);if(!result.turn?.id)throw Error('Codex-turnens udfald er ukendt.');
   if(!current.turnId)await this.record(id,{turnId:result.turn.id});
  }
  async follow(id,prompt,meta){
@@ -91,8 +91,8 @@ export class CodexBridge{
    return this.get(row.id);
   }finally{this.operations.delete(row.id);}
  }
- async stop(id,meta){const row=this.get(id);if(meta)this.auth(meta,row);if(meta&&!await this.claimCommand(row,meta,'stop'))return this.get(row.id);
-  if(['completed','failed','draft_pr','stopped'].includes(row.status))return row;
+ async stop(id,meta){let row=this.get(id);if(meta)this.auth(meta,row);if(meta&&!await this.claimCommand(row,meta,'stop'))return this.get(row.id);
+  row=this.get(row.id);if(['completed','failed','draft_pr','stopped'].includes(row.status))return row;
   await this.record(row.id,{status:'stop_requested',stopRequestedAt:new Date(this.now()).toISOString(),pendingApproval:null,latestProgress:'Stop er anmodet. Afventer Codex og eventuel Docker-testoprydning.'});
   for(const [key,p]of this.approvals)if(p.jobId===row.id){p.resolve(this.denial(p.method));this.approvals.delete(key);}
   const runtime=this.runtime.get(row.id);
@@ -109,10 +109,11 @@ export class CodexBridge{
  }}
  async event(method,p){
   const row=this.rows().find(r=>r.threadId===p.threadId);if(!row)return;
-  if(p.turnId&&row.turnId&&p.turnId!==row.turnId)return;
+  if(p.turnId&&((row.turnId&&p.turnId!==row.turnId)||(!row.turnId&&p.turnId===row.previousTurnId)))return;
   if(method==='turn/started'&&p.turn?.id!==row.previousTurnId&&!row.turnId&&['running','stop_requested'].includes(row.status))await this.record(row.id,{turnId:p.turn.id});
   if(method==='item/completed'&&p.item?.type==='agentMessage')await this.record(row.id,{codexSummary:clean(this.client.clean(p.item.text))});
   if(method==='turn/completed'){
+   if(!['running','waiting_approval','stop_requested'].includes(row.status)||!row.turnId&&p.turn?.id===row.previousTurnId)return;
    const status=p.turn?.status;if(!['completed','interrupted','failed'].includes(status))return;
    if(row.turnId&&p.turn.id!==row.turnId)return;
    if(status==='interrupted'){const rt=this.runtime.get(row.id)||{};rt.interrupted=true;this.runtime.set(row.id,rt);if(row.status!=='stop_requested')await this.record(row.id,{status:'stop_requested'});await this.settleStop(row.id);return;}
@@ -127,8 +128,8 @@ export class CodexBridge{
   if(!['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput'].includes(method))throw Error('Protokolhandlingen er ikke tilladt.');
   if(row.status==='stop_requested')return this.denial(method);
   const id=randomUUID(),pending={id,kind:method==='item/tool/requestUserInput'?'input':'codex_scope',method,boot:this.boot,codeRevision:row.codeRevision,expires:this.now()+300000,questions:(p.questions||[]).slice(0,3).map(q=>({id:q.id,text:clean(this.client.clean(q.question||q.header))}))};
-  await this.record(row.id,{status:'waiting_approval',pendingApproval:pending,latestProgress:pending.kind==='input'?'Codex afventer dit svar.':'Codex har bedt om rettigheder uden for den afgrænsede udviklingsprofil. Adgang udvides ikke automatisk.'});await this.announce(row.id);
-  return new Promise(resolve=>{const timer=setTimeout(()=>{this.approvals.delete(id);this.record(row.id,{status:'running',pendingApproval:null,latestProgress:'Forespørgslen udløb og blev afvist.'}).catch(()=>{});resolve(this.denial(method));},300000);timer.unref?.();this.approvals.set(id,{jobId:row.id,method,rpcId,p,resolve:value=>{clearTimeout(timer);resolve(value);}});});
+  const waiting=await this.record(row.id,{status:'waiting_approval',pendingApproval:pending,latestProgress:pending.kind==='input'?'Codex afventer dit svar.':'Codex har bedt om rettigheder uden for den afgrænsede udviklingsprofil. Adgang udvides ikke automatisk.'});if(waiting.status!=='waiting_approval')return this.denial(method);await this.announce(row.id);
+  return new Promise(resolve=>{const timer=setTimeout(()=>{this.approvals.delete(id);if(this.get(row.id).pendingApproval?.id===id)this.record(row.id,{status:'running',pendingApproval:null,latestProgress:'Forespørgslen udløb og blev afvist.'}).catch(()=>{});resolve(this.denial(method));},300000);timer.unref?.();this.approvals.set(id,{jobId:row.id,method,rpcId,p,resolve:value=>{clearTimeout(timer);resolve(value);}});});
  }
  async decision(id,reviewId,accept,meta,text){const row=this.get(id);this.auth(meta,row,{effect:accept});const review=row.pendingApproval;
   if(!review||review.id!==reviewId||review.boot!==this.boot||review.expires<=this.now()||review.codeRevision!==row.codeRevision)throw Error('Godkendelsen er udløbet, ændret eller stammer fra en tidligere proces.');
@@ -165,7 +166,7 @@ export class CodexBridge{
  }
  async changes(id,meta){const row=this.get(id);this.auth(meta,row);if(!row.worktree)return 'Arbejdsmappe er endnu ikke oprettet.';const change=await this.workspace.changes(row);return `Opgave ${row.id.slice(0,8)} · ændringer\n${change.summary}\nDiffhash: ${change.hash.slice(0,16)}\nTests: ${row.test?.status||'ikke kørt'}${row.test?.contentHash===change.hash?' på dette diff':' — intet aktuelt bestået testbevis'}.`;}
  async previewPublication(id,meta){const row=this.get(id);this.auth(meta,row,{effect:true});if(!await this.claimCommand(row,meta,'publication-preview'))return this.get(row.id);
-  if(row.status!=='completed'||!this.github)throw Error('En afsluttet opgave og separat GitHub-transport kræves.');const change=await this.workspace.changes(row);
+  if(row.status!=='completed'||!this.github)throw Error('En afsluttet opgave og separat GitHub-transport kræves.');await this.workspace.initialize();const change=await this.workspace.changes(row);
   if(!change.files.length||row.test?.status!=='passed'||row.test.contentHash!==change.hash)throw Error('Det præcise aktuelle diff mangler beståede beskyttede Docker-tests.');
   const review={id:randomUUID(),kind:'publish',codeRevision:row.codeRevision,diffHash:change.hash,baseSha:row.baseSha,boot:this.boot,expires:this.now()+120000};return this.record(row.id,{pendingApproval:review,latestProgress:'Gennemgå ændringerne. Godkend kun en draft-PR på dette præcise diff; ingen merge/release/deployment.'});
  }

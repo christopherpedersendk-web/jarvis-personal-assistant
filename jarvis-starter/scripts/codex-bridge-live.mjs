@@ -7,8 +7,9 @@ const [repository,baseRef,binary,authSource]=args.slice(1,5);if(![repository,bas
 const publishIndex=args.indexOf('--publish-root'),root=publishIndex>=0?args[publishIndex+1]:await mkdtemp('/tmp/jarvis-codex-live-');
 const sourceRoot=fileURLToPath(new URL('../../',import.meta.url));const reportPath=join(root,'report.json');let initial={};try{initial=JSON.parse(await readFile(join(root,'jobs.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
 const report=publishIndex>=0?JSON.parse(await readFile(reportPath,'utf8')):{at:new Date().toISOString(),root,codeHashes:{},cases:[],scope:'real installed Codex and Docker; direct Danish Discord route with synthetic owner metadata, no actual bot connection'};
-for(const f of ['codex-app-server.mjs','codex-worktree.mjs','codex-bridge.mjs','self-development-github.mjs','self-development-github-cli.mjs'])report.codeHashes[f]=createHash('sha256').update(await readFile(join(sourceRoot,'jarvis-starter',f))).digest('hex');
-const config={enabled:true,token:'synthetic-no-bot-connection',userId:'11111111111111111',guildId:'22222222222222222'};let counter=44444444444444444n;
+const manifest=publishIndex>=0?(report.publicationCodeHashes={}):report.codeHashes;
+for(const f of ['codex-app-server.mjs','codex-worktree.mjs','codex-bridge.mjs','self-development-github.mjs','self-development-github-cli.mjs'])manifest[f]=createHash('sha256').update(await readFile(join(sourceRoot,'jarvis-starter',f))).digest('hex');
+const config={enabled:true,token:'synthetic-no-bot-connection',userId:'11111111111111111',guildId:'22222222222222222'};let counter=(initial.selfDevelopmentJobs||[]).flatMap(r=>(r.commands||[]).map(c=>BigInt(c.id))).reduce((a,b)=>a>b?a:b,44444444444444444n)+100n;
 const meta=()=>({ownerId:config.userId,guildId:config.guildId,channelId:'33333333333333333',messageId:String(++counter)});
 const home=join(root,'codex-home');await prepareCodexHome({directory:home,authSource:resolve(authSource)});
 let bridge,store;const make=async(initial)=>{
