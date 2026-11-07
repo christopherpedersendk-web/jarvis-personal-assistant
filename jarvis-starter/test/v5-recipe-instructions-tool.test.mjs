@@ -1,4 +1,4 @@
-import {discordChannelCommand} from '../discord-channels.mjs';
+import {discordChannelReply} from '../discord-channels.mjs';
 import { invokeControlledTool } from '../controlled-tool.mjs';
 import { assistantTools, voiceExtraTools, validateAssistantTool } from '../assistant-tools.mjs';
 import { secretaryTools, secretaryWrites } from '../secretary-tools.mjs';
@@ -181,7 +181,7 @@ function textDispatcher(f, recipeId) {
     chatWorkQueue: { enqueue: (label, run) => ({ promise: run() }) },
     addMessage: async (role, text, channel) => { history.push({ role, text, channel }); },
     DiscordGateway: class { constructor(options) { this.onMessage = options.onMessage; } },
-    discordChannelCommand, isRecipeCaptureRequest: () => false, recipeCaptureInput: forbidden, recipes: f.recipes,
+    discordChannelReply, discordChannels:{}, isRecipeCaptureRequest: () => false, recipeCaptureInput: forbidden, recipes: f.recipes,
   });
   return { ...dispatch, requests, history, channels };
 }

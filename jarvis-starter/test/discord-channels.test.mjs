@@ -168,3 +168,9 @@ test('write rejection retains concrete permission diagnosis and prohibits retrie
  await assert.rejects(f.confirm(id),/403.*Manage Channels.*ukendt/s);
  assert.equal(f.work.rows()[0].status,'unknown');await assert.rejects(f.confirm(id));
 });
+test('unavailable Discord runtime yields fixed actionable diagnosis without raw transport data',async()=>{
+ const {discordChannelReply}=await import('../discord-channels.mjs');const f=await fixture();
+ f.work.fetcher=async()=>{throw Error('private transport secret');};
+ const answer=await discordChannelReply(f.work,'Vis mine Discord kanaler',meta);
+ assert.match(answer,/botruntime og netværk/);assert.doesNotMatch(answer,/private transport/);assert.equal(f.work.rows().length,0);
+});

@@ -60,7 +60,10 @@ export class DiscordChannels {
       const reader=response.body.getReader();let size=0;const parts=[];
       try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1000000)throw fail('Discord-svaret er for stort.');parts.push(value);}}finally{await reader.cancel();}
       return JSON.parse(Buffer.concat(parts).toString('utf8'));
-    },scope);
+    },scope).catch(error=>{
+      if(['DISCORD_CHANNEL_REVIEW','ASSISTANT_STOPPED'].includes(error.code))throw error;
+      throw fail('Discord-forbindelsen eller svaret kunne ikke verificeres. Kontrollér botruntime og netværk. Intet automatisk genforsøg.');
+    });
   }
   channel(c,meta,target,protect=true){
     if(!target || !snow(target.id) || target.guild_id!==c.guildId || target.type!==0)throw fail('Kun tekstkanaler i den valgte server kan vælges.');
