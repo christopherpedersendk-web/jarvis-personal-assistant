@@ -2,6 +2,13 @@ import {openJarvisDiagnostics} from './openjarvis-diagnostics.mjs';
 import { boundedJson, localEndpoint, OpenJarvisError } from './openjarvis-transport.mjs';
 import { rejectSecrets, redactSecrets, containsSecret } from './privacy.mjs';
 
+function sourceTitle(value, fallback, secrets) {
+  // OpenClaw wraps untrusted search titles. Remove only the display envelope;
+  // the original result remains explicitly untrusted in the model input.
+  const raw=String(value || fallback);
+  const wrapped=/^\s*<<<EXTERNAL_UNTRUSTED_CONTENT id="([a-f0-9]+)">>>\s*Source: Web Search\s*---\s*([\s\S]*?)\s*<<<END_EXTERNAL_UNTRUSTED_CONTENT id="\1">>>\s*$/u.exec(raw);
+  return redactSecrets(wrapped ? wrapped[2] : raw, secrets).replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,240) || fallback;
+}
 export function openJarvisSources(result, secrets = []) {
   const sources = [], seen = new Set();
   const visit = (value, depth = 0) => {
@@ -16,7 +23,7 @@ export function openJarvisSources(result, secrets = []) {
             url.href.length <= 4096 && !sensitiveParameter && !containsSecret(decoded) &&
             !secrets.some(secret => secret && decoded.includes(secret)) && !seen.has(url.href)) {
           seen.add(url.href);
-          sources.push({ url: url.href, title: redactSecrets(String(value.title || url.hostname), secrets).slice(0, 240) });
+          sources.push({ url: url.href, title: sourceTitle(value.title, url.hostname, secrets) });
         }
       } catch { /* Invalid source is not a link. */ }
     }

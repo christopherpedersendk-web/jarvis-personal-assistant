@@ -1,0 +1,100 @@
+{
+  "at": "2026-11-07T18:35:24.341Z",
+  "sourceCommit": "dc72800dc5e8de428166a11e8c7aa92d9d746b76",
+  "health": {
+    "contractVersion": 1,
+    "runtimeVersion": "2026.11.1",
+    "tools": [
+      "web_search"
+    ],
+    "status": "ready"
+  },
+  "direct": {
+    "status": 200,
+    "query": "OpenClaw browser SSRF isolation official documentation",
+    "sources": [
+      {
+        "url": "https://docs.openclaw.ai/tools/browser/configuration.md",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"17b3d7f25396a89e\">>>\nSource: Web Search\n---\nBrowser configuration\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"17b3d7f25396a89e\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/browser/configuration",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"e2087a0757550e9e\">>>\nSource: Web Search\n---\nBrowser configuration\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"e2087a0757550e9e\">>>"
+      },
+      {
+        "url": "http://docs.openclaw.ai/tools/browser/troubleshooting",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"09087f063f20fa86\">>>\nSource: Web Search\n---\nBrowser troubleshooting\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"09087f063f20fa86\">>>"
+      },
+      {
+        "url": "http://docs.openclaw.ai/tools/browser/security",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"40d5f5abec19409f\">>>\nSource: Web Search\n---\nBrowser security\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"40d5f5abec19409f\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.ai/gateway/security/browser-control",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"d968cfc1009dc251\">>>\nSource: Web Search\n---\nBrowser control risks\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"d968cfc1009dc251\">>>"
+      }
+    ]
+  },
+  "adapter": {
+    "status": "completed",
+    "sources": [
+      {
+        "url": "https://docs.openclaw.kr/tools/web",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"9cac93ff9fc1ff3c\">>>\nSource: Web Search\n---\nWeb Search - OpenClaw\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"9cac93ff9fc1ff3c\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/web.md",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"b3cd32fe9d607d26\">>>\nSource: Web Search\n---\ndocs.openclaw.ai\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"b3cd32fe9d607d26\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/web",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"abe5b8997507b60a\">>>\nSource: Web Search\n---\nWeb search\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"abe5b8997507b60a\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.kr/tools/gemini-search",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"81f465b5443fe167\">>>\nSource: Web Search\n---\nGemini Search - OpenClaw\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"81f465b5443fe167\">>>"
+      },
+      {
+        "url": "https://docs.openclaw.ai/tools/tavily",
+        "title": "\n<<<EXTERNAL_UNTRUSTED_CONTENT id=\"2eb4d4d8f8d362e4\">>>\nSource: Web Search\n---\nTavily - OpenClaw\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id=\"2eb4d4d8f8d362e4\">>>"
+      }
+    ],
+    "usage": {
+      "requests": 1,
+      "inputTokens": null,
+      "outputTokens": null,
+      "cost": null,
+      "measurement": "requests-only"
+    }
+  },
+  "rejected": [
+    {
+      "tool": "exec",
+      "status": 403
+    },
+    {
+      "tool": "browser",
+      "status": 403
+    },
+    {
+      "tool": "web_fetch",
+      "status": 403
+    },
+    {
+      "tool": "cron",
+      "status": 403
+    },
+    {
+      "tool": "sessions_spawn",
+      "status": 403
+    }
+  ],
+  "invalidCredentialStatus": 401,
+  "sourceHashes": {
+    "openjarvis.mjs": "bb937c2879e2e93dfd8e8be689597157c07d87af2e1bac4bc137ce56e7f5d639",
+    "openjarvis-transport.mjs": "18e990a5d8a0f1db1393eb5004d46653a40504fc1ecb55132ccfd0dccf8b5b5b",
+    "openclaw-runtime/gateway.mjs": "3019f503d4930c663a55faa7c01c7d0c40504e4b7248b46faa0012a7e001aa98"
+  },
+  "scope": "Actual existing restricted gateway and OpenClaw public searches; adapter uses empty isolated state; no bot, production mutation or operator credential",
+  "productionChanged": false
+}
