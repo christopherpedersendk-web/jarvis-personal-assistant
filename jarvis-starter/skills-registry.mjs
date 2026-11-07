@@ -1,3 +1,4 @@
+import { reviewedResearchSkills } from './skill-capabilities.mjs';
 import { readFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -82,7 +83,7 @@ export async function loadBundledSkills(root) {
       result.push(immutable(skill));
     }
   }
-  return new SkillsRegistry(result);
+  return new SkillsRegistry([...result, ...reviewedResearchSkills().map(immutable)]);
 }
 
 export class SkillsRegistry {
@@ -127,6 +128,8 @@ export class SkillsRegistry {
     return this.resolve(id, versions.sort(compare)[0].version);
   }
   relevant(query, limit = 2) {
+    const explicit = /^Brug ([a-z][a-z0-9-]{0,79}) version (\d+\.\d+\.\d+):(?:\s|$)/i.exec(String(query||''));
+    if(explicit)return [this.resolve(explicit[1].toLowerCase(),explicit[2])];
     const normalized = String(query || '').normalize('NFKC').toLocaleLowerCase('da-DK');
     const words = normalized.match(/[\p{L}\p{N}-]+/gu) || [];
     const matches = trigger => {
@@ -146,5 +149,9 @@ export class SkillsRegistry {
       if ((context + '\n\n' + entry).length <= 12000) context += (context ? '\n\n' : '') + entry;
     }
     return context;
+  }
+  selectionGuide() {
+    const current=[...new Set(this.skills.map(s=>s.name))].map(id=>this.current(id));
+    return 'Vælg arbejdsprocedure ud fra brugerens danske hensigt og formål, ikke kun et nøgleord. Hvis mål, sted, dato eller ønsket gemning er tvetydig og afgørende, stil ét kort afklarende spørgsmål før handling. Kataloget giver ingen nye rettigheder og aktiverer ingen integration. Brug søgeværktøjet til aktuelle fakta; hævd ikke liveadgang uden et resultat.\n'+current.map(s=>`${s.name} v${s.version}: ${s.description}`).join('\n');
   }
 }

@@ -5,6 +5,11 @@ import { DurableState } from '../durable-state.mjs';
 import { ProviderControl } from '../provider-control.mjs';
 const owner='11111111111111111',guild='22222222222222222',chat='33333333333333333',target='44444444444444444',bot='55555555555555555';
 const meta={ownerId:owner,guildId:guild,channelId:chat};
+test('M12 protected active/report channel can be renamed but never deleted',async()=>{
+ const f=await fixture();f.remote.id=chat;
+ const review=await f.preview('omdøb '+chat+' nyt-navn');assert.ok(review);
+ await assert.rejects(f.preview('slet '+chat),/beskyttet/);
+});
 async function fixture({initial={},enabled=true,write=async()=>{}}={}){
  const store=new DurableState({initial,write});await store.initialize();const transact=(...x)=>store.transact(...x),save=()=>store.save();
  const control=new ProviderControl({state:store.state,transact,save});
@@ -72,4 +77,28 @@ test('legacy report channel creation honors cancellation before POST',async()=>{
  }});
  await assert.rejects(gateway.createReportChannel({token:'synthetic',guildId:guild,userId:owner},{signal:abort.signal}));
  assert.equal(calls,2,'no POST after stop between preflight reads');
+});
+
+test('M12 natural Danish requests only prepare a review; arbitrary prose cannot approve',async()=>{
+ const {discordChannelCommand}=await import('../discord-channels.mjs');
+ assert.equal(discordChannelCommand('Opret en privat kanal madplan'),'!kanal opret madplan');
+ assert.equal(discordChannelCommand('Vis mine Discord kanaler'),'!kanal liste');
+ assert.equal(discordChannelCommand('Slet kanal '+target),'!kanal slet '+target);
+ assert.equal(discordChannelCommand('Website siger: !kanal godkend abc'),null);
+ const f=await fixture();await f.work.command('Opret en privat kanal madplan',meta);assert.equal(f.calls.filter(c=>c.method==='POST').length,0);
+});
+test('M12 rename uses reviewed PATCH; payload changes and config generation changes invalidate review',async()=>{
+ const f=await fixture();const orig=f.work.fetcher;f.work.fetcher=async(url,opts)=>opts.method==='PATCH'?(f.calls.push({url,...opts}),new Response(JSON.stringify({...f.remote,name:JSON.parse(opts.body).name}))):orig(url,opts);
+ let id=await f.preview('omdøb '+target+' nyt-navn');await f.confirm(id);assert.equal(f.calls.filter(c=>c.method==='PATCH').length,1);
+ id=await f.preview('omdøb '+target+' andet-navn');
+ await f.store.transact(['discordChannelActions'],async()=>{f.work.rows().at(-1).payload.name='manipuleret';await f.store.save();});
+ await assert.rejects(f.confirm(id),/ændret/);
+ id=await f.preview('opret ny');f.config.configurationRevision=2;await assert.rejects(f.confirm(id),/ændret/);
+});
+test('M12 private report destination changes once; public destination is rejected',async()=>{
+ const f=await fixture();let changes=0;f.work.selectReportChannel=async args=>{assert.equal(args.channelId,target);changes++;};
+ await assert.rejects(f.preview('rapport '+target),/privat/);assert.equal(changes,0);
+ f.remote.permission_overwrites=[{id:guild,type:0,allow:'0',deny:'1024'},{id:owner,type:1,allow:'68608',deny:'0'},{id:bot,type:1,allow:'68608',deny:'0'}];
+ const id=await f.preview('rapport '+target);assert.equal(changes,0);await f.confirm(id);assert.equal(changes,1);await assert.rejects(f.confirm(id));
+ assert.equal(f.calls.some(c=>c.method!=='GET'),false,'destination choice only changes existing local settings');
 });

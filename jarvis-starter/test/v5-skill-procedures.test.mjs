@@ -29,7 +29,7 @@ test('H1 historical 1.0.0 files and existing job hashes remain byte-for-byte unc
     assert.equal(old.current, false); assert.equal(old.contract, undefined);
     assert.equal(registry.current(name).version, '1.1.0');
   }
-  assert.equal(registry.catalog().length, 8);
+  assert.equal(registry.catalog().length, 12);
 });
 
 test('H1 four current procedures have complete immutable hash-bound contracts, synthetic examples and existing test references', async () => {

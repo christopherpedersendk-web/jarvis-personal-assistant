@@ -1,7 +1,10 @@
-import { DiscordChannels } from './discord-channels.mjs';
+import { describeSkill } from './skill-capabilities.mjs';
+import { DiscordChannels, discordChannelCommand } from './discord-channels.mjs';
 import { BrowserResearch } from './browser-research.mjs';
 import { DiscordVoice } from './discord-voice.mjs';
 import { createDiscordAudio } from './discord-audio.mjs';
+import { DiscordMedia } from './discord-media.mjs';
+import { createIsolatedMedia } from './isolated-media.mjs';
 import { deferredHomeRoute } from './tool-policy.mjs';
 import { createIsolatedBrowser } from './isolated-browser.mjs';
 import { VoiceSessions } from './voice-sessions.mjs';
@@ -209,6 +212,7 @@ function persistPrivateSettings(change = () => {}, stateChange = () => {}) {
   return mutateV5(['settings'], async () => {
     const next = structuredClone(privateSettings);
     change(next);
+    if(JSON.stringify(next.discord)!==JSON.stringify(privateSettings.discord))next.discord.configurationRevision=(privateSettings.discord.configurationRevision||0)+1;
     stateChange();
     stateStore.stageFile('private-settings.json', JSON.stringify({ ...next.push, discord: next.discord, smartHome: next.smartHome,
       hue: next.hue, googleCalendar: next.googleCalendar }), () => publishPrivateSettings(next));
@@ -401,6 +405,7 @@ async function instructions(query = '', { boundSkill = null } = {}) {
     query.trim() ? await knowledge.contextAsync(query.trim().slice(0, 240)) || '(Ingen direkte matches. Brug søgeværktøjerne ved behov.)' : '(Ingen forespørgsel endnu.)',
     'Tilgængelige listeoverskrifter (detaljer kan hentes via funktioner):', organizer.summary().map(x => `${x.title} · ${x.type} · ID ${x.id}`).join('\n').slice(0, 2000) || '(Ingen)',
     'Relevante, versionsstyrede arbejdsprocedurer (skills):', procedureContext || '(Ingen specifik procedure)',
+    ...(boundSkill?[]:['Valg af procedure i samtalen:',skills.selectionGuide()]),
     'Madplanlægning: brug de faktiske, eksplicit gemte madpræferencer og madplaner; priser skal slås op og må aldrig opfindes. Nemlig-kurven må KUN ændres efter særskilt godkendelse i JARVIS-brugerfladen. Ingen bestillinger eller betalinger.',
     'Sekretærens redigerbare instruktionsdokument (underordnet systemets sikkerhedsregler):', state.playbook].join('\n\n');
 }
@@ -625,7 +630,16 @@ const handleSecretaryTool = createSecretaryToolHandler({ personalTasks, followUp
 });
 
 const discordChannels = new DiscordChannels({ state, transact: mutateV5, save, control: providerControl, config: () => discordConfig,
-  enabled: process.env.JARVIS_DISCORD_CHANNELS === 'yes', voiceChannelId: process.env.JARVIS_DISCORD_VOICE_CHANNEL_ID || '' });
+  enabled: process.env.JARVIS_DISCORD_CHANNELS === 'yes', voiceChannelId: process.env.JARVIS_DISCORD_VOICE_CHANNEL_ID || '',
+  selectReportChannel:async({channelId,expectedConfig,scope})=>{
+    await persistPrivateSettings(next=>{
+      providerControl.assertAllowed(scope);
+      if(JSON.stringify(next.discord)!==JSON.stringify(expectedConfig))throw new Error('Discord-konfigurationen er ændret; gennemgå igen.');
+      next.discord.reportChannelId=channelId;
+    });
+    // Report destination changes do not reconnect or start another bot.
+    discord.config.reportChannelId=channelId;
+  } });
 
 async function handleVoiceExtraTool(name, args) {
   switch(name) {
@@ -762,14 +776,21 @@ function processTextMessage(message, channel = 'text') {
   } catch (error) { throw classifyChatFailure(error, progress.effectsPossible); }
 }
 
-let discordVoice;
+let discordVoice,discordMedia;
 const discordVoiceEnabled=process.env.JARVIS_DISCORD_VOICE==='yes';
 const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUnavailable:()=>discordVoice?.stop('gateway_unavailable'), onMessage: async (message, metadata = {}) => {
-  if (/^!kanal(?:\s|$)/iu.test(message)) return discordChannels.command(message, metadata);
+  if(/^!medie(?:\s|$)/i.test(message)){
+    const command=message.trim().toLocaleLowerCase('da');
+    if(command==='!medie stop'){await discordMedia.stop();return 'Stop er registreret. Et allerede sendt modelkald kan have ukendt udfald; der genforsøges ikke.';}
+    if(command==='!medie status'){const status=discordMedia.snapshot();return `Medieanalyse: ${status.enabled?'aktiveret':'deaktiveret'}; video: ${status.videoEnabled?'aktiveret':'deaktiveret'}.\n`+status.recent.map(r=>`${r.id}: ${r.status}`).join('\n');}
+    return 'Brug !medie status eller !medie stop. Upload et billede eller en video med dit spørgsmål.';
+  }
+  const channelCommand=discordChannelCommand(message);
+  if (channelCommand) return discordChannels.command(channelCommand, metadata);
   if(/^!stemme(?:\s|$)/i.test(message)) {
     const command=message.trim().toLocaleLowerCase('da');
-    if(command==='!stemme stop'){await discordVoice.stop();return 'Discord-stemmen er stoppet.';}
-    if(command==='!stemme status')return JSON.stringify(discordVoice.snapshot());
+    if(command==='!stemme stop'){await discordVoice.stop();return 'Discord-stemmen er stoppet lokalt. Afslutning af eventuelle allerede sendte providerkald er ikke bekræftet.';}
+    if(command==='!stemme status'){const s=discordVoice.snapshot();return `Discord-stemme: ${({disconnected:'afbrudt',connecting:'forbinder',listening:'lytter kun til ejeren',processing:'behandler',closing:'afbryder'})[s.status]||'ukendt'}. ${s.reservedSecondsToday}/${s.secondsPerDay} sekunder reserveret. Providerafslutning: ${s.lastClosure?.provider||'ikke afprøvet'}.`;}
     if(command==='!stemme start')return discordVoice.join({ownerId:metadata.ownerId,guildId:metadata.guildId,textChannelId:metadata.channelId});
     return 'Brug !stemme start, !stemme stop eller !stemme status.';
   }
@@ -777,23 +798,28 @@ const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUn
     const recipe = await recipes.capture(recipeCaptureInput(message, metadata));
     return `Opskriften “${recipe.title}” er gemt i Opskriftsindbakken. Gennemgå ingredienser, portioner og kosttype i Mad & indkøb, før JARVIS bruger den i en madplan. Der er ikke ændret noget i Nemlig-kurven.`;
   }
-  if (!String(message || '').trim() && metadata.attachments?.length) {
-    return 'Vil du gemme billedet som opskrift? Send det med teksten “Gem opskrift:”. Almindelige billeder gemmes ikke automatisk i opskriftshukommelsen.';
-  }
+  if(metadata.mediaCount)return discordMedia.analyze(message,metadata);
   return processTextMessage(message, 'discord');
 } });
 const discordAudio=createDiscordAudio({apiKey,control:providerControl,env:process.env});
+discordMedia=new DiscordMedia({state,transact:mutateV5,save,control:providerControl,config:()=>discordConfig,
+ enabled:process.env.JARVIS_DISCORD_MEDIA==='yes',videoEnabled:process.env.JARVIS_DISCORD_VIDEO==='yes',
+ normalize:createIsolatedMedia(),request:openaiJson,transcribeWav:discordAudio.transcribeWav,model:process.env.OPENAI_MEDIA_MODEL||process.env.OPENAI_TEXT_MODEL||'gpt-6.1-sol'});
 discordVoice=new DiscordVoice({state,transact:mutateV5,save,control:providerControl,config:()=>discordConfig,
  enabled:discordVoiceEnabled,channelId:process.env.JARVIS_DISCORD_VOICE_CHANNEL_ID||'',
  connect:async options=>{
   let adapter;try{adapter=await import('./discord-voice-runtime/adapter.mjs');}catch{throw new Error('Discord-stemmemodulet er ikke installeret. Se driftsvejledningen.');}
   return adapter.connectDiscordVoice({gateway:discord,...options});
+ },validateTextChannel:async({textChannelId,guildId,scope})=>{
+  const channel=await discordChannels.api('/channels/'+textChannelId,'GET',discordConfig,scope);
+  if(channel.id!==textChannelId||channel.guild_id!==guildId||channel.type!==0)throw new Error('Vælg en tekstkanal i den konfigurerede Discord-server.');
  },...discordAudio,reply:message=>processTextMessage(message,'discord'),notify:discord.sendVoiceReply.bind(discord)});
 await stateStore.initialize();
 // Finish constructor migrations before transactions freeze the state. Revoke
 // previous sessions before opening HTTP or starting the Discord gateway.
 await voiceSessions.closeAll();
 await discordVoice.recover();
+await discordMedia.recover();
 discord.start(discordConfig);
 
 async function route(req, res) {
@@ -848,11 +874,20 @@ async function route(req, res) {
       try { return json(res, 200, await browserWorkspace[action](await bodyJson(req))); }
       catch (error) { return json(res, 409, { error: error.message, code: error.code || 'BROWSER_FAILED' }); }
     }
-    if (req.method === 'GET' && path === '/api/assistant/control') return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot(), discordVoice: discordVoice.snapshot() });
+    if (req.method === 'POST' && path === '/api/discord/voice') {
+      try {
+        const input=await bodyJson(req);
+        if(input.action==='stop')await discordVoice.stop('owner_web_stop');
+        else if(input.action==='start')await discordVoice.join({ownerId:discordConfig.userId,guildId:discordConfig.guildId,textChannelId:input.textChannelId});
+        else throw new Error('Vælg start eller stop.');
+        return json(res,200,discordVoice.snapshot());
+      }catch(error){return json(res,409,{error:error.message});}
+    }
+    if (req.method === 'GET' && path === '/api/assistant/control') return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot(), discordVoice: discordVoice.snapshot(), discordMedia:discordMedia.snapshot() });
     if (req.method === 'POST' && path === '/api/assistant/control') {
       try { const stopped = (await bodyJson(req)).stopped;
         await providerControl.stop(stopped);
-        if (stopped) { await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
+        if (stopped) { await discordMedia.stop(); await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
         return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot(), discordVoice: discordVoice.snapshot() }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
@@ -1277,7 +1312,11 @@ async function route(req, res) {
           : 'Manuelt angivet kapacitetsdækning eller ukendt status; ingen Google-kalenderændring' }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
-    if (req.method === 'GET' && path === '/api/skills') return json(res, 200, { skills: skills.catalog() });
+    if (req.method === 'GET' && path === '/api/skills') {
+      await openJarvis.inspect();
+      const environment={openJarvis:openJarvis.status(),modelConfigured:validApiKey,stopped:providerControl.snapshot().stopped,voiceEnabled:discordVoiceEnabled};
+      return json(res,200,{skills:skills.catalog().map(item=>({...item,...describeSkill(skills.resolve(item.name,item.version),environment)}))});
+    }
     const skillDetail = path.match(/^\/api\/skills\/([a-z0-9-]{1,80})\/(\d+\.\d+\.\d+)$/);
     if (req.method === 'GET' && skillDetail) {
       try { return json(res, 200, { skill: skills.detail(skillDetail[1], skillDetail[2]) }); }
@@ -1755,7 +1794,7 @@ let shuttingDown=false;
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
  if(shuttingDown)return;shuttingDown=true;
  const force=setTimeout(()=>process.exit(1),12000);force.unref();
- Promise.allSettled([discordVoice.stop('shutdown'),voiceSessions.closeAll()]).finally(()=>{discord.stop();server.close(()=>process.exit(0));});
+ Promise.allSettled([discordMedia.stop(),discordVoice.stop('shutdown'),voiceSessions.closeAll()]).finally(()=>{discord.stop();server.close(()=>process.exit(0));});
 });
 
 const scheduler = setInterval(() => taskEngine.tick().catch(error => logError('Opgavefejl:', error)), 15_000);

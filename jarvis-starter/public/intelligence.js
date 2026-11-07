@@ -217,7 +217,7 @@ function knowledgeElement(tag, text, css) {
   return element;
 }
 
-function createIntelligenceCatalog({ document, api, getToken, now = () => Date.now(), openSource = () => {} }) {
+function createIntelligenceCatalog({ document, api, getToken, now = () => Date.now(), openSource = () => {}, trySkill = () => {} }) {
   const node = (tag, text = '', css = '') => { const value = document.createElement(tag); value.textContent = text;
     if (css) value.className = css; return value; };
   const write = (element, text) => { if (element.textContent !== text) element.textContent = text; };
@@ -227,12 +227,14 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
   const details = new Map(), detailPending = new Map();
   let owner = '', generation = 0;
   const visible = kind => {
-    const target = byId(kind === 'skills' ? 'settings-automations' : 'settings-integrations') || byId(kind === 'skills' ? 'tab-knowledge' : 'tab-settings');
+    const target = byId(kind === 'skills' ? 'settings-skills' : 'settings-integrations') || byId(kind === 'skills' ? 'tab-knowledge' : 'tab-settings');
     return !document.hidden && !byId('workspace')?.classList.contains('hidden') && (typeof JarvisShell === 'object' ? JarvisShell.visible(target) : !target?.classList.contains('hidden'));
   };
   const status = (kind, text) => { const target = byId(`${kind}-catalog-status`); if (target) write(target, text); };
   function reset() {
     generation++; owner = ''; details.clear(); detailPending.clear();
+    for(const id of ['skills-query','skills-source','skills-category','skills-state']) if(byId(id)) byId(id).value='';
+    if(byId('skills-filter-status'))write(byId('skills-filter-status'),'');
     for (const [kind, slot] of Object.entries(slots)) {
       slot.rows = []; slot.cards.clear(); slot.loaded = false; slot.loadedAt = 0; slot.pending = null; slot.error = '';
       byId(`${kind}-catalog`).replaceChildren(); status(kind, '');
@@ -253,6 +255,15 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
     const disclosure = node('details'), summary = node('summary', 'Læs den præcise procedure');
     const message = node('p', 'Procedureteksten hentes lokalt, når du åbner den.', 'micro'); message.setAttribute('role', 'status');
     const body = node('pre', '', 'skill-procedure');
+    const metadata=node('details'), metadataSummary=node('summary','Data, rettigheder og tilgængelighed');
+    const metadataBody=node('p','','skill-metadata'), availability=node('p','','micro');
+    metadata.append(metadataSummary,metadataBody);
+    const trial=node('button','Prøv skill','secondary compact-button'); trial.type='button';
+    trial.addEventListener('click',()=>{
+      const record=slots.skills.rows.find(item=>keyOf(item)===keyOf(skill));
+      if(!session() || !record || record.current!==true || !record.availability?.available || slotExpired())return;
+      try{trySkill(record);write(message,'Eksemplet er åbnet som kladde. Tilpas det og send selv.');}catch(error){write(message,error.message);}
+    });
     const link = node('a', 'Åbn denne version som kilde');
     const sourceId = `skill:${skill.name}:${skill.version}`;
     link.href = `?view=knowledge&source=${encodeURIComponent(sourceId)}`;
@@ -264,9 +275,22 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
     disclosure.addEventListener('toggle', () => { if (disclosure.open) loadDetail(skill.name, skill.version).catch(() => {}); });
     card.append(heading, description, triggers, binding,
       node('span', 'Proceduren giver ingen nye tilladelser, datakilder eller modtagere. Jobbets gennemgåede politik gælder.', 'micro muted'),
-      disclosure, link, unavailable);
-    card.catalogParts = { heading, description, triggers, binding, unavailable, disclosure, message, body };
+      availability, metadata, trial, disclosure, link, unavailable);
+    card.catalogParts = { heading, description, triggers, binding, unavailable, disclosure, message, body, availability, metadataBody, trial };
     return card;
+  }
+  const slotExpired=()=>!slots.skills.loaded||Boolean(slots.skills.error)||now()-slots.skills.loadedAt>=60_000;
+  function filterSkills() {
+    const query=(byId('skills-query')?.value||'').trim().toLocaleLowerCase('da-DK');
+    let count=0;
+    for(const record of slots.skills.rows){
+      const card=slots.skills.cards.get(keyOf(record));if(!card)continue;
+      const match=(!query||[record.name,record.title,record.description,...(record.examples||[])].join(' ').toLocaleLowerCase('da-DK').includes(query))&&
+        ['source','category'].every(field=>!byId(`skills-${field}`)?.value||byId(`skills-${field}`).value===record[field])&&
+        (!byId('skills-state')?.value||byId('skills-state').value===record.availability?.status);
+      card.hidden=!match;if(match)count++;
+    }
+    if(byId('skills-filter-status'))write(byId('skills-filter-status'),`${count} af ${slots.skills.rows.length} versioner`);
   }
   function connectorCard(connector) {
     const card = node('article', '', 'catalog-card'); card.dataset.integrationId = connector.id;
@@ -288,7 +312,21 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
       if (!card) { card = kind === 'skills' ? skillCard(record) : connectorCard(record); slot.cards.set(key, card); root.append(card); }
       const parts = card.catalogParts; write(parts.unavailable, ''); delete card.dataset.catalogUnavailable;
       if (kind === 'skills') {
-        write(parts.heading, `${record.name} · version ${record.version}${record.current === true ? ' · Aktuel' : record.current === false ? ' · Historisk' : ''}`); write(parts.description, record.description || '');
+        write(parts.heading, `${record.title||record.name} · version ${record.version}${record.current === true ? ' · Aktuel' : record.current === false ? ' · Historisk' : ''}`); write(parts.description, record.description || '');
+        const availability=record.availability;
+        write(parts.availability,availability?`${record.source==='openclaw'?'OpenClaw':'Jarvis'} · ${availability.available?'Klar til anmodning':availability.reason} · Liveaccept: ${availability.tested?'Dokumenteret':'Ikke dokumenteret'}`:'Tilgængelighed er ikke dokumenteret.');
+        parts.trial.disabled=!record.current||!availability?.available||!record.examples?.length||slotExpired();
+        write(parts.metadataBody,[
+          `Installeret: ${availability?.installed?'ja':'ukendt'} · Konfigureret: ${availability?.configured?'ja':'nej'} · Aktiveret: ${availability?.enabled?'ja':'nej'}`,
+          `Seneste liveprøve: ${availability?.lastTest||'Ingen dokumenteret'} · Forbindelseskontrol: ${availability?.connectionCheckedAt||'Ikke udført'}`,
+          `Kanaler: ${(record.channels||[]).join(', ')}`,
+          `Datadeling: ${record.dataSharing||'Se procedure'}`,
+          `Afhængigheder: ${(record.dependencies||[]).join('; ')}`,
+          `Grænser: ${record.limits||'Jobbets gennemgåede politik'}`,
+          `Rettigheder: ${record.permissions}`,
+          `Oprindelse: ${record.provenance?.product||'Jarvis'} ${record.provenance?.version||''} ${record.provenance?.commit||''}. ${record.provenance?.integration||''}`,
+          `Input: ${(record.inputs||[]).join(' ')}`, `Output: ${(record.outputs||[]).join(' ')}`,
+          `Eksempler: ${(record.examples||[]).join(' • ')}`].join('\n\n'));
         write(parts.triggers, `Udløsere: ${(record.triggers || []).join(' · ')}`);
         write(parts.binding, `Indholdshash: ${record.contentHash || 'Ikke dokumenteret'}. Sammenlign med jobbets faktiske kørselsgrundlag.`);
         if (details.has(key) && record.contentHash && details.get(key).contentHash !== record.contentHash) {
@@ -306,6 +344,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
         write(parts.capabilities, 'Tekniske muligheder – ikke automatisk aktive rettigheder: ' + (record.capabilities || []).join(' · '));
       }
     }
+    if(kind==='skills')filterSkills();
     for (const [key, card] of slot.cards) if (!keep.has(key)) {
       if (card.contains(document.activeElement)) {
         card.dataset.catalogUnavailable = 'true';
@@ -329,6 +368,7 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
       } catch (error) {
         if (!current(captured, epoch)) return;
         slot.error = String(error.message || 'Ukendt fejl');
+        if(kind==='skills')for(const card of slot.cards.values())card.catalogParts.trial.disabled=true;
         status(kind, `Kataloget kunne ikke opdateres: ${slot.error}. Tidligere visning bevares; kontrollér status før brug.`);
         throw error;
       } finally { if (slot.pending === pending) slot.pending = null; }
@@ -380,16 +420,27 @@ function createIntelligenceCatalog({ document, api, getToken, now = () => Date.n
   async function refresh({ skillId, skillVersion, force = false, kind } = {}) {
     if (!session()) return;
     if (skillId || skillVersion) {
+      for(const id of ['skills-query','skills-source','skills-category','skills-state'])if(byId(id))byId(id).value='';
       await load('skills', force);
       return loadDetail(skillId, skillVersion, { open: true });
     }
     await Promise.all(Object.keys(slots).filter(name => (!kind || kind === name) && visible(name)).map(name => load(name, force)));
   }
   for (const kind of Object.keys(slots)) byId(`${kind}-catalog-refresh`)?.addEventListener('click', () => refresh({ kind, force: true }).catch(() => {}));
+  for(const id of ['skills-query','skills-source','skills-category','skills-state'])byId(id)?.addEventListener('input',filterSkills);
   return Object.freeze({ refresh, reset });
 }
 
 const intelligenceCatalog = createIntelligenceCatalog({ document, api, getToken: () => token,
+  trySkill: record => {
+    const field=document.getElementById('message');
+    if(!token||document.getElementById('send').disabled)throw new Error('Samtalen er optaget, stoppet eller afventer gennemgang. Din kladde er bevaret.');
+    if(field.value.trim())throw new Error('Du har allerede en kladde i samtalen. Send eller ryd den, før du vælger et eksempel.');
+    const example=record.examples?.[0];if(typeof example!=='string'||example.length>1500)throw new Error('Intet gyldigt eksempel.');
+    JarvisShell.setContext(null);selectTab('home');
+    field.value=`Brug ${record.name} version ${record.version}: ${example}`;
+    field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();
+  },
   openSource: sourceId => { selectTab('knowledge', { sourceId });
     focusRecordedSource(sourceId).catch(error => sourceStatus('knowledge', `Kilden kunne ikke åbnes: ${error.message}`)); } });
 async function refreshIntelligenceCatalog(options) { return intelligenceCatalog.refresh(options); }

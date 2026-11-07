@@ -10,12 +10,27 @@ async function fixture(overrides={}){
  const state=store.state,save=()=>store.save(),transact=(...a)=>store.transact(...a);
  const control=new ProviderControl({state,save,transact}),seen=[];
  const connection={listen(){seen.push('listen');},close(){seen.push('close');},async play(){seen.push('play');}};
- const voice=new DiscordVoice({state,save,transact,control,config:()=>({userId:ownerId,guildId}),enabled:true,channelId,
+ const voice=new DiscordVoice({state,save,transact,control,config:()=>({enabled:true,token:'synthetic',userId:ownerId,guildId}),enabled:true,channelId,
  connect:async()=>connection,transcribe:async()=>{seen.push('transcribe');return 'Hvad skal vi spise?';},reply:async()=>{seen.push('reply');return 'Et syntetisk svar';},
  speak:async()=>{seen.push('speak');return Buffer.alloc(100);},notify:async()=>{seen.push('notify');},...overrides});
  return {voice,state,control,seen,connection};
 }
 const identity={ownerId,guildId,textChannelId};
+test('M5 text-channel validation and config revision changes revoke a pending join',async()=>{
+ const config={enabled:true,token:'synthetic',userId:ownerId,guildId,configurationRevision:1};
+ const f=await fixture({config:()=>config,validateTextChannel:async()=>{config.configurationRevision++;}});
+ await assert.rejects(f.voice.join(identity));assert.equal(f.seen.includes('listen'),false);assert.equal(f.voice.active,null);
+ const g=await fixture({validateTextChannel:async()=>{throw new Error('wrong text channel');}});await assert.rejects(g.voice.join(identity));assert.deepEqual(g.seen,[]);
+});
+test('M5 failed transport closure and provider hangup remain explicitly unknown',async()=>{
+ const f=await fixture({connect:async()=>({listen(){},close(){throw new Error('unconfirmed close');}})});
+ await f.voice.join(identity);const scope=f.voice.active.scope;await f.voice.stop();assert.throws(()=>f.control.assertAllowed(scope));
+ assert.deepEqual(f.voice.snapshot().lastClosure,{transport:'unknown',provider:'unknown'});assert.equal(f.voice.active,null);
+});
+test('M5 decoder failure disconnects and notifies without listening again',async()=>{
+ let opts;const f=await fixture({connect:async options=>{opts=options;return f.connection;}});await f.voice.join(identity);
+ await opts.onDisconnect('decoder_failed');assert.equal(f.voice.active,null);assert.equal(f.state.discordVoiceSessions[0].reason,'decoder_failed');assert.equal(f.seen.filter(v=>v==='listen').length,1);
+});
 test('Discord voice rejects foreign owner/server and remains opt-in',async()=>{
  const f=await fixture();await assert.rejects(f.voice.join({...identity,ownerId:channelId}));await assert.rejects(f.voice.join({...identity,guildId:channelId}));
  f.voice.enabled=false;await assert.rejects(f.voice.join(identity));assert.deepEqual(f.seen,[]);assert.equal(f.state.discordVoiceSessions,undefined);
@@ -73,5 +88,5 @@ test('Discord audio follows current file-transcription fields and shares stop co
  assert.equal(await audio.transcribe(Buffer.alloc(38400),new AbortController().signal),'Hej');
  assert.equal(form.get('model'),'gpt-transcribe');assert.equal(form.get('languages[]'),'da');assert.equal(form.has('language'),false);
  assert.equal((await audio.speak('Hej',new AbortController().signal)).length,16);assert.equal(spoken.model,'gpt-realtime-2.1-mini');
- assert.equal(f.control.snapshot().calls,2);assert.equal(f.control.snapshot().reservedOrUsedOutputTokens,0,'request accounting is not an invented audio token measurement');
+ assert.equal(f.control.snapshot().calls,2);assert.equal(f.control.snapshot().reservedOrUsedOutputTokens,2,'one admission unit per request remains reserved; audio tokens are unknown');
 });

@@ -2,10 +2,22 @@ import { createHash, randomUUID } from 'node:crypto';
 const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const snow = x => typeof x === 'string' && /^\d{17,20}$/.test(x);
 const fail = message => Object.assign(new Error(message), { code: 'DISCORD_CHANNEL_REVIEW' });
+export function discordChannelCommand(message) {
+ const text=String(message||'').trim();
+ if(/^!kanal(?:\s|$)/iu.test(text))return text;
+ if(/^(?:vis|list) (?:mine |vores )?(?:discord[- ]?)?kanaler[.!?]?$/iu.test(text))return '!kanal liste';
+ let m=/^opret (?:en )?(?:privat )?(?:discord[- ]?)?(?:tekst)?kanal (?:med navnet )?([a-z0-9æøå-]{1,100})[.!]?$/iu.exec(text);
+ if(m)return '!kanal opret '+m[1].toLocaleLowerCase('da');
+ m=/^(omdøb|slet) (?:discord[- ]?)?kanal (\d{17,20})(?: til ([a-z0-9æøå-]{1,100}))?[.!]?$/iu.exec(text);
+ if(m)return `!kanal ${m[1].toLocaleLowerCase('da')} ${m[2]}${m[3]?' '+m[3].toLocaleLowerCase('da'):''}`;
+ m=/^(?:brug|vælg) (?:discord[- ]?)?kanal (\d{17,20}) (?:til rapporter|som rapportkanal)[.!]?$/iu.exec(text);
+ return m?'!kanal rapport '+m[1]:null;
+}
+const reviewedContent=r=>hash([r.action,r.target,r.payload,r.owner,r.guild,r.channel,r.basis,r.scope,r.boot,r.expires]);
 // Only explicit owner commands enter this controller. No model gets execute authority.
 export class DiscordChannels {
-  constructor({state,transact,save,control,config,enabled=false,voiceChannelId='',fetcher=fetch,now=()=>Date.now()}) {
-    Object.assign(this,{state,transact,save,control,config,enabled,voiceChannelId,fetcher,now}); this.boot=randomUUID();
+  constructor({state,transact,save,control,config,enabled=false,voiceChannelId='',selectReportChannel,fetcher=fetch,now=()=>Date.now()}) {
+    Object.assign(this,{state,transact,save,control,config,enabled,voiceChannelId,selectReportChannel,fetcher,now}); this.boot=randomUUID();
   }
   rows(){return this.state.discordChannelActions || [];}
   auth(meta){
@@ -14,7 +26,7 @@ export class DiscordChannels {
     if(meta.ownerId!==c.userId || meta.guildId!==c.guildId || !snow(meta.channelId)) throw fail('Kun ejeren i den valgte server kan styre kanaler.');
     this.control.assertAllowed(); return {...c};
   }
-  basis(c){return hash([c.token,c.userId,c.guildId,c.reportChannelId,this.voiceChannelId]);}
+  basis(c){return hash([c.token,c.userId,c.guildId,c.reportChannelId,this.voiceChannelId,c.configurationRevision||0]);}
   async api(path,method,c,scope,body){
     return this.control.controlled(async signal=>{
       const response=await this.fetcher('https://discord.com/api/v10'+path,{method,redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),
@@ -25,17 +37,24 @@ export class DiscordChannels {
       return JSON.parse(Buffer.concat(parts).toString('utf8'));
     },scope);
   }
-  channel(c,meta,target){
-    if(!target || !snow(target.id) || target.guild_id!==c.guildId || target.type!==0)throw fail('Kun tekstkanaler i den valgte server kan slettes.');
-    if([meta.channelId,c.reportChannelId,this.voiceChannelId].includes(target.id))throw fail('Aktiv samtale-, rapport- eller stemmekanal er beskyttet.');
+  channel(c,meta,target,protect=true){
+    if(!target || !snow(target.id) || target.guild_id!==c.guildId || target.type!==0)throw fail('Kun tekstkanaler i den valgte server kan vælges.');
+    if(protect&&[meta.channelId,c.reportChannelId,this.voiceChannelId].includes(target.id))throw fail('Aktiv samtale-, rapport- eller stemmekanal er beskyttet mod sletning.');
     return {id:target.id,guild_id:target.guild_id,type:target.type,name:target.name,parent_id:target.parent_id??null,
       permission_overwrites:target.permission_overwrites||[],topic:target.topic??null};
   }
   async command(message,meta){
     const c=this.auth(meta),scope=this.control.current();
-    const match=/^!kanal (opret|slet|godkend|status) (\S+)$/iu.exec(message.trim());
-    if(!match)return 'Brug !kanal opret kanalnavn, !kanal slet kanal-ID, !kanal godkend review-ID eller !kanal status review-ID.';
-    const [,action,value]=match;
+    message=discordChannelCommand(message)||message;
+    if(message.trim()==='!kanal liste'){
+      const list=await this.api(`/guilds/${c.guildId}/channels`,'GET',c,scope);
+      if(!Array.isArray(list))throw fail('Ugyldig kanalliste.');
+      return list.filter(x=>x.type===0&&snow(x.id)).slice(0,50).map(x=>`${String(x.name||'').slice(0,100)} · ${x.id}${x.id===c.reportChannelId?' · rapportkanal':''}`).join('\n')||'Ingen tekstkanaler fundet.';
+    }
+    const match=/^!kanal (opret|slet|omdøb|rapport|godkend|status) (\S+)(?: (\S+))?$/iu.exec(message.trim());
+    if(!match)return 'Brug !kanal liste, !kanal opret navn, !kanal omdøb ID nyt-navn, !kanal rapport ID, !kanal slet ID, !kanal godkend review-ID eller !kanal status review-ID.';
+    const action=match[1].toLocaleLowerCase('da'),value=match[2],extra=match[3];
+    if(action==='omdøb'?!extra:Boolean(extra))throw fail('Angiv præcis handling og dens parametre.');
     if(action==='status'){
       const r=this.rows().find(r=>r.id===value && r.owner===c.userId && r.guild===c.guildId);
       if(!r)throw fail('Ukendt kanalreview.');
@@ -51,20 +70,37 @@ export class DiscordChannels {
         {id:c.userId,type:1,allow:'68608',deny:'0'},{id:bot.id,type:1,allow:'68608',deny:'0'}]};
     }else{
       if(!snow(value))throw fail('Angiv et kanal-ID.');
-      target=this.channel(c,meta,await this.api('/channels/'+value,'GET',c,scope));
+      target=this.channel(c,meta,await this.api('/channels/'+value,'GET',c,scope),action==='slet');
+      if(target.id!==value)throw fail('Discord returnerede en anden kanal.');
+      if(action==='omdøb'){
+        if(!/^[a-z0-9æøå][a-z0-9æøå-]{0,99}$/u.test(extra))throw fail('Brug små bogstaver, tal eller bindestreger i navnet.');
+        payload={name:extra};
+      }
+      if(action==='rapport'){
+        if(typeof this.selectReportChannel!=='function')throw fail('Valg af rapportkanal er ikke tilgængeligt.');
+        if(value===c.reportChannelId)throw fail('Kanalen er allerede valgt til rapporter.');
+        const bot=await this.api('/users/@me','GET',c,scope);
+        // Sending personal reports must not widen access. Accept only the exact
+        // owner/bot private layout Jarvis creates; uncertain permissions need UI review.
+        const overwrites=target.permission_overwrites;
+        if(!snow(bot.id)||overwrites.length!==3||!overwrites.some(x=>x.id===c.guildId&&x.type===0&&x.allow==='0'&&x.deny==='1024')||
+          ![c.userId,bot.id].every(id=>overwrites.some(x=>x.id===id&&x.type===1&&x.allow==='68608'&&x.deny==='0')))
+          throw fail('Rapporter kræver en privat ejer-/botkanal. Opret en med !kanal opret; offentlig levering godkendes ikke her.');
+      }
     }
     const intent={id:randomUUID(),action,target,payload,owner:c.userId,guild:c.guildId,channel:meta.channelId,basis:this.basis(c),scope,
       boot:this.boot,expires:this.now()+120000,status:'ready'};
+    intent.reviewHash=reviewedContent(intent);
     await this.transact(['discordChannelActions'],async()=>{
       this.control.assertAllowed(scope);if(this.basis(this.auth(meta))!==intent.basis)throw fail('Konfigurationen er ændret.');
       const rows=this.rows().filter(r=>r.status!=='ready'||r.expires>this.now());
       if(rows.length>=100)throw fail('Kanaljournalen er fuld; gennemgå den før nye handlinger.');
       this.state.discordChannelActions=[...rows,intent];await this.save();
     });
-    return `${action==='opret'?'Opret tekstkanal':'SLET tekstkanal og dens beskeder permanent'}: ${JSON.stringify(target.name)}${target.id?' (ID '+target.id+')':''}. Server: ${c.guildId}. ${action==='opret'?'Kun ejer og bot tildeles adgang; serveradministratorer kan også se kanalen.':''}\nGodkend inden 2 minutter i denne kanal: !kanal godkend ${intent.id}`;
+    return `${({opret:'Opret tekstkanal',slet:'SLET tekstkanal og dens beskeder permanent',omdøb:'Omdøb tekstkanal til '+extra,rapport:'Flyt fremtidige rapporter til denne private kanal'})[action]}: ${JSON.stringify(target.name)}${target.id?' (ID '+target.id+')':''}. Server: ${c.guildId}. ${action==='opret'?'Kun ejer og bot tildeles adgang; serveradministratorer kan også se kanalen.':''}\nGodkend inden 2 minutter i denne kanal: !kanal godkend ${intent.id}`;
   }
   check(r,meta,c){
-    if(!r||r.status!=='ready'||r.owner!==c.userId||r.guild!==c.guildId||r.channel!==meta.channelId||r.boot!==this.boot||r.basis!==this.basis(c)||r.expires<=this.now())throw fail('Review er brugt, ændret eller udløbet. Hent status; gennemgå en ny anmodning manuelt.');
+    if(!r||r.status!=='ready'||r.owner!==c.userId||r.guild!==c.guildId||r.channel!==meta.channelId||r.boot!==this.boot||r.basis!==this.basis(c)||r.expires<=this.now()||r.reviewHash!==reviewedContent(r))throw fail('Review er brugt, ændret eller udløbet. Hent status; gennemgå en ny anmodning manuelt.');
     this.control.assertAllowed(r.scope);
   }
   async execute(id,meta,c){
@@ -74,8 +110,8 @@ export class DiscordChannels {
   }
   async executeReviewed(id,meta,c){
     let r=this.rows().find(r=>r.id===id);this.check(r,meta,c);
-    if(r.action==='slet'){
-      const current=this.channel(c,meta,await this.api('/channels/'+r.target.id,'GET',c,r.scope));
+    if(r.action!=='opret'){
+      const current=this.channel(c,meta,await this.api('/channels/'+r.target.id,'GET',c,r.scope),r.action==='slet');
       if(hash(current)!==hash(r.target))throw fail('Kanalen er ændret siden review. Gennemgå den igen.');
     }else{
       const channels=await this.api(`/guilds/${c.guildId}/channels`,'GET',c,r.scope);
@@ -88,10 +124,14 @@ export class DiscordChannels {
     });
     try{
       this.control.assertAllowed(r.scope);if(this.basis(this.auth(meta))!==r.basis)throw fail('Konfigurationen er ændret.');
-      const result=await this.api(r.action==='opret'?`/guilds/${c.guildId}/channels`:'/channels/'+r.target.id,r.action==='opret'?'POST':'DELETE',c,r.scope,r.payload);
-      if(!snow(result.id)||result.guild_id!==c.guildId||result.type!==0||(r.action==='slet'&&result.id!==r.target.id)||(r.action==='opret'&&result.name!==r.target.name))throw fail('Uventet Discord-svar.');
+      let result;
+      if(r.action==='rapport'){
+        await this.selectReportChannel({channelId:r.target.id,expectedConfig:c,scope:r.scope});
+        result={id:r.target.id,guild_id:c.guildId,type:0};
+      }else result=await this.api(r.action==='opret'?`/guilds/${c.guildId}/channels`:'/channels/'+r.target.id,({opret:'POST',slet:'DELETE',omdøb:'PATCH'})[r.action],c,r.scope,r.payload);
+      if(!snow(result.id)||result.guild_id!==c.guildId||result.type!==0||(r.action==='slet'&&result.id!==r.target.id)||(r.action==='opret'&&result.name!==r.target.name)||(r.action==='omdøb'&&(result.id!==r.target.id||result.name!==r.payload.name)))throw fail('Uventet Discord-svar.');
       await this.transact(['discordChannelActions'],async()=>{const item=this.rows().find(x=>x.id===id);item.status='completed';item.result={id:result.id};await this.save();});
-      return `${r.action==='opret'?'Oprettet':'Slettet'}: ${r.target.name} (${result.id}).`;
+      return `${({opret:'Oprettet',slet:'Slettet',omdøb:'Omdøbt',rapport:'Rapportkanal valgt'})[r.action]}: ${r.payload?.name||r.target.name} (${result.id}).`;
     }catch{
       await this.transact(['discordChannelActions'],async()=>{this.rows().find(x=>x.id===id).status='unknown';await this.save();}).catch(()=>{});
       throw fail('Udfaldet er ukendt. Kontrollér Discord og !kanal status '+id+'. Der er ikke genforsøgt.');

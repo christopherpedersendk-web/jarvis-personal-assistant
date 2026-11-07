@@ -1,37 +1,43 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 const snowflake=value=>/^\d{15,22}$/.test(String(value||''));
 const day=time=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Copenhagen',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(time));
+const configHash=c=>createHash('sha256').update(JSON.stringify([c.enabled,c.token,c.userId,c.guildId,c.configurationRevision||0])).digest('hex');
 // One owner, one explicitly selected guild channel, no autojoin/reconnect/replay.
 export class DiscordVoice {
- constructor({state,transact,save,control,config,connect,transcribe,reply,speak,notify,now=()=>Date.now(),enabled=false,channelId='',secondsPerSession=300,secondsPerDay=1800}) {
-  Object.assign(this,{state,transact,save,control,config,connect,transcribe,reply,speak,notify,now,enabled,channelId,secondsPerSession,secondsPerDay});
+ constructor({state,transact,save,control,config,connect,transcribe,reply,speak,notify,validateTextChannel=async()=>{},now=()=>Date.now(),enabled=false,channelId='',secondsPerSession=300,secondsPerDay=1800}) {
+  Object.assign(this,{state,transact,save,control,config,connect,transcribe,reply,speak,notify,validateTextChannel,now,enabled,channelId,secondsPerSession,secondsPerDay});
   if(!Number.isSafeInteger(secondsPerSession)||secondsPerSession<1||secondsPerSession>600||!Number.isSafeInteger(secondsPerDay)||secondsPerDay<secondsPerSession||secondsPerDay>7200)throw new Error('Ugyldig Discord-stemmegrænse.');
   this.active=null;this.busy=false;this.audioAbort=null;
  }
  async recover() { await this.transact(['discordVoiceSessions'],async()=>{
-  for(const e of this.state.discordVoiceSessions||[])if(e.status!=='closed'){e.status='closed';e.reason='process_restart';}
+  for(const e of this.state.discordVoiceSessions||[])if(e.status!=='closed'){e.status='closed';e.reason='process_restart';e.transportClosure='unknown';e.providerClosure='unknown';}
   await this.save();
  }); }
  snapshot(){const entries=this.state.discordVoiceSessions||[];return {enabled:this.enabled,channelId:this.channelId,
-  status:this.active?.status||'disconnected',ownerId:this.active?.ownerId||null,
+  status:this.active?.status||'disconnected',textChannelId:this.active?.textChannelId||null,transportProof:'local-only; provider closure unknown',lastClosure:entries.length?{transport:entries.at(-1).transportClosure||'unknown',provider:entries.at(-1).providerClosure||'unknown'}:null,ownerId:this.active?.ownerId||null,
   reservedSecondsToday:entries.filter(e=>e.day===day(this.now())).reduce((n,e)=>n+e.reservedSeconds,0),secondsPerDay:this.secondsPerDay,
   secondsPerSession:this.secondsPerSession,note:'Kun godkendt ejer; AI-genereret tale; ingen lydfiler gemmes. Sekund- og kaldgrænser, ikke kronebudget.'};}
- assertActive(id){if(!this.active||this.active.id!==id||this.active.status==='closing'||this.active.expiresAt<=this.now())throw new Error('Discord-stemmen er stoppet.');this.control.assertAllowed(this.active.scope);return this.active;}
+ assertActive(id){if(!this.active||this.active.id!==id||this.active.status==='closing'||this.active.expiresAt<=this.now()||this.active.configHash!==configHash(this.config()))throw new Error('Discord-stemmen er stoppet.');this.control.assertAllowed(this.active.scope);return this.active;}
  async join({ownerId,guildId,textChannelId}) {
   const config=this.config(),scope=this.control.current();this.control.assertAllowed(scope);
-  if(!this.enabled||!snowflake(this.channelId))throw new Error('Discord-stemme er ikke aktiveret med en valgt serverkanal.');
+  if(!this.enabled||!config.enabled||!config.token||!snowflake(this.channelId))throw new Error('Discord-stemme er ikke aktiveret med en valgt serverkanal.');
   if(ownerId!==config.userId||guildId!==config.guildId||!snowflake(guildId)||!snowflake(textChannelId))throw new Error('Start stemme fra den godkendte bruger i den valgte server.');
   // Reserve synchronously before the first await; two joins cannot both connect.
   if(this.active)throw new Error('Discord-stemmen er allerede startet eller under tilslutning.');
-  const session={id:randomUUID(),ownerId,guildId,channelId:this.channelId,textChannelId,scope,status:'connecting',day:day(this.now()),reservedSeconds:this.secondsPerSession,expiresAt:this.now()+this.secondsPerSession*1000};
+  const session={id:randomUUID(),configHash:configHash(config),ownerId,guildId,channelId:this.channelId,textChannelId,scope,status:'connecting',day:day(this.now()),reservedSeconds:this.secondsPerSession,expiresAt:this.now()+this.secondsPerSession*1000};
   this.active=session;
   try {
+   await this.validateTextChannel({textChannelId,guildId,scope});this.assertActive(session.id);
    await this.transact(['discordVoiceSessions'],async()=>{
     this.assertActive(session.id);
     if(this.snapshot().reservedSecondsToday+this.secondsPerSession>this.secondsPerDay)throw new Error('Dagens reserverede Discord-stemmetid er opbrugt.');
     this.state.discordVoiceSessions=[...(this.state.discordVoiceSessions||[]).filter(e=>e.day===session.day),{...session}];await this.save();
    });
-   const connection=await this.connect({...session,onAudio:pcm=>this.receive(session.id,ownerId,pcm),onDisconnect:()=>this.active===session?this.stop('connection_lost'):Promise.resolve()});
+   const connection=await this.connect({...session,onAudio:pcm=>this.receive(session.id,ownerId,pcm),onDisconnect:async reason=>{
+    if(this.active!==session)return;
+    await this.stop(reason==='decoder_failed'?'decoder_failed':'connection_lost');
+    await this.notify(session.textChannelId,'Stemmeforbindelsen er stoppet efter en transport- eller decoderfejl. Der optages ikke mere lyd. Start en ny session, når fejlen er afklaret.').catch(()=>{});
+   }});
    if(this.active!==session){connection.close();throw new Error('Tilslutningen blev stoppet.');}
    session.connection=connection;this.assertActive(session.id);
    await this.notify(session.textChannelId,`JARVIS er forbundet til <#${session.channelId}>. Jeg lytter kun til <@${ownerId}>; kun dig og botten må være i kanalen. Svarstemmen er AI-genereret. Skriv !stemme stop for at afbryde.`);
@@ -66,8 +72,9 @@ export class DiscordVoice {
   const session=this.active;if(!session)return;
   session.status='closing';this.control.revoke(session.scope);clearTimeout(session.timer);this.audioAbort?.abort();
   // Revoke and tear down before persistence or notification can block.
-  this.active=null;try{session.connection?.close();}finally{
-   await this.transact(['discordVoiceSessions'],async()=>{const e=(this.state.discordVoiceSessions||[]).find(e=>e.id===session.id);if(e){e.status='closed';e.reason=reason;}await this.save();});
-  }
+  this.active=null;let closure='unknown',timer;
+  try{if(session.connection){await Promise.race([Promise.resolve(session.connection.close()),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('close timeout')),3000);})]);closure='closed';}}
+  catch{/* No retry: local cancellation is effective, remote closure unconfirmed. */}
+  finally{clearTimeout(timer);await this.transact(['discordVoiceSessions'],async()=>{const e=(this.state.discordVoiceSessions||[]).find(e=>e.id===session.id);if(e){e.status='closed';e.reason=reason;e.transportClosure=closure;e.providerClosure='unknown';}await this.save();});}
  }
 }

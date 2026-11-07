@@ -5,6 +5,7 @@ import { open } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discordImageAttachment } from './recipe-fetch.mjs';
+import { discordMediaMetadata } from './discord-media-boundary.mjs';
 import { atomicStateWrite } from './state-schema.mjs';
 import { BoundedJobQueue } from './bounded-queue.mjs';
 import { redactSecrets } from './privacy.mjs';
@@ -61,7 +62,7 @@ export function discordMessageRejection(event, config) {
   if (!SNOWFLAKE.test(String(event.channel_id || '')) || !SNOWFLAKE.test(String(event.id || ''))) return 'invalid';
   if (event.guild_id && (!config.guildId || event.guild_id !== config.guildId)) return 'guild';
   if (typeof event.content !== 'string' || event.content.length > 5000) return 'content';
-  if (!event.content.trim() && !discordMessageMetadata(event).attachments.length) return 'empty';
+  if (!event.content.trim() && !(Array.isArray(event.attachments) && event.attachments.length)) return 'empty';
   return null;
 }
 
@@ -73,6 +74,7 @@ export function authorizedDiscordMessage(event, config) {
 // an entire Discord event, member profile, embed or bot token to extraction.
 export function discordMessageMetadata(event) {
   return { messageId: String(event.id || ''), channelId: String(event.channel_id || ''),
+    ...discordMediaMetadata(event.attachments, String(event.channel_id || '')),
     attachments: (Array.isArray(event.attachments) ? event.attachments : []).slice(0, 3)
       .map(item => discordImageAttachment(item, { channelId: String(event.channel_id || '') })).filter(Boolean) };
 }
@@ -394,7 +396,7 @@ export class DiscordGateway {
       const member=packet.d;this.voiceStates.set(member.user_id,member);
       if(member.user_id===this.botId)this.voiceAdapters.get(member.guild_id)?.onVoiceStateUpdate(member);
       const bot=this.voiceStates.get(this.botId);
-      if(bot?.channel_id && (this.voiceStates.get(this.config.userId)?.channel_id!==bot.channel_id || this.voiceMembers(member.guild_id,bot.channel_id).some(id=>id!==this.botId&&id!==this.config.userId)))this.stopVoiceTransport();
+      if(bot?.channel_id && (this.voiceStates.get(this.config.userId)?.channel_id!==bot.channel_id || this.voiceStates.get(this.config.userId)?.mute || this.voiceStates.get(this.config.userId)?.self_mute || this.voiceMembers(member.guild_id,bot.channel_id).some(id=>id!==this.botId&&id!==this.config.userId)))this.stopVoiceTransport();
     } else if (packet.op === 0 && this.voiceEnabled && packet.t === 'VOICE_SERVER_UPDATE' && packet.d?.guild_id===this.config.guildId) {
       this.voiceAdapters.get(packet.d.guild_id)?.onVoiceServerUpdate(packet.d);
     } else if (packet.op === 0 && packet.t === 'MESSAGE_CREATE') {
@@ -826,6 +828,9 @@ export class DiscordGateway {
       await this.closeReceipt(context, 'unknown');
       return true;
     }
+    // These exact owner commands can stop/inspect a running media/voice job.
+    // They still pass sender checks, durable admission and reply deduplication.
+    if (/^!(?:medie|stemme) (?:stop|status)$/i.test(context.content)) return (await this.processMessage(context)).accepted;
     const queued = this.workQueue.enqueue('Discord-besked', () => this.processMessage(context));
     pending.queueId = queued.id;
     try { return (await queued.promise).accepted; }
@@ -854,7 +859,8 @@ export class DiscordGateway {
     // another slot or retain another complete event while the first is running.
     if (this.pendingMessages.has(id)) return Promise.resolve(false);
     if (this.seen.has(id)) return Promise.resolve(false);
-    if (this.pendingMessages.size >= this.workQueue.maxWaiting + 1) {
+    const priorityControl=/^!(?:medie|stemme) (?:stop|status)$/i.test(event.content.trim());
+    if (this.pendingMessages.size >= this.workQueue.maxWaiting + 1 && !(priorityControl && !this.pendingControl)) {
       this.rejectMessage('Discord-køen er fuld. Beskeden blev ikke behandlet.');
       return Promise.reject(discordError('DISCORD_QUEUE_FULL', this.lastError));
     }
@@ -863,9 +869,11 @@ export class DiscordGateway {
       ready: this.dedupeReady, token, content: redactSecrets(event.content.trim(), [token]),
       metadata: { ...redactSecrets(discordMessageMetadata(event), [token]), guildId: event.guild_id || '', ownerId: event.author.id } };
     const pending = { queueId: null };
+    if(priorityControl)this.pendingControl=id;
     this.pendingMessages.set(id, pending);
     const operation = this.admitMessage(context, pending).finally(() => {
       if (this.pendingMessages.get(id) === pending) this.pendingMessages.delete(id);
+      if(this.pendingControl===id)this.pendingControl=null;
       this.resumeIngress();
       this.finishResume();
     });

@@ -8,7 +8,7 @@ const start = source.indexOf('async function instructions('), end = source.index
 test('long report instructions use bounded memory lookup without truncating the job prompt', async () => {
   const knowledge = new PersonalKnowledge({ state: {} }); let query;
   const build = vm.runInNewContext(source.slice(start, end) + '\ninstructions;', {
-    persona: '', state: {}, skills: { context: () => '' }, organizer: { summary: () => [] },
+    persona: '', state: {}, skills: { context: () => '', selectionGuide: () => 'Syntetisk katalog uden rettigheder.' }, organizer: { summary: () => [] },
     knowledge: { contextAsync: async q => { query = q; return knowledge.contextAsync(q); } },
   });
   const prompt = 'Find og sammenfat aktuelle nyheder om AI og cybersikkerhed. '.repeat(20);

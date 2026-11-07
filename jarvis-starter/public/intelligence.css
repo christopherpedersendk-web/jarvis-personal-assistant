@@ -19,3 +19,8 @@
 .skill-procedure{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;margin:10px 0;max-width:100%}
 .time-pair{display:flex;gap:18px}.time-pair>div{display:flex;flex:1;flex-direction:column;gap:8px}.time-pair label{font-size:13px;color:#a9c5d3}
 @media(max-width:900px){.intelligence-grid{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}}
+
+.skill-filters { display:grid; grid-template-columns:minmax(0,1fr); gap:.35rem; margin-block:1rem; }
+.skill-filters input,.skill-filters select { min-width:0; width:100%; }
+.skill-metadata { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.875rem; }
+.catalog-card[hidden] { display:none; }

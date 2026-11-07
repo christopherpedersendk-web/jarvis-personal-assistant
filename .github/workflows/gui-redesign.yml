@@ -134,6 +134,15 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
           set -o pipefail
           node scripts/v51-control-smoke.mjs 2>&1 | tee artifacts/gui/v51-control.log
+      - name: Verify Skills menu, draft-only trials and logout on Chromium/WebKit
+        if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
+        working-directory: jarvis-starter
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          node scripts/skills-menu-smoke.mjs
       - name: Retain screenshots, traces, measured checks and exact identity
         if: always()
         uses: actions/upload-artifact@v4
