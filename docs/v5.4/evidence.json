@@ -1,14 +1,14 @@
 {
   "baseline": "ebbb316e5617705a7e9f323881b937858565b2af",
   "firstCandidate": "5cfb3637d71b3b248ef12467e5df2f322dc94baa",
-  "appTree": "1bded226a3b491056d498215355f7eb79d972321",
+  "appTree": "db4044d81401ee5fee8d5c9da82cb04c916f2a67",
   "commitBinding": "PR head whose jarvis-starter tree equals appTree; CI on exact head is authoritative",
   "localTests": {
     "command": "npm test",
     "passed": 1248,
     "failed": 0,
     "skipped": 0,
-    "logSha256": "80f74266b94fbfacb92b99fd8c7ba15a96a8148ddb858ed9997e66da6098556a"
+    "logSha256": "4a05c2e0b981aa29bd5aa29535a8c30d9b616281694f06a039833b88b5b3a5e1"
   },
   "localBrowser": {
     "status": "blocked",
@@ -119,5 +119,16 @@
     "skillsStep": "failed",
     "otherSteps": "pending at follow-up commit",
     "localReproduction": "HTTP historical availability count was 0 instead of 4; current flag was not forwarded to descriptor. Regression failed before the server fix, full 1248 suite passed after."
+  },
+  "thirdCandidateMedia": {
+    "run": 42343901837,
+    "status": "passed",
+    "scope": "Actual decoder plus deterministic confirmed-running hung-worker cancellation; no remaining containers"
+  },
+  "fourthCandidate": "d4fd9ef359120a578ddd1b642fb7c72670a30f77",
+  "fourthCandidateMedia": {
+    "run": 42344131207,
+    "status": "failed",
+    "reason": "Official FFmpeg detached signature GET timed out before compilation; no verification bypass. Follow-up bounds connect timeout and two transient public-GET retries."
   }
 }

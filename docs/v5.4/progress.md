@@ -56,3 +56,10 @@ Den nye historikfilterprøve fangede en API-fejl: resolve() returnerede rå proc
 uden katalogets current-flag. HTTP-regression reproducerede 0 historiske statusser
 i stedet for 4; serveren videresender nu current fra samme katalog. Den fulde lokale
 suite består fortsat med 1.248 tests. Browserprøven gentages på rettelsens kandidat.
+
+CI 42343901837 på f06c9d6 bestod også stop af en bekræftet startet, syntetisk
+fastlåst worker. Mediebygget på d4fd9ef ramte derimod timeout ved den officielle
+FFmpeg-signaturfil før kompilering. Build-GETs har nu connect-timeout og højst to
+genforsøg; eksakt SHA og signatur er fortsat obligatoriske. Discords mediestatus
+vises nu på dansk, inklusive delvist og ukendt udfald. Ingen model-/handlingsretry
+er tilføjet. Den aktuelle kode afventer samlet CI; 1.248 lokale tests består.

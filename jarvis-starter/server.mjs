@@ -782,7 +782,10 @@ const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUn
   if(/^!medie(?:\s|$)/i.test(message)){
     const command=message.trim().toLocaleLowerCase('da');
     if(command==='!medie stop'){await discordMedia.stop();return 'Stop er registreret. Et allerede sendt modelkald kan have ukendt udfald; der genforsøges ikke.';}
-    if(command==='!medie status'){const status=discordMedia.snapshot();return `Medieanalyse: ${status.enabled?'aktiveret':'deaktiveret'}; video: ${status.videoEnabled?'aktiveret':'deaktiveret'}.\n`+status.recent.map(r=>`${r.id}: ${r.status}`).join('\n');}
+    if(command==='!medie status'){
+      const status=discordMedia.snapshot(),labels={received:'modtaget',validating:'validerer',analyzing:'analyserer',completed:'færdig',partial:'delvist resultat',stopped:'stoppet',failed:'fejl',unknown:'ukendt udfald — gennemgå før en ny anmodning'};
+      return `Medieanalyse: ${status.enabled?'aktiveret':'deaktiveret'}; video: ${status.videoEnabled?'aktiveret':'deaktiveret'}.\n`+(status.recent.map(r=>`${r.id}: ${labels[r.status]||'ukendt status'}`).join('\n')||'Ingen medieopgaver er journalført.');
+    }
     return 'Brug !medie status eller !medie stop. Upload et billede eller en video med dit spørgsmål.';
   }
   const channelCommand=discordChannelCommand(message);
