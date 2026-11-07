@@ -16,7 +16,7 @@ function task(input){
 // No arbitrary commands, dependency installation, CI/workflow edits or deploy.
 export class SelfDevelopment{
  constructor({state,save,transact,control,backend,propose,tests,fixture,enabled=false,autoApprove=false,now=()=>Date.now()}){Object.assign(this,{state,save,transact,control,backend,propose,fixture,enabled,autoApprove,now});this.tests=tests||dockerTest;this.busy=false;}
- rows(){return this.state.selfDevelopmentJobs||[];}
+ rows(){return (this.state.selfDevelopmentJobs||[]).filter(r=>r.engine!=='codex-app-server');}
  status(){return {enabled:this.enabled,configured:Boolean(this.backend),autoApprove:this.autoApprove,allowedFiles:SELF_EDITABLE,automaticDeployment:false};}
  async record(id,patch){return this.transact(['selfDevelopmentJobs'],async()=>{const row=this.rows().find(r=>r.id===id);if(!row)throw new Error('Udviklingsopgaven findes ikke.');Object.assign(row,patch);await this.save();return structuredClone(row);});}
  async recover(){await this.transact(['selfDevelopmentJobs'],async()=>{for(const row of this.rows())if(['preparing','testing','publishing'].includes(row.status))row.status=row.status==='publishing'?'unknown':'stopped';await this.save();});}
@@ -24,9 +24,9 @@ export class SelfDevelopment{
   const spec=task(input);this.control.assertAllowed();
   return this.transact(['selfDevelopmentJobs'],async()=>{this.control.assertAllowed();const existing=id?this.rows().find(r=>r.id===id):null;
    if(id&&(!existing||existing.status!=='draft'||existing.revision!==expectedRevision))throw new Error('Udviklingskladden er ændret eller allerede startet. Bevar dine rettelser og hent status.');
-   if(!id&&this.rows().length>=100)throw new Error('Gennemgå udviklingsarkivet før flere kladder.');
+   if(!id&&(this.state.selfDevelopmentJobs||[]).length>=100)throw new Error('Gennemgå udviklingsarkivet før flere kladder.');
    const row={...existing,...spec,id:id||randomUUID(),revision:(existing?.revision||0)+1,status:'draft',createdAt:existing?.createdAt||new Date(this.now()).toISOString(),updatedAt:new Date(this.now()).toISOString()};
-   this.state.selfDevelopmentJobs=existing?this.rows().map(r=>r.id===id?row:r):[...this.rows(),row];await this.save();return structuredClone(row);
+   this.state.selfDevelopmentJobs=existing?(this.state.selfDevelopmentJobs||[]).map(r=>r.id===id?row:r):[...(this.state.selfDevelopmentJobs||[]),row];await this.save();return structuredClone(row);
   });
  }
  async cancelDraft(id,{expectedRevision}){
@@ -37,11 +37,11 @@ export class SelfDevelopment{
   if(input.draftId&&(!draft||draft.status!=='draft'||draft.revision!==input.expectedRevision))throw new Error('Udviklingskladden er ændret eller allerede startet.');
   const {file,request,version,acceptanceCriteria}=task(draft||input);
   this.control.assertAllowed();if(!this.enabled||!this.backend)throw new Error('Selvudvikling mangler separat udviklingsadgang og er ikke aktiveret.');
-  if(this.busy||this.rows().some(r=>r.status==='unknown'))throw new Error('En udviklingsopgave er aktiv eller har ukendt publiceringsudfald.');
-  if(this.rows().filter(r=>!['draft','cancelled'].includes(r.status)&&(r.startedAt||r.createdAt).slice(0,10)===new Date(this.now()).toISOString().slice(0,10)).length>=3)throw new Error('Dagens grænse på tre udviklingsopgaver er nået.');
+  if(this.busy||(this.state.selfDevelopmentJobs||[]).some(r=>r.status==='unknown'||r.engine==='codex-app-server'&&['queued','starting','running','waiting_approval','stop_requested','publishing'].includes(r.status)))throw new Error('En udviklingsopgave er aktiv eller har ukendt publiceringsudfald.');
+  if((this.state.selfDevelopmentJobs||[]).filter(r=>!['draft','cancelled'].includes(r.status)&&(r.startedAt||r.createdAt).slice(0,10)===new Date(this.now()).toISOString().slice(0,10)).length>=3)throw new Error('Dagens grænse på tre udviklingsopgaver er nået.');
   this.busy=true;const id=draft?.id||randomUUID(),scope=this.control.current();let publishing=false,started=false;
   try{
-   await this.transact(['selfDevelopmentJobs'],async()=>{this.control.assertAllowed(scope);if(draft){const current=this.rows().find(r=>r.id===id);if(current.status!=='draft'||current.revision!==input.expectedRevision)throw new Error('Kladden er ændret.');Object.assign(current,{status:'preparing',startedAt:new Date(this.now()).toISOString(),revision:current.revision+1});}else{this.state.selfDevelopmentJobs=[...this.rows(),{id,file,request,version,acceptanceCriteria,revision:1,status:'preparing',createdAt:new Date(this.now()).toISOString()}];}await this.save();});
+   await this.transact(['selfDevelopmentJobs'],async()=>{this.control.assertAllowed(scope);if(draft){const current=this.rows().find(r=>r.id===id);if(current.status!=='draft'||current.revision!==input.expectedRevision)throw new Error('Kladden er ændret.');Object.assign(current,{status:'preparing',startedAt:new Date(this.now()).toISOString(),revision:current.revision+1});}else{this.state.selfDevelopmentJobs=[...(this.state.selfDevelopmentJobs||[]),{id,file,request,version,acceptanceCriteria,revision:1,status:'preparing',createdAt:new Date(this.now()).toISOString()}];}await this.save();});
    started=true;
    const base=await this.backend.snapshot([...SELF_EDITABLE,'jarvis-starter/food-identity.mjs','jarvis-starter/package.json']);this.control.assertAllowed(scope);
    if(!/^[a-f0-9]{40}$/.test(base.sha))throw new Error('Udviklingsgrundlaget mangler et præcist commit.');

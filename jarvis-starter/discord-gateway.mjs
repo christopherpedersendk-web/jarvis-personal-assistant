@@ -10,6 +10,7 @@ import { atomicStateWrite } from './state-schema.mjs';
 import { BoundedJobQueue } from './bounded-queue.mjs';
 import { redactSecrets } from './privacy.mjs';
 import { formatDiscordTables } from './discord-format.mjs';
+export const isDiscordPriorityControl=text=>/^!(?:medie|stemme) (?:stop|status)$/i.test(text)||/^(?:Stop opgave [a-f0-9-]{8,36}|Status på udviklingsopgaven|Status (?:på )?(?:udviklings)?opgave [a-f0-9-]{8,36})[.!]?$/iu.test(text);
 const DM_INTENTS = (1 << 12);
 const GUILD_INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
 const SNOWFLAKE = /^\d{15,22}$/;
@@ -831,7 +832,7 @@ export class DiscordGateway {
     }
     // These exact owner commands can stop/inspect a running media/voice job.
     // They still pass sender checks, durable admission and reply deduplication.
-    if (/^!(?:medie|stemme) (?:stop|status)$/i.test(context.content)) return (await this.processMessage(context)).accepted;
+    if (isDiscordPriorityControl(context.content)) return (await this.processMessage(context)).accepted;
     const queued = this.workQueue.enqueue('Discord-besked', () => this.processMessage(context));
     pending.queueId = queued.id;
     try { return (await queued.promise).accepted; }
@@ -860,7 +861,7 @@ export class DiscordGateway {
     // another slot or retain another complete event while the first is running.
     if (this.pendingMessages.has(id)) return Promise.resolve(false);
     if (this.seen.has(id)) return Promise.resolve(false);
-    const priorityControl=/^!(?:medie|stemme) (?:stop|status)$/i.test(event.content.trim());
+    const priorityControl=isDiscordPriorityControl(event.content.trim());
     if (this.pendingMessages.size >= this.workQueue.maxWaiting + 1 && !(priorityControl && !this.pendingControl)) {
       this.rejectMessage('Discord-køen er fuld. Beskeden blev ikke behandlet.');
       return Promise.reject(discordError('DISCORD_QUEUE_FULL', this.lastError));
