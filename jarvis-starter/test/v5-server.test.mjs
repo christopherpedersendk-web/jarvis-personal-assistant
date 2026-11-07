@@ -43,8 +43,8 @@ async function fixture(t, { legacy = null, voice = false } = {}) {
     child.stderr.on('data', chunk => logs.push(String(chunk)));
     exit = new Promise(resolve => child.once('close', resolve));
     for (let i = 0; i < 120; i++) {
-      try { const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(500) });
-        if (response.ok) return; }
+      try { const response = await fetch(`${base}/api/settings`, { headers:{Authorization:`Bearer ${token}`}, signal: AbortSignal.timeout(500) });
+        const ownServer=response.ok;await response.body?.cancel();if(ownServer)return; }
       catch { /* startup */ }
       if (child.exitCode !== null) break;
       await delay(40);

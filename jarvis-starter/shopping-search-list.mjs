@@ -1,0 +1,5 @@
+import {canonicalIngredientAmount,ingredientIdentity} from './food-identity.mjs';
+// Strip only an explicit leading amount+unit; preserve names such as 7up and
+// variant numbers. Never infer a weight or replace the saved quantity.
+export function shoppingSearchName(value){return String(value||'').normalize('NFKC').trim().replace(/^(?:ca\.?\s*)?(?:\d+(?:[.,]\d+)?|\d+\s*[/⁄]\s*\d+)\s*(?:kg|g|mg|ml|dl|cl|l|stk\.?|spsk\.?|tsk\.?)\s+(?=\p{L})/iu,'').replace(/\s+/g,' ');}
+export function shoppingSearchList(items=[]){const groups=new Map();for(const item of items){const name=shoppingSearchName(item.name);if(!name)continue;const key=ingredientIdentity(name),row=groups.get(key)||{name,query:name,amounts:[]};const amount=canonicalIngredientAmount({...item,name});const prior=row.amounts.find(a=>a.unit===amount.unit);if(prior)prior.quantity=Math.round((prior.quantity+amount.quantity)*1000)/1000;else row.amounts.push({quantity:amount.quantity,unit:amount.unit});groups.set(key,row);}return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'da'));}

@@ -1,0 +1,64 @@
+name: Commerce and self-development contracts
+on:
+  pull_request:
+    branches: [main]
+    paths: ['jarvis-starter/**', 'docs/next/**', '.github/workflows/commerce-contract.yml']
+permissions:
+  contents: read
+jobs:
+  browser-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix jarvis-starter/openclaw-runtime --ignore-scripts --no-fund
+      - name: Check installed browser configuration and control API without merchant visits
+        working-directory: jarvis-starter
+        env:
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/openclaw-browser-contract.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-contract-${{ github.event.pull_request.head.sha }}
+          path: jarvis-starter/artifacts/commerce/
+          retention-days: 30
+  isolated-self-development:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Compare planner against pinned released baseline
+        working-directory: jarvis-starter
+        env:
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git show 5ed073367e6db86b3bb6af9aee6376a3c85fbf35:jarvis-starter/meal-planner.mjs > "$RUNNER_TEMP/meal-baseline.mjs"
+          node scripts/meal-variety-benchmark.mjs "$RUNNER_TEMP/meal-baseline.mjs"
+      - name: Provision the existing test runner image explicitly
+        run: docker pull node:22-alpine
+      - name: Repair a synthetic defect in actual isolated tests
+        working-directory: jarvis-starter
+        env:
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/self-development-smoke.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-self-development-${{ github.event.pull_request.head.sha }}
+          path: jarvis-starter/artifacts/commerce/
+          retention-days: 30

@@ -205,3 +205,10 @@ test('archived source recipes are rejected before reads and if invalidated durin
   await assert.rejects(f.shopping.create(f.plan.id), /opskrift/);
   assert.equal(f.calls.length, 0);
 });
+
+test('Nemlig matches ingredient names once without quantities in the search query',async()=>{
+ const f=setup();f.plan.shoppingList=[{name:'200 g ris',quantity:200,unit:'g'},{name:'ris',quantity:.5,unit:'kg'}];
+ const draft=await f.shopping.create(f.plan.id);
+ const searches=f.calls.filter(c=>c.name==='search_products');assert.equal(searches.length,1);assert.equal(searches[0].args.query,'ris');
+ assert.equal(draft.items.length,2);assert.equal(f.writes().length,0);
+});

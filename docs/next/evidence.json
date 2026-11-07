@@ -1,0 +1,75 @@
+{
+  "baselineCommit": "5ed073367e6db86b3bb6af9aee6376a3c85fbf35",
+  "historicalPr18Candidate": "177aa483614ee1f9dab072ae3c6d59a5c9f784e6",
+  "releaseVersion": "5.4.0",
+  "schema": {
+    "version": 1,
+    "readableFrom": 0
+  },
+  "candidate": "PR19 head and exact candidate-bound GitHub Actions artifacts; do not substitute local reconstructed commit IDs",
+  "local": {
+    "focusedChannelMealTests": {
+      "passed": 34,
+      "failed": 0
+    },
+    "githubTransportTests": {
+      "passed": 3,
+      "failed": 0
+    },
+    "nativeOpenClawBrowserContract": {
+      "version": "2026.11.1",
+      "status": "passed",
+      "scope": "configuration/control auth/fixed profile status/forbidden generic tool; no Chrome or merchant visit"
+    },
+    "mealBenchmark": {
+      "baselineSourceSha256": "9977da9e384dcb1ecd9fdcb53604220377e321b558d56440e31b4db2568481ec",
+      "syntheticRecipes": 24,
+      "weeks": 4,
+      "proposals": 12,
+      "before": {
+        "unique": 9,
+        "repeated": 3
+      },
+      "afterHighVariation": {
+        "unique": 12,
+        "repeated": 0
+      },
+      "modelEvaluation": false
+    },
+    "fullRegression": {
+      "passed": 1279,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm test",
+      "log": "next-full-tests3.log",
+      "scope": "candidate source working tree before documentation-only update; exact tree will be verified by CI"
+    },
+    "browserUI": "pending CI; local installed Chromium launch denied by host IPC permissions; pinned browser download also failed",
+    "dockerRepair": "pending CI; local Docker CLI unavailable"
+  },
+  "notPerformed": [
+    "live owner Discord channels",
+    "physical iPhone",
+    "owner installation restore",
+    "real merchant/Chrome egress containment",
+    "login/cart/payment or purchase",
+    "real model quality tasks",
+    "real Jarvis self-development PR with development credential"
+  ],
+  "historicalFailures": [
+    {
+      "scope": "first full working tree run",
+      "passed": 1262,
+      "failed": 12,
+      "total": 1274,
+      "resolution": "VM extraction boundary and price/reuse ranking corrected; tests retained"
+    },
+    {
+      "scope": "second full working tree run",
+      "passed": 1273,
+      "failed": 1,
+      "total": 1274,
+      "resolution": "HTTP fixture readiness now checks its own authenticated settings, not an unrelated health responder; focused reproduction passed"
+    }
+  ]
+}

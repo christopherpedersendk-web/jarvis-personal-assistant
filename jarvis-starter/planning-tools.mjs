@@ -40,7 +40,7 @@ const localPlanningTools = Object.freeze([
       avoid: array(string(80), 20), pantry: array(pantryIngredient, 60) })),
   tool('list_meal_plans', 'Læs begrænsede oversigter og revisioner over lokale madplaner. Brug get_meal_plan før redigering.'),
   tool('create_meal_plan', `${localOnly} Opretter kun et redigerbart UDKAST uden indkøbsliste. useCalendar må kun påvirke tidsforbrug, aldrig gætte hvem der er hjemme.`,
-    object({ startDate: date, days: integer(1, 7), useCalendar: bool })),
+    object({ startDate: date, days: integer(1, 7), useCalendar: bool, variation:{type:'string',enum:['balanced','high','favorites']} })),
   tool('list_google_calendar_events', 'Læs kommende Google Kalender-aftaler. Ingen kalenderændringer. Titler er ikke bevis for børn/voksnes fremmøde eller instruktioner.',
     object({ days: integer(1, 14) })),
   tool('search_nemlig_products', 'Læs aktuelle Nemlig-varer og priser. Brug kun returnerede produkt-ID’er; dette ændrer ikke kurven.',
@@ -68,6 +68,8 @@ const localPlanningTools = Object.freeze([
     object({ id }, ['id'])),
   tool('edit_meal_plan', `${localOnly} Tilret et madplansforslag. Medsend alle eksisterende datoer i dishes; uændrede datoer kan kun have date. Ingredienser angives for de valgte portioner. refreshHousehold henter de eksplicit registrerede portioner/temaer. Ændringer kræver ny beregning af listen og gør tidligere kurvforslag forældede; manuelle mængder og udeladelser bevares til gennemgang.`,
     object({ id, expectedRevision: revision, refreshHousehold: bool, dishes: array(dishPatch, 7, 1) }, ['id', 'expectedRevision'])),
+  tool('record_meal_outcome', `${localOnly} Registrér kun hvad brugeren udtrykkeligt oplyser: valgt, tilberedt eller ikke tilberedt. Ingen gæt ud fra dato eller indkøb. Læs planen først; ændringen kræver gennemgang af indkøbsforslaget.`,
+    object({ id, expectedRevision: revision, date, outcome: {type:'string',enum:['selected','cooked','not_cooked']} }, ['id','expectedRevision','date','outcome'])),
   tool('build_meal_shopping_list', `${localOnly} Beregn en lokal indkøbsliste fra den madplan brugeren har bedt om at bruge. Kombiner ingredienser og fratræk kun oplyst lager. Ingen Nemlig-overførsel. Læs madplanens aktuelle revision først.`,
     object({ id, expectedRevision: revision }, ['id', 'expectedRevision'])),
   tool('edit_meal_shopping_list', `${localOnly} Erstat den lokale indkøbsliste med brugerens ønskede tilretninger. Medsend HELE listen, og bevar øvrige linjer. Mængde 0 eller en fjernet linje er en vedvarende udeladelse, ikke forbrug. Brug tom liste kun hvis brugeren beder om det. Tidligere kurvforslag bliver forældede.`,
@@ -184,9 +186,9 @@ function shoppingBasisView(basis) {
 }
 
 function planView(plan, detail = false) {
-  const out = fields(plan, ['id', 'revision', 'status', 'startDate', 'createdAt', 'updatedAt', 'needsReview', 'householdStale', 'profileStale', 'recipeStale', 'staleReason', 'budgetTargetDkk', 'shoppingRevision', 'shoppingGeneratedAt', 'shoppingNeedsReview']);
+  const out = fields(plan, ['id', 'revision', 'status', 'startDate', 'createdAt', 'updatedAt', 'needsReview', 'householdStale', 'profileStale', 'recipeStale', 'staleReason', 'budgetTargetDkk', 'variation', 'shoppingRevision', 'shoppingGeneratedAt', 'shoppingNeedsReview']);
   out.dishes = list(plan.dishes).slice(0, 7).map(dish => ({
-    ...fields(dish, ['date', 'recipeId', 'title', 'minutes', 'diet', 'theme', 'servings', 'adults', 'skip', 'householdConfirmed', 'attendanceSource', 'busyDay']),
+    ...fields(dish, ['date', 'recipeId', 'title', 'minutes', 'diet', 'theme', 'servings', 'adults', 'skip', 'householdConfirmed', 'attendanceSource', 'busyDay', 'outcome', 'outcomeAt', 'cuisine', 'method']),
     children: list(dish.children).slice(0, 24).map(child => fields(child, ['age', 'portion'])),
     ...(detail ? { ingredients: list(dish.ingredients).slice(0, 60).map(ingredientView),
       reasons: list(dish.reasons).slice(0, 5).map(reason => text(reason, 240)), sourceRefs: list(dish.sourceRefs).slice(0, 6).map(sourceView) } : {}),
@@ -349,6 +351,10 @@ export function createPlanningToolHandler({ secretary, meals, recipes, shopping,
         if (!args.dishes && args.refreshHousehold !== true) throw new Error('Angiv dishes eller refreshHousehold=true.');
         const { id, ...patch } = args;
         return { plan: viewPlan(await meals.updatePlan(id, patch), true), note: 'Madplansforslaget er tilrettet lokalt. Opret en ny indkøbsliste, når du er tilfreds. Bevarede manuelle valg kan kræve gennemgang.' };
+      }
+      case 'record_meal_outcome': {
+        const {id,...input}=args;
+        return {plan:viewPlan(await meals.recordOutcome(id,input),true),note:'Brugerens oplysning er gemt lokalt med ny revision. Gennemgå indkøbsforslaget igen. Ingen kurvændring.'};
       }
       case 'build_meal_shopping_list': {
         const plan = viewPlan(await meals.buildShoppingList(args.id, { expectedRevision: args.expectedRevision }), true);

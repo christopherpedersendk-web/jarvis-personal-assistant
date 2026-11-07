@@ -1,0 +1,5 @@
+// Trusted scoped regression suite; never included in the model-editable files.
+import test from 'node:test';import assert from 'node:assert/strict';import {shoppingSearchName,shoppingSearchList} from '../shopping-search-list.mjs';import {varietyPenalty} from '../meal-variety.mjs';
+test('self-development protected regression: quantity stays outside product query',()=>{assert.equal(shoppingSearchName('250 g ris'),'ris');assert.equal(shoppingSearchName('7up Free'),'7up Free');assert.equal(shoppingSearchName('mælk 1,5%'),'mælk 1,5%');});
+test('self-development protected regression: compatible amounts combine exactly',()=>{const rows=shoppingSearchList([{name:'ris',quantity:.5,unit:'kg'},{name:'ris',quantity:250,unit:'g'}]);assert.equal(rows.length,1);assert.equal(rows[0].query,'ris');assert.equal(rows[0].amounts[0].quantity,750);});
+test('self-development protected regression: recurring families lose priority without changing their ingredients',()=>{const r={ingredients:[{name:'ris',quantity:100,unit:'g'}]},before=structuredClone(r);assert.ok(varietyPenalty(r,[{dishes:[r]}])>8);assert.deepEqual(r,before);});

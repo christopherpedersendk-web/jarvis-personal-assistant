@@ -113,6 +113,15 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
           node scripts/skills-menu-smoke.mjs
+      - name: Verify private profiles and manual commerce workflow
+        if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
+        working-directory: jarvis-starter
+        env:
+          JARVIS_REQUIRE_WEBKIT: 'yes'
+          JARVIS_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          node scripts/commerce-ui-smoke.mjs
       - name: Verify GUI fixture matrix on both browser engines
         if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
         id: gui
