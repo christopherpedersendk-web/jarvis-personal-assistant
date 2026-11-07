@@ -213,5 +213,58 @@
   "finalDocumentation": {
     "scope": "docs/next only after 7dfed08a; [skip ci] prevents redundant suites. Application and workflows exactly unchanged; verify final diff against tested candidate.",
     "merge": "Owner-authorized after all seven workflows succeeded; merge result recorded in PR metadata."
+  },
+  "reviewableDrafts": {
+    "base": "1249eba457ec866da00f3005e6a79b8d1aa8973f",
+    "codeCommit": "1ecdb7031369e0202b7ca729a3da2176aa556a5d",
+    "separatePr20": "54a54fb0272736896f1e106df55b9724cda2a530",
+    "node": "v24.22.1",
+    "tests": [
+      {
+        "command": "node --test test/commerce.test.mjs test/self-development.test.mjs",
+        "passed": 22,
+        "failed": 0,
+        "skipped": 0,
+        "note": "Initial focused run. Commerce 10 unchanged thereafter; self-development superseded by its final run below."
+      },
+      {
+        "command": "node --test test/self-development.test.mjs",
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0,
+        "note": "Final self-development source; includes queued edit/start race and start-date daily limit."
+      },
+      {
+        "command": "node --test test/review-routes.test.mjs",
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "note": "Actual server route block with injected handlers; not full HTTP/auth integration."
+      }
+    ],
+    "uniqueFinalTests": 26,
+    "syntax": [
+      "server.mjs",
+      "self-development.mjs",
+      "public/commerce.js",
+      "public/self-development.js"
+    ],
+    "sourceHashes": {
+      "jarvis-starter/commerce.mjs": "6b230f67fa424a1003cca205c726cc9097e8af3fb1e20161730e3bbbd5ab674f",
+      "jarvis-starter/openclaw-browser-reader.mjs": "f8a1288d1113708b2b1158aa2dd9c21f003b974394a944aef4ef33de0721cdb0",
+      "jarvis-starter/self-development.mjs": "22aef9587884c71a48ba9b3ec36f65a918db096fd7da0017bf49745c328212b2",
+      "jarvis-starter/server.mjs": "85d4b48a4b4c301282508a79f77b381820b47bdb6b9a9214fffc29615372160b",
+      "jarvis-starter/public/commerce.js": "b712bd722687b9e6fe8a0a926c49877de458a30fd7f4abdee2d3d064c907a37a",
+      "jarvis-starter/public/self-development.js": "40efcd930145cdea9839c936ebfc9caeab80a7e44faa76e6990a7dc29d991ab9",
+      "jarvis-starter/test/commerce.test.mjs": "b93128e99dd5cb8b80d893d92e532e0f32efe4175eb263b16c283b9c88582235",
+      "jarvis-starter/test/self-development.test.mjs": "1a62c6190e912602f533de6f2839d7ed93ce56f29653164ac790e557b91b887a",
+      "jarvis-starter/test/review-routes.test.mjs": "675b5ace3f864fd0b3e2c81fda0febe134dda582e4ce29a8a5d02b8037bee46f"
+    },
+    "scope": "Local logic and simulated browser/model/sandbox/GitHub contracts. No generated code executed outside isolation.",
+    "ui": "Syntax checked and code reviewed; not rendered in a real browser for this revision.",
+    "ci": "[skip ci] after inspecting automatic broad Docker/model workflow triggers. Required merge checks unchanged; no new CI pass claimed.",
+    "externalAcceptance": "not_run",
+    "qualityScore": null,
+    "costSavings": null
   }
 }

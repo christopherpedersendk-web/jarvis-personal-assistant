@@ -1,39 +1,32 @@
-# Næste reviewbare pakke: målhost og reel hybridaccept
+# Reviewbar pakke: browserkilder og kladder før handling
 
-Afhænger af grøn mediecontainment og merge af PR #19. Ingen release, deployment, featureaktivering eller køb er implicit autoriseret.
+## Grundlag og afgrænsning
 
-## A. Målhostinventar og isoleret accept
+Main: 1249eba457ec866da00f3005e6a79b8d1aa8973f (PR #19). Separat draft PR #20: 54a54fb0272736896f1e106df55b9724cda2a530, diagnostik/evaluering med 11 historiske fokuserede tests. Denne pakke bygger direkte på main og kopierer ikke PR #20. Kodekandidat: 1ecdb7031369e0202b7ca729a3da2176aa556a5d. Version 5.4.0; schema 1/readableFrom 0.
 
-Brug eksisterende operatøradgang; send aldrig credentials i chat eller PR. Registrér commit, pakke/schema, Node/OpenClaw-version, tjenestebruger, loopback-porte og eksisterende fungerende integrationer. Læs systemd-unit og effektive sandboxegenskaber (NoNewPrivileges, ProtectSystem, ProtectHome, PrivateTmp, read/write paths). Researchcredential må ikke have operatorrettigheder. Bevar eksisterende data, scheduler, bot og flags.
+Gap-analysen fandt fungerende ordrevalidering, reviewhash, manuel overdragelse, fast browserprofil og en beskyttet udviklingspipeline. Konkrete mangler var manglende kladderedigering, manglende observationsmetadata og manglende lokalt udviklingsønske/før-efter-visning. Disse dele kan forbedres uden Docker, modelcredentials eller målhost. Ingen ny dokumenteret P0 blev fundet i dette afgrænsede review; det er ikke en fuld sikkerhedsaudit.
 
-På særskilt godkendt testinstans: kør den eksisterende pinned researchkontrakt, bevar kilder, afvis forkert credential og forbudte tools. For commerce: separat browserprofil/tjeneste uden private data eller Docker-socket; dokumentér faktisk afvisning af loopback, RFC1918, metadata, redirects, DNS-skift og underressourcer. Konfigurationsattestation alene er ikke accept. Alle nye flags forbliver OFF indtil konkret ejerbeslutning.
+## Implementeret
 
-## B. Samme 30 danske opgaver
+- M16.1: rediger og annullér ordrekladder med revisionskonflikter og nyt review. Afsluttede ordrer genåbnes ikke; gamle godkendelser afvises.
+- M16.3: bevar offentlig browserkilde, observationstidspunkt og indholdshash; afvis ændret destination under læsningen. Cleanup og eksisterende isolation-/stopkrav bevares.
+- M18.1: gem/redigér/annullér lokale udviklingsønsker med acceptkriterier før start; én start af præcis revision; vis base-SHA og før/efter-funktion, også ved blokeret sandbox.
+- Eksisterende danske formularer understøtter disse forløb og bevarer input ved konflikt. Ingen parallel kodeagent, datakilde, bot eller scheduler.
 
-Eksisterende scripts genbruges, ingen nyt datasæt. Fra jarvis-starter på en isoleret testhost med sikkert konfigureret OPENAI_API_KEY, OPENAI_TEXT_MODEL og hybridens restricted-v1 gateway:
+## Gennemført verifikation
 
-```sh
-node scripts/assistant-evaluation.mjs
-node scripts/assistant-evaluation.mjs --live --output baseline-unreviewed.json
-node scripts/assistant-evaluation.mjs --live --hybrid --output hybrid-unreviewed.json
-```
+26 unikke fokuserede Node-tests: 10 commerce/browser-kontrakter, 14 selvudvikling, 2 routekontrakter. Nul fejl/skips. Browser, model, sandbox og GitHub-publicering er simulerede i disse kontroller. Ændrede server-/UI-filer er syntakskontrolleret; ingen ny rigtig browserrendering eller fuld HTTP-suite er påstået. Præcise filhashes i evidence.json.
 
-Første kommando er kun offlineplan. Livekommandoer reserverer/forbruger faktiske API-kald. Brug nye outputfiler og samme kildekode/model/datasæt. Bedøm begge rapporters svar, kilder, handlinger og faktisk finalState med passed, reviewedBy og reviewNote for hver opgave, og bevar de oprindelige rårapporter. Kør derefter:
+Automatiske PR-triggere blev inspiceret: de brede jarvis-starter-paths starter bl.a. Dockercontainment, mediebuild og modeldownload. Udviklingscommits bruger derfor [skip ci]. Ingen workflow eller mergekontrol er fjernet. Denne fokuserede evidens gør ikke kandidaten fuldt CI-/releasegodkendt.
 
-```sh
-node scripts/assistant-evaluation.mjs --grade baseline-reviewed.json
-node scripts/assistant-evaluation.mjs --grade hybrid-reviewed.json
-node scripts/compare-assistant-evaluations.mjs baseline-reviewed.json hybrid-reviewed.json
-```
+## Resterende produktmangler — ikke planlagte utilgængelige kørsler
 
-Accept: mindst 27/30 i begge forløb og alle kritiske opgaver bestået. durationMs inkluderer setup, ikke ren modeltid. Rapportér faktiske usagefelter; manglende gateway-/providerforbrug er null/ukendt. Pris kræver dateret tariffgrundlag og fuld dækning af model, hosted tools og gateway; ingen procentbesparelse ved ufuldstændige data. Denne session har ingen model- eller gatewaycredentials, så begge forløb er not_run og scores null.
+Browser/shopping: automatisk produktudtræk og sammenligning, pris-/lageropdatering samt eksplicit separat faktureringsvalg er ikke udvidet. Login, session, kurv og checkout kræver en konkret verificeret butikskontrakt og testprofil; ingen generiske write-handlinger er tilføjet. Betalingsappgodkendelse og bindende ordreafsendelse er ikke udført.
 
-## C. Ejerprøver uden køb
+Selvudvikling: rigtig model → isoleret kodekørsel → rigtig JARVIS-publiceret PR er stadig åben M18.3. Denne implementerings-PR er ikke evidens for det flow. Revisionshistorik, prioritering og chatoprettelse er ikke udvidet. Ukendt publicering blokerer fortsat nye starter indtil særskilt afklaring.
 
-Følg operations.md: godkendt testguild, live kanalreview/ændring/stop; syntetiske stamdata og revisionskonflikt i web/DM; én aktiv madplan gennem web/Discord; låste valg/kostkrav og faktisk historik; Nemlig navnesøgning med separate mængder, uden kurvwrite. Registrér observation, version, tidspunkt og udfald pr. kriterium. Fysisk iPhone, voice og backup/restore kræver konkret ejerhostadgang.
+M1–M18 beholder deres betydning og åbne ejeraccept. Planlægning, fælles hukommelse, madplan/Nemlig, Discord, backup/restore og fysisk iPhone er uændret. Samme 30 danske evalueringsopgaver bevares; ingen livekørsel, score eller besparelse påstås. Smart Home afventer lokal agent.
 
-## D. Senere særskilte kontrakter
+## Ejerhandling
 
-Handel: login i isoleret testprofil uden eksponering af credentials; tilladte butiksendpoints/handlinger; sessionsudløb/logout; kurv med præcis sælger/variant/antal/pris/fragt/adresse; nyt review ved ændring; ordre-preview adskilt fra bindende afsendelse; idempotens og ingen automatisk retry ved ukendt udfald; ingen betalingsappgodkendelse af agenten. Rigtige køb kræver særskilt ejerbeslutning.
-
-Selvudvikling: separat testmodel og GitHub-credential, branch protection og uafhængigt beskyttet security-check først. Lav en lille tilladt ændring i eksisterende Docker-sandbox; dokumentér fejl før/fix efter, uændret hostkode og eksakt draft-PR-SHA. Credential må ikke kunne ændre main, workflows, checks, release eller deployment. Test stop, genbrug og ukendt publicering. Ingen automatisk merge eller deployment.
+Review den konkrete diff og begrænsningerne. Ingen credentials eller aktivering er nødvendig for review. Målhost-/købs-/produktionsbeslutninger er særskilte; dette dokument bestiller ingen utilgængelige prøver.

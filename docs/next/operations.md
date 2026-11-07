@@ -42,3 +42,17 @@ Udvikling: tre forsøg/dag, én samtidig, request 2K/kodeændring 45KB, fast tes
 ## Rollback
 
 Stop først i Jarvis og slå de tre nye funktionsflags samt agentgodkendelse fra. Stop den særskilte OpenClaw-browserservice og luk dens profiler. Kandidaten har ingen tag/deploy/migrationsændring. Revert PR-committene i udviklingsgrenen eller senere via en reviewet rollback-PR; deploy kun gennem eksisterende særskilt tjeneste efter godkendelse. Bevar private indstillinger og journaler/backups, også når ældre kode ignorerer de nye felter. Genoptag ikke stoppede/ukendte opgaver eller gamle reviews. Kontroller eksisterende Discord-tekst/rapport, helbred og én aktiv madplan efter tilbageførsel. Faktisk installationsrestore er fortsat separat åben accept.
+
+## Redigerbare kladder og review
+
+Ordre: vælg Redigér ordrekladde, ret vare/antal/pris/profil og gem. Dette opdaterer samme ordre-id med en højere revision, nyt reviewhash og to minutters reviewfrist. Ingen gammel godkendelse genbruges. Priser skal stadig være kendte og højst 15 minutter gamle. Annullering afslutter kladden; overdragede/stoppede/annullerede kladder genåbnes ikke. Konflikter bevarer formularen, og Hent indkøbsstatus opdaterer listen uden at kassere indtastningen. Vælg selv en ny kladde, hvis den gamle er afsluttet.
+
+Udvikling: Hent udviklingsstatus → udfyld ønske, tilladt fil, patchversion og eventuelle acceptkriterier → Gem udviklingskladde. Lokal lagring kræver login, men hverken udviklingscredential, model, Docker eller aktiveret selvudvikling. Globalt stop blokerer nye/gemte rettelser; annullering er stadig tilladt. Gemte udviklingskladder overlever restart. Start gennemgået kladde kræver de eksisterende aktiverings-/adgangskrav og forbruger præcis den gemte revision én gang. Ingen automatisk retry, heller ikke ved forbindelsesbrud. Hent status før en ny anmodning.
+
+Udviklingsjournalen indeholder nu også brugerens konkrete ønske, acceptkriterier og den offentlige funktions før/efter-kode (maksimalt 45 KB pr. side). Undgå private oplysninger i udviklingsønsker. Secrets afvises; hukommelse/stamdata sendes ikke automatisk til kodeagenten. Kodevisningen bruger tekst, ikke HTML. Ved utilgængelig sandbox kan kodeforslaget gennemgås, men udføres/publiceres ikke. Den eksisterende daglige grænse tæller startdato, ikke kladdens oprettelsesdato.
+
+API: POST /api/commerce/:id/revise med {expectedRevision,order}; POST /api/commerce/:id/cancel med {expectedRevision}. POST /api/self-development/drafts gemmer en opgave; POST /api/self-development/:id/draft med {expectedRevision,task} reviderer den; /cancel afslutter den. POST /api/self-development med {draftId,expectedRevision} starter eksisterende pipeline. Alle ligger bag eksisterende owner-autentifikation. Ingen nye modeltools er tilføjet.
+
+Browserresultatet indeholder requestedUrl, url, observedAt og snapshotHash. Observationstidspunkt er ikke en garanti for pris/lager eller netværksisolation. Browseren bruger fem kontrolkald ved succes (open/list/snapshot/list/close), og faktisk antal HTTP-kald registreres. Tokens og pris forbliver null.
+
+Rollback til ældre kode kræver, at nye udviklingskladder ikke startes gennem den ældre UI, som ikke forstår deres kladdestatus. Bevar journalen; ingen migration, pakkeversion eller featureflag ændres af denne udviklingspakke. Den nye før/efter-visning er syntakskontrolleret, ikke fysisk mobil- eller browseraccept.
