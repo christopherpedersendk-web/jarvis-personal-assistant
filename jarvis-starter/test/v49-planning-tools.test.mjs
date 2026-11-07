@@ -324,3 +324,8 @@ test('explicit reported meal outcome is revision-bound and returned through the 
  await assert.rejects(f.handle('record_meal_outcome',{id:p.id,expectedRevision:revision,date:p.dishes[0].date,outcome:'not_cooked'}),/ændret|revision/i);
  assert.equal(f.meals.getPlan(p.id).dishes[0].outcome,'cooked');assert.equal(f.calls.length,0);
 });
+
+test('meal profile provenance distinguishes unconfirmed defaults from an explicit owner update',async()=>{
+ const f=fixture(),initial=await f.handle('get_meal_profile',{});assert.equal(initial.provenance.confirmedUserPreferences,false);assert.equal(initial.provenance.source,'default-or-unverified-legacy');assert.match(initial.note,/standarder|ubekræftede/);
+ await f.handle('update_meal_profile',{diet:'vegan'});const saved=await f.handle('get_meal_profile',{});assert.equal(saved.provenance.confirmedUserPreferences,true);assert.equal(saved.profile.diet,'vegan');assert.equal(saved.provenance.source,'user-entered');
+});

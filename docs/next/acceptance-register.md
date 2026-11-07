@@ -141,3 +141,9 @@ Grundlag er aktuel main `a0a076018429cb87c8d2a0b4d497b95a8738df16` og uændret s
 | M12/M16 | Broen kan modtage afgrænsede ændringsopgaver til de eksisterende kanal-/opskrifts- og Proshop-moduler. | M12's ejer-/iPhone-/reviewaccept og M16's autentificerede login, adresse, 2900-fragt/levering og fuldt klargjort checkout er fortsat åbne. Ingen nye butikskøb eller Discord REST-prøver i denne leverance. |
 
 36 nye unikke fokuserede lokale tests og 23 nødvendige eksisterende regressioner er fordelt på kildeændringernes kørsler. De sidste genstarts-/adgangsrettelser er verificeret med tre målrettede cases; beståede uændrede tests er genbrugt. Simuleret Discord/GitHub/protokol er adskilt fra den faktiske model/Docker/GitHub-prøve i [revisionsbundet evidens](evidence.json) og [liverapport](codex-bridge-live.json). Ingen hel milestone lukkes. [Drift og aktivering](codex-bridge.md).
+
+## M6–M10: faktisk dansk baseline/hybrid-evaluering 2026-11-07
+
+Samme model og 30 syntetiske danske opgaver blev kørt mod begge backends på `77e51be5ce36e55c0002cff196849ba874ac5865`: alle 60 scenarier gennemført teknisk. To observerede fejl blev rettet i `a1b00d2d5f239f2353bea678651cdd2a87e5d2e4`: konkret fjernelse af eget listepunkt og kildeangivelse for standard/ubekræftede madpræferencer. Kun DA10/DA11 blev derefter kørt igen på begge backends; de forventede tilstandsændringer/svar blev observeret.
+
+Den nye evaluator binder også persona og historiske skillfiler og afviser delvise evalueringer som fuld accept. Første v1-evidens er historisk og kan ikke godkendes gennem den nye v2-gate. Ingen menneskelig kvalitetsscore, 27/30-accept eller besparelse påstås. Syv hybrid-forbrugsposter har ukendt tokenforbrug. [Målinger og revisioner](language-live-evidence.json), [svar til menneskelig review](language-review.md). Ingen hel milestone lukkes.

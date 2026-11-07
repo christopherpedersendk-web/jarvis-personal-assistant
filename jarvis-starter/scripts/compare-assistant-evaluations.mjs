@@ -3,7 +3,7 @@ import {pathToFileURL} from 'node:url';
 import {gradeEvaluation} from './assistant-evaluation.mjs';
 export function compareEvaluations(baseline,hybrid) {
  const matching=baseline.backend==='baseline'&&hybrid.backend==='hybrid'&&baseline.model===hybrid.model&&
-  baseline.datasetSha256===hybrid.datasetSha256&&baseline.coreSourceSha256===hybrid.coreSourceSha256;
+  baseline.datasetSha256===hybrid.datasetSha256&&baseline.coreSourceSha256===hybrid.coreSourceSha256&&baseline.fingerprintVersion===2&&hybrid.fingerprintVersion===2;
  const before=gradeEvaluation(baseline),after=gradeEvaluation(hybrid);
  return {matching,baseline:before,hybrid:after,accepted:matching&&before.accepted&&after.accepted,
   tasks:(hybrid.results||[]).map(item=>{
