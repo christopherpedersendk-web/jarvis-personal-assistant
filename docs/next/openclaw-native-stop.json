@@ -1,0 +1,33 @@
+{
+  "url": "https://www.proshop.dk/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156",
+  "source": "openclaw-contained-browser",
+  "appliedIsolation": {
+    "uid": 1000,
+    "networkInterfaces": [
+      "lo"
+    ],
+    "capabilitiesCleared": true,
+    "noNewPrivileges": true,
+    "hostCredentialUnavailable": true,
+    "secretsAbsent": true,
+    "rootWriteDenied": true,
+    "publicPrivateMetadataSocketsUnreachable": true
+  },
+  "localClosure": "confirmed-container-removed",
+  "providerRemoteClosure": "not-tested",
+  "status": "passed",
+  "at": "2026-11-07T20:32:38.446Z",
+  "sourceCommit": "140a3714af520af479dac8069eb194f3a84177c7",
+  "sourceHashes": {
+    "contained-openclaw-browser.mjs": "54cc038ad60d230c10958d93953c44afc09a321cac140b5f27dddfd4b64d85ec",
+    "browser-runtime/openclaw-worker.mjs": "c18ffe07da423475ac96c6888454b4a79313d615e3c7775bd94626799b501b05",
+    "openclaw-runtime/commerce-browser-config.mjs": "a75243c51f5c03335b826751fa9a2b16cbf68841f1e399d76f887639e77edc41",
+    "scripts/openclaw-contained-live.mjs": "0d7c092708c0139382b8f942c52f86d7279380d9ccd62c3be28c39bc327936ba"
+  },
+  "network": "none",
+  "chromiumSandbox": true,
+  "mode": "actual-native-browser-stop",
+  "policy": null,
+  "productionChanged": false,
+  "scope": "Actual isolated OpenClaw/Chromium; public GET only, no operator or production credentials, login/cart/contact/payment. External provider closure not measured."
+}

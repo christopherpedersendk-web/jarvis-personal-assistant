@@ -605,5 +605,19 @@
     "actualExistingGatewayCalls": true,
     "candidateGatewayDeployed": false,
     "milestonesClosed": []
+  },
+  "openclawNativeContained": {
+    "evidence": "openclaw-native-evidence.json",
+    "productionActivated": false,
+    "milestonesClosed": []
+  },
+  "runtimeBackupNext": {
+    "evidence": "runtime-backup-evidence.json",
+    "automaticPolicyChanged": false
+  },
+  "codexOwnerTestOnlyFix": {
+    "evidence": "codex-test-only-evidence.json",
+    "actualReproduction": "codex-test-only-live.json",
+    "originalProductionJobChanged": false
   }
 }

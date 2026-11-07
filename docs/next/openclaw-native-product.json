@@ -1,0 +1,38 @@
+{
+  "url": "https://www.proshop.dk/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156",
+  "requestedUrl": "https://www.proshop.dk/USB-kabel/Sandberg-USB-C-to-USB-C-1m/3298156",
+  "observedAt": "2026-11-07T20:11:55.257Z",
+  "snapshotHash": "b978d7bc5d95576010763c8639314139b4e006eaf3a691b16e4e869dc010c2fb",
+  "trust": "untrusted-web-data",
+  "authority": "none",
+  "source": "openclaw-contained-browser",
+  "runtime": "2026.11.1",
+  "blocked": {
+    "requests": 63,
+    "writes": 0,
+    "websockets": 0,
+    "popups": 0
+  },
+  "usage": {
+    "operationReservations": 1,
+    "brokerRequests": 14,
+    "brokerBytes": 842470,
+    "tokens": null,
+    "cost": null
+  },
+  "status": "passed",
+  "at": "2026-11-07T20:11:55.529Z",
+  "sourceCommit": "efe1482e8d74594ef2bc52912ff38a9573cca04f",
+  "sourceHashes": {
+    "contained-openclaw-browser.mjs": "54cc038ad60d230c10958d93953c44afc09a321cac140b5f27dddfd4b64d85ec",
+    "browser-runtime/openclaw-worker.mjs": "c18ffe07da423475ac96c6888454b4a79313d615e3c7775bd94626799b501b05",
+    "openclaw-runtime/commerce-browser-config.mjs": "a75243c51f5c03335b826751fa9a2b16cbf68841f1e399d76f887639e77edc41",
+    "scripts/openclaw-contained-live.mjs": "4f00177712069197b8f5f05c5f7fe4969097cb23766786593eee056eff146554"
+  },
+  "network": "none",
+  "chromiumSandbox": true,
+  "mode": "actual-public-Proshop",
+  "policy": null,
+  "productionChanged": false,
+  "scope": "Actual isolated OpenClaw/Chromium; public GET only, no operator or production credentials, login/cart/contact/payment. External provider closure not measured."
+}

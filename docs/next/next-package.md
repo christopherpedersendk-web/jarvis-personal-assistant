@@ -52,3 +52,7 @@ PR #24 er merget som `77e51be5ce36e55c0002cff196849ba874ac5865`, og stagingtag v
 Ejerens mikrofon/svar/stop-prøve er bekræftet. Faktisk backup-restore og Discord-kanalprøve er dokumenteret i [aktuel evidens](observed-acceptance-2026-11-07.json). Nye kandidatændringer skal gennem normale PR-kontroller før særskilt staging-release; eksisterende tags bevares.
 
 Fortsat åben M16 kræver konkret sikker butikssession og eksplicit adressevalg, før kontaktoplysninger kan sendes. Native OpenClaw-browser må ikke aktiveres uden verificeret egressisolation. Selvreleasegodkendelse forbliver OFF uden uafhængige beskyttede kontroller. Disse begrænsninger ændres ikke af Discord-administratorrettigheden.
+
+## Næste staging: 5.5.4
+
+PR #29–#31 har leveret direkte OpenClaw-kald, gateway-/kildetitelfix, udvalgte backupfiler med faktisk restore og rettelse af ejerens konkrete Codex-test-only-fejl. Den native browserkandidat tilføjer faktisk verificeret offentlig OpenClaw/Chromium-læsning og containede afvisnings-/stopprøver. Alle produktionsaktiveringer er særskilte; aktuelle reports viser præcise kilderevisioner. Fuld gæste-/login-/adresse-/2900-checkout og ejerens komplette udvikling→draft-PR forbliver åbne. De oprindelige M1–M18-kriterier ændres ikke.

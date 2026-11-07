@@ -1,0 +1,9 @@
+# STAGING EXAMPLE ONLY. Installing/activating this requires separate mandate.
+# Existing bot only. No additional gateway/bot, public port or production token.
+[Service]
+Environment=JARVIS_OPENCLAW_CONTAINER=yes
+Environment=JARVIS_OPENCLAW_BROWSER=no
+Environment=JARVIS_OPENCLAW_RUNTIME_DIRECTORY=/opt/openjarvis/jarvis-starter/openclaw-runtime
+Environment=JARVIS_OPENCLAW_NODE=/opt/openjarvis/node-v24.16.0-linux-x64/bin/node
+# Replace with the exact locally reviewed Playwright/browser image ID.
+Environment=JARVIS_BROWSER_IMAGE=sha256:REPLACE_WITH_REVIEWED_LOCAL_IMAGE_ID
