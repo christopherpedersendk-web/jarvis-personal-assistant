@@ -141,3 +141,11 @@ Grundlag er aktuel main `a0a076018429cb87c8d2a0b4d497b95a8738df16` og uændret s
 | M12/M16 | Broen kan modtage afgrænsede ændringsopgaver til de eksisterende kanal-/opskrifts- og Proshop-moduler. | M12's ejer-/iPhone-/reviewaccept og M16's autentificerede login, adresse, 2900-fragt/levering og fuldt klargjort checkout er fortsat åbne. Ingen nye butikskøb eller Discord REST-prøver i denne leverance. |
 
 36 nye unikke fokuserede lokale tests og 23 nødvendige eksisterende regressioner er fordelt på kildeændringernes kørsler. De sidste genstarts-/adgangsrettelser er verificeret med tre målrettede cases; beståede uændrede tests er genbrugt. Simuleret Discord/GitHub/protokol er adskilt fra den faktiske model/Docker/GitHub-prøve i [revisionsbundet evidens](evidence.json) og [liverapport](codex-bridge-live.json). Ingen hel milestone lukkes. [Drift og aktivering](codex-bridge.md).
+
+## M16: ukendt fragt og observeret gæstecheckout
+
+Kode fafcbad4617b38e7e8edf9f53cf46865e3485073 på main 77e51be. Kladden og mobilen bevarer nu ukendt fragt/total som null/“ukendt”; tomt fragtfelt er ikke gratis fragt. Eksplicit 0 betyder kendt gratis fragt. Ændring til et kendt beløb giver nyt reviewhash og afviser det gamle. Den anonyme kurv kan godkendes til den kendte varepris, mens endelig fragt stadig afventer. Dobbelte produktdata og ugyldige store priser afvises.
+
+Ny faktisk anonym observation af præcis én Sandberg-vare til 57 DKK bekræftede en komplet gæste-/kontaktformular på /Basket/CheckOut/Register. Feltnavne og metode er observeret, ingen kontakt-/adresseregistrering er sendt. Parseren kræver den komplette formstruktur; et tilfældigt form-tag er ikke accept. Fragt/total til 2900, adresseoverførsel, autentificeret login og fuldt checkout er fortsat åbne. Ingen betalingsform udledes af footerlogoer.
+
+22 unikke fokuserede unitcases, plus én korrigeret fixtures målrettede genkørsel; Chromium/WebKit på 320/390/1280 px bestod i netværksløs container. Faktisk butik, simulerede kontrakter og UI holdes adskilt i [evidensen](m16-freight-evidence.json). Ingen hel milestone lukkes. Ingen produktionsændring i denne leverance.
