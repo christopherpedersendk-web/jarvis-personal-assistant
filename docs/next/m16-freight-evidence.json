@@ -278,5 +278,12 @@
     "No customer/address form submitted",
     "Authenticated login/address transfer, postal freight/arrival and complete checkout still open",
     "No production deployment or activation in this task"
-  ]
+  ],
+  "ciFollowup": {
+    "failedHead": "8c8363c3bbd8e7a3de4f4a88d76e0e042835a9fa",
+    "run": 42395010391,
+    "cause": "GUI fixture waited for an already-existing last order rather than completion of creation at the next viewport. Application assertions unchanged.",
+    "fix": "Wait for order count to increase before reading the newly created order.",
+    "localVerification": "Changed browser test passed Chromium 156 and WebKit 27.2 at 320, 390 and 1280 pixels in networkless container; no application code changed."
+  }
 }
