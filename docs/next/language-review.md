@@ -534,11 +534,11 @@ Familiedrevet italiensk restaurant med vinbutik og sæsonpræget køkken. Et opl
 - **Kosthensyn:** Vegetariske, glutenfri og laktosefri tilpasninger kan aftales i god tid; veganske muligheder er begrænsede.
 - **Forbehold:** Den danske og engelske menu viser forskellige retter. Bekræft derfor den aktuelle menu og pris direkte.
 
-**Kilder:**  
-https://lenoteca.dk/  
+**Kilder:**
+https://lenoteca.dk/
 https://lenoteca.dk/menu/
 
-**Google Maps – søgning på fundet navn og adresse:**  
+**Google Maps – søgning på fundet navn og adresse:**
 https://www.google.com/maps/search/?api=1&query=L%E2%80%99Enoteca%20di%20Mr.%20Brunello%2C%20Rysensteensgade%2016%2C%201564%20K%C3%B8benhavn%20V
 
 Journalførte ændringsværktøjer: ingen.
@@ -553,12 +553,12 @@ Et lille, uformelt trattoria med romersk inspireret mad og hjemmelavet pasta. Vi
 **Min vurdering:** Et oplagt bud til en afslappet pastamiddag frem for en formel restaurantoplevelse. Aktuelle menupriser og åbningstider er ikke verificeret.
 
 **Kilder:**
-- VisitCopenhagen – beskrivelse og adresse:  
+- VisitCopenhagen – beskrivelse og adresse:
   https://www.visitcopenhagen.dk/koebenhavn/planlaeg-din-tur/hos-fischer-gdk1100867
-- Dagens Menu – bekræfter navn og adresse; opslaget er ældre:  
+- Dagens Menu – bekræfter navn og adresse; opslaget er ældre:
   https://www.dagensmenu.dk/hos-fischer-k%C3%B8benhavn
 
-**Google Maps** – søgelink baseret på det fundne navn og adressen, ikke en verificeret virksomhedsprofil:  
+**Google Maps** – søgelink baseret på det fundne navn og adressen, ikke en verificeret virksomhedsprofil:
 https://www.google.com/maps/search/?api=1&query=Hos%20Fischer%2C%20Victor%20Borges%20Plads%2012%2C%202100%20K%C3%B8benhavn%20%C3%98
 
 Links:
@@ -615,7 +615,7 @@ Journalførte ændringsværktøjer: ingen.
 Her er **tre væsentlige aktuelle AI-historier** fra 5.–7. november 2026, udvalgt efter betydning for udvikling, sikkerhed og marked:
 
 ### 1. AI ser ud til at accelerere selve AI-udviklingen
-**5. november 2026 · METR**  
+**5. november 2026 · METR**
 En ny vurdering af Anthropics interne forskning peger på, at modellernes fremskridt på veldefinerede opgaver sker omtrent dobbelt så hurtigt som tidligere. AI-assisteret forskning vurderes at bidrage væsentligt.
 
 **Hvorfor vigtigt:** Det kan forkorte tiden mellem store modelspring og øge presset på sikkerhedsevalueringer. Resultaterne er dog usikre, og dele af dokumentationen er redigeret af Anthropic.
@@ -623,7 +623,7 @@ En ny vurdering af Anthropics interne forskning peger på, at modellernes fremsk
 https://metr.org/blog/2026-11-05-anthropic-ai-rd-acceleration-assessment/
 
 ### 2. Over 800 AI-hackingværktøjer fundet åbne på nettet
-**6. november 2026 · TechCrunch, med Censys som kilde**  
+**6. november 2026 · TechCrunch, med Censys som kilde**
 Censys har identificeret over 800 installationer af det agentbaserede sikkerhedsværktøj **Artex**, som kunne tilgås via nettet uden adgangskode. Værktøjet bruges både til autoriserede sikkerhedstests og ifølge rapporteringen til angreb.
 
 **Hvorfor vigtigt:** AI-agenter med offensive funktioner bliver selv en angrebsflade, hvis adgangskontrollen svigter. Fundet betyder ikke, at alle installationerne bruges kriminelt.
@@ -631,7 +631,7 @@ Censys har identificeret over 800 installationer af det agentbaserede sikkerheds
 https://techcrunch.com/2026/11/06/hundreds-of-artex-ai-hacking-tools-found-publicly-exposed-to-the-web
 
 ### 3. Anthropics planlagte børsnotering møder AI-modvind
-**7. november 2026 · CNBC**  
+**7. november 2026 · CNBC**
 Anthropic forbereder ifølge CNBC en mulig Nasdaq-debut omkring midten af november. Det sker samtidig med teknologifald på børsen og politisk modstand mod datacentre efter det amerikanske midtvejsvalg.
 
 **Hvorfor vigtigt:** Noteringen kan blive en vigtig prøve på investorernes appetit på AI og den dyre infrastruktur bag. Tidspunktet er en rapporteret forventning – ikke en gennemført børsnotering.
@@ -692,9 +692,9 @@ Kilde: https://www.finanstilsynet.dk/nyheder-og-presse/nyheder-og-pressemeddelel
 
 **Afgrænsning:** Kravene betyder ikke, at begge emner nødvendigvis skal revideres hvert år eller som selvstændige opgaver. Den obligatoriske anvendelse ved relevante assurance-opgaver skal skelnes fra rådgivning.
 
-Kilder:  
-https://www.theiia.org/en/standards/2024-standards/topical-requirements/third-party  
-https://www.theiia.org/en/standards/2024-standards/topical-requirements/cybersecurity  
+Kilder:
+https://www.theiia.org/en/standards/2024-standards/topical-requirements/third-party
+https://www.theiia.org/en/standards/2024-standards/topical-requirements/cybersecurity
 https://www.theiia.org/en/content/group-services/assessing-topical-requirements-conformance/
 
 ### 3. Nye forslag om digitalt revisionsbevis
