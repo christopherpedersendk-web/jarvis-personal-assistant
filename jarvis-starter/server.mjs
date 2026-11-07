@@ -1,3 +1,8 @@
+import {SelfDevelopment} from './self-development.mjs';
+import {developmentGithub} from './self-development-github.mjs';
+import {Commerce,STORES} from './commerce.mjs';
+import {createOpenClawBrowserReader} from './openclaw-browser-reader.mjs';
+import {emptyMasterData,replaceMasterData,MasterDataReviews} from './master-data.mjs';
 import { describeSkill } from './skill-capabilities.mjs';
 import { DiscordChannels, discordChannelCommand } from './discord-channels.mjs';
 import { BrowserResearch } from './browser-research.mjs';
@@ -88,8 +93,10 @@ let discordConfig = { enabled: false, token: '', userId: '', guildId: '' };
 let homeConfig = { sonosToken: '', sonosHouseholdId: '' };
 let hueConfig = { bridgeIp: '', applicationKey: '', certificateFingerprint: '' };
 let googleConfig = { refreshToken: '' };
+let masterDataConfig=emptyMasterData();
 try {
   const savedPrivate = JSON.parse(await readFile(privateSettingsPath, 'utf8'));
+  masterDataConfig=savedPrivate.masterData||emptyMasterData();
   pushConfig = { ...pushConfig, ...Object.fromEntries(['url', 'token', 'user'].filter(key => savedPrivate[key] !== undefined).map(key => [key, savedPrivate[key]])) };
   discordConfig = { ...discordConfig, ...(savedPrivate.discord || {}) };
   homeConfig = { ...homeConfig, ...(savedPrivate.smartHome || {}) };
@@ -181,7 +188,7 @@ const voiceSessions = new VoiceSessions({ state, transact: mutateV5, save, contr
 // Never publish a new in-memory credential or configuration before rename succeeds.
 let privateSettings = {
   push: { ...pushConfig }, discord: { ...discordConfig }, smartHome: { ...homeConfig },
-  hue: { ...hueConfig }, googleCalendar: { ...googleConfig },
+  hue: { ...hueConfig }, googleCalendar: { ...googleConfig }, masterData:masterDataConfig,
 };
 const settingsReview = new SettingsReview();
 function currentSettingsValues(scope, next = privateSettings) {
@@ -207,6 +214,7 @@ function publishPrivateSettings(next) {
   homeConfig = next.smartHome;
   hueConfig = next.hue;
   googleConfig = next.googleCalendar;
+  masterDataConfig=next.masterData;
 }
 function persistPrivateSettings(change = () => {}, stateChange = () => {}) {
   return mutateV5(['settings'], async () => {
@@ -215,10 +223,17 @@ function persistPrivateSettings(change = () => {}, stateChange = () => {}) {
     if(JSON.stringify(next.discord)!==JSON.stringify(privateSettings.discord))next.discord.configurationRevision=(privateSettings.discord.configurationRevision||0)+1;
     stateChange();
     stateStore.stageFile('private-settings.json', JSON.stringify({ ...next.push, discord: next.discord, smartHome: next.smartHome,
-      hue: next.hue, googleCalendar: next.googleCalendar }), () => publishPrivateSettings(next));
+      hue: next.hue, googleCalendar: next.googleCalendar,masterData:next.masterData }), () => publishPrivateSettings(next));
     await save();
   });
 }
+
+async function saveMasterData(input){await persistPrivateSettings(next=>{next.masterData=replaceMasterData(next.masterData,input);});return structuredClone(masterDataConfig);}
+const masterDataReviews=new MasterDataReviews({read:()=>masterDataConfig,write:saveMasterData});
+
+const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes'});
+const commerceBrowser=createOpenClawBrowserReader({control:providerControl});
+await commerce.recover();
 
 function authenticated(req) {
   const presented = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
@@ -245,7 +260,7 @@ function json(res, status, payload) {
 
 function knownSecrets() {
   return [accessToken, apiKey, discordConfig.token, homeConfig.sonosToken, homeConfig.sonosRefreshToken, process.env.SONOS_CLIENT_SECRET, hueConfig.applicationKey,
-    googleConfig.refreshToken, pushConfig.token, pushConfig.user];
+    googleConfig.refreshToken, pushConfig.token, pushConfig.user, process.env.JARVIS_DEV_GITHUB_TOKEN, process.env.OPENCLAW_BROWSER_CONTROL_TOKEN];
 }
 
 function logError(label, error) {
@@ -333,7 +348,7 @@ const recipes = new RecipeMemory({ state, save, transact: mutateV5, dataDirector
 const meals = new MealPlanner({ state, save, recipes: () => recipes.usable() });
 protectLocalMutations(meals, Object.fromEntries([
   'setInventory', 'invalidateRecipe', 'setProfile', 'resetProfile', 'setHousehold', 'setDay', 'removeDay',
-  'createPlan', 'updatePlan', 'buildShoppingList', 'editShoppingList', 'regenerateUnlocked', 'swapDishes', 'setPlannedLeftovers',
+  'createPlan', 'updatePlan', 'buildShoppingList', 'editShoppingList', 'regenerateUnlocked', 'swapDishes', 'setPlannedLeftovers', 'recordOutcome',
 ].map(method => [method, ['mealProfile', 'mealHousehold', 'mealInventory', 'mealPlans', 'shoppingDrafts', 'nemligProposals']])));
 const nemlig = new NemligShopping({ state, save, transact: mutateV5,
   validateSourcePlan: plan => { meals.assertRecipeSources(plan.dishes); meals.assertShoppingReviewed(plan); },
@@ -360,7 +375,7 @@ async function createMealPlan(input = {}) {
     calendarBusyDates = busyMealDates(events, { startDate: input.startDate, days: input.days,
       calendarWindow: { from, until: new Date(from.getTime() + 14 * 24 * 60 * 60_000) } });
   }
-  return meals.createPlan({ startDate: input.startDate, days: input.days, calendarBusyDates });
+  return meals.createPlan({ startDate: input.startDate, days: input.days, variation:input.variation, calendarBusyDates });
 }
 const sonosAuth = new SonosAuth({
   clientId: process.env.SONOS_CLIENT_ID, clientSecret: process.env.SONOS_CLIENT_SECRET, redirectUri: process.env.SONOS_REDIRECT_URI,
@@ -518,14 +533,14 @@ const taskEngine = new TaskEngine({
   maxRunsPerDay: state.settings.maxRunsPerDay || process.env.JARVIS_MAX_RUNS_PER_DAY || 10,
 });
 
-async function proposeCode({ file, request, original }) {
+async function proposeCode({ file, request, original, includeMemory = true }) {
   if (!validApiKey) throw new Error('API-nøglen mangler.');
   const result = await openaiJson('/responses', {
     method: 'POST',
     body: {
       model: process.env.OPENAI_CODE_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-6.1-sol',
       instructions: 'Du er en erfaren kodeudvikler. Rediger KUN den ene specificerede fil. Returnér hele den nye fil, ikke en diff. Bevar eksisterende funktioner. Du må ikke indsætte hemmeligheder, telemetri, eksterne scripts eller netværkskald. Ingen destruktive handlinger. Forklar ændringen kort på dansk.',
-      input: `Fil: ${file}\nÆndringsønske: ${request}\n\nFælles hukommelse:\n${secretary.memoryContext()}\n\nNuværende fil:\n${original}`,
+      input: `Fil: ${file}\nÆndringsønske: ${request}\n\nFælles hukommelse:\n${includeMemory?secretary.memoryContext():'Ingen persondata eller hukommelse medsendt.'}\n\nNuværende fil:\n${original}`,
       text: { format: { type: 'json_schema', name: 'jarvis_code_proposal', strict: true, schema: {
         type: 'object', properties: {
           summary: { type: 'string' }, content: { type: 'string' },
@@ -588,6 +603,9 @@ const projectAgent = new ProjectAgent({
   state, save, transact: mutateV5, generate: generateProjectFiles, installer: installNpmPackages,
 });
 const developmentService = new DevelopmentService({ projectAgent, save, transact: mutateV5 });
+
+const selfDevelopment=new SelfDevelopment({state,save,transact:mutateV5,control:providerControl,backend:developmentGithub(),propose:proposeCode,fixture:await readFile(join(root,'test/self-development.fixture.test.mjs'),'utf8'),enabled:process.env.JARVIS_SELF_DEVELOPMENT==='yes',autoApprove:process.env.JARVIS_SELF_RELEASE_APPROVAL==='yes'});
+await selfDevelopment.recover();
 
 
 const handlePlanningTool = createPlanningToolHandler({ secretary, meals, recipes, shopping, nemlig, googleCalendar, createMealPlan });
@@ -659,7 +677,7 @@ const mutatingTools = new Set([
   'set_hue_light', 'activate_hue_scene', 'sonos_control',
   'create_collection', 'add_collection_item', 'update_collection_item', 'remove_collection_item',
   'remember_personal_fact', 'update_meal_profile', 'create_meal_plan', 'propose_nemlig_basket',
-  'update_household_defaults', 'update_household_day', 'save_recipe', 'edit_meal_plan',
+  'update_household_defaults', 'update_household_day', 'save_recipe', 'edit_meal_plan', 'record_meal_outcome',
   'build_meal_shopping_list', 'edit_meal_shopping_list', 'create_shopping_draft',
   'edit_shopping_draft', 'propose_shopping_draft',
 ]);
@@ -776,9 +794,21 @@ function processTextMessage(message, channel = 'text') {
   } catch (error) { throw classifyChatFailure(error, progress.effectsPossible); }
 }
 
+async function handleMasterMessage(message,metadata){
+  if(/^!stamdata(?:\s|$)/iu.test(message)){
+    providerControl.assertAllowed();
+    if(metadata.guildId)return 'Stamdata redigeres privat under Indstillinger → Om dig og hukommelse → Kontakt og adresser. Jeg viser ingen adresse i serverkanalen.';
+    const identity=JSON.stringify([metadata.ownerId,metadata.channelId,providerControl.current().generation,discordConfig.configurationRevision||0]);
+    if(message.startsWith('!stamdata gem ')){let input;try{input=JSON.parse(message.slice(14));}catch{throw new Error('Ugyldige strukturerede stamdata; intet er gemt.');}const review=masterDataReviews.preview(input,identity);return `Gennemgå dine indtastede adresseprofiler: ${review.profiles.map(p=>p.label).join(', ')}. Standard: ${review.defaultProfileId||'intet valg'}. Godkend inden to minutter med !stamdata godkend ${review.id}.`;}
+    if(message.startsWith('!stamdata godkend ')){await masterDataReviews.approve(message.slice(18).trim(),identity);return 'Stamdata er gemt én gang. Ældre checkoutgodkendelser gælder ikke længere.';}
+    return 'Vedligehold kontakt og adresser privat i Jarvis-indstillingerne. En eksplicit !stamdata gem med strukturerede profilfelter opretter kun et tidsbegrænset review; !stamdata godkend gemmer det. Ingen adresse udledes fra almindelig samtale.';
+  }
+ return null;
+}
 let discordVoice,discordMedia;
 const discordVoiceEnabled=process.env.JARVIS_DISCORD_VOICE==='yes';
 const discord = new DiscordGateway({ voiceEnabled:discordVoiceEnabled, onVoiceUnavailable:()=>discordVoice?.stop('gateway_unavailable'), onMessage: async (message, metadata = {}) => {
+  const masterAnswer=await handleMasterMessage(message,metadata);if(masterAnswer!==null)return masterAnswer;
   if(/^!medie(?:\s|$)/i.test(message)){
     const command=message.trim().toLocaleLowerCase('da');
     if(command==='!medie stop'){await discordMedia.stop();return 'Stop er registreret. Et allerede sendt modelkald kan have ukendt udfald; der genforsøges ikke.';}
@@ -893,7 +923,7 @@ async function route(req, res) {
     if (req.method === 'POST' && path === '/api/assistant/control') {
       try { const stopped = (await bodyJson(req)).stopped;
         await providerControl.stop(stopped);
-        if (stopped) { await discordMedia.stop(); await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
+        if (stopped) { masterDataReviews.clear(); await commerce.stop(); await discordMedia.stop(); await discordVoice.stop('global_stop'); await voiceSessions.closeAll(); }
         return json(res, 200, { ...providerControl.snapshot(), voice: voiceSessions.snapshot(), discordVoice: discordVoice.snapshot() }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
@@ -966,6 +996,8 @@ async function route(req, res) {
         : await meals.updatePlan(mealPlan[1], await bodyJson(req, 128_000)) }); }
       catch (error) { return json(res, 409, { error: error.message }); }
     }
+    const mealOutcome=path.match(/^\/api\/meals\/plans\/([0-9a-f-]{36})\/outcome$/);
+    if(mealOutcome&&req.method==='POST'){try{return json(res,200,{plan:await meals.recordOutcome(mealOutcome[1],await bodyJson(req))});}catch(error){return json(res,409,{error:error.message});}}
     const regeneratePlan = path.match(/^\/api\/meals\/plans\/([0-9a-f-]{36})\/regenerate$/);
     if (regeneratePlan && req.method === 'POST') {
       try { return json(res, 200, { plan: await meals.regenerateUnlocked(regeneratePlan[1], await bodyJson(req)) }); }
@@ -1318,6 +1350,20 @@ async function route(req, res) {
           : 'Manuelt angivet kapacitetsdækning eller ukendt status; ingen Google-kalenderændring' }); }
       catch (error) { return json(res, 400, { error: error.message }); }
     }
+    if(path==='/api/self-development'&&req.method==='GET')return json(res,200,{status:selfDevelopment.status(),jobs:selfDevelopment.rows()});
+    if(path==='/api/self-development'&&req.method==='POST'){try{return json(res,201,{job:await selfDevelopment.prepare(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
+    const selfApproval=path.match(/^\/api\/self-development\/([0-9a-f-]{36})\/approve$/);
+    if(selfApproval&&req.method==='GET')return json(res,200,await selfDevelopment.verifyApproval(selfApproval[1]));
+    if(selfApproval&&req.method==='POST'){try{return json(res,200,{job:await selfDevelopment.approveRelease(selfApproval[1])});}catch(error){return json(res,409,{error:error.message});}}
+    if(path==='/api/commerce'&&req.method==='GET')return json(res,200,{status:commerce.status(),stores:STORES,orders:commerce.list(),browser:commerceBrowser?.status()||{enabled:false}});
+    if(path==='/api/commerce'&&req.method==='POST'){try{return json(res,201,{order:await commerce.propose(await bodyJson(req))});}catch(error){return json(res,400,{error:error.message});}}
+    const commerceHandoff=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/handoff$/);
+    if(commerceHandoff&&req.method==='POST'){try{return json(res,200,await commerce.handoff(commerceHandoff[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
+    if(path==='/api/commerce/read'&&req.method==='POST'){try{if(!commerceBrowser)throw new Error('Den særskilte isolerede OpenClaw-browser er ikke konfigureret. Offentlig research er fortsat tilgængelig gennem eksisterende funktioner.');const input=await bodyJson(req);return json(res,200,await commerceBrowser.read(input.url,input.store));}catch{return json(res,400,{error:'Produktlæsningen kunne ikke udføres sikkert. Ingen fallback, bestilling eller betaling er udført.'});}}
+    if(path==='/api/master-data'){
+      if(req.method==='GET')return json(res,200,{masterData:masterDataConfig});
+      if(req.method==='POST'){try{return json(res,200,{masterData:await saveMasterData(await bodyJson(req))});}catch(error){return json(res,error.status||400,{error:error.message});}}
+    }
     if (req.method === 'GET' && path === '/api/skills') {
       await openJarvis.inspect();
       const environment={openJarvis:openJarvis.status(),modelConfigured:validApiKey,stopped:providerControl.snapshot().stopped,voiceEnabled:discordVoiceEnabled};
@@ -1330,7 +1376,7 @@ async function route(req, res) {
     }
     if (req.method === 'GET' && path === '/api/integrations') return json(res, 200, { integrations: integrationCatalog({
       discordStatus: discord.snapshot().status, discordConfigured: Boolean(discordConfig.enabled && discordConfig.token),
-      discordSnapshot: discord.snapshot(), googleCalendarStatus: googleCalendar.status(),
+      discordSnapshot: {...discord.snapshot(),channelManagement:discordChannels.status()}, googleCalendarStatus: googleCalendar.status(),
       huePaired: Boolean(hueConfig.applicationKey && hueConfig.certificateFingerprint), sonosConfigured: Boolean(homeConfig.sonosToken),
       hueStatus: hue.status(hueConfig), sonosStatus: smartHome.snapshot(homeConfig).sonos,
       googleCalendarConnected: googleCalendar.status().connected, googleCalendarConfigured: googleCalendar.configured(), nemligStatus: nemlig.status() }) });
@@ -1676,7 +1722,7 @@ async function route(req, res) {
       const input = await bodyJson(req);
       const message = typeof input.message === 'string' ? input.message.trim() : '';
       if (!message || message.length > 5000) return json(res, 400, { error: 'Skriv mellem 1 og 5.000 tegn.' });
-      try { return json(res, 200, { answer: await processTextMessage(message) }); }
+      try { const masterAnswer=await handleMasterMessage(message,{ownerId:'web-owner',channelId:'private-web',guildId:''});return json(res, 200, { answer: masterAnswer===null?await processTextMessage(message):masterAnswer }); }
       catch (error) {
         logError('Samtalefejl:', error);
         const failure = error.chatFailure || { code: 'CHAT_FAILED', message: 'Samtalen kunne ikke færdiggøres.', outcome: 'unknown' };
@@ -1762,6 +1808,7 @@ async function route(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Metoden understøttes ikke.' });
   const files = { '/': 'index.html', '/app.js': 'app.js', '/v5-plan.js': 'v5-plan.js', '/v5.css': 'v5.css', '/organizer.js': 'organizer.js', '/intelligence.js': 'intelligence.js', '/intelligence.css': 'intelligence.css', '/meals.js': 'meals.js', '/meals.css': 'meals.css', '/memory-v49.js': 'memory-v49.js', '/memory-v49.css': 'memory-v49.css', '/smart-home.js': 'smart-home.js', '/smart-home.css': 'smart-home.css', '/system-health.js': 'system-health.js', '/system-health.css': 'system-health.css', '/styles.css': 'styles.css', '/tasks.css': 'tasks.css', '/code.css': 'code.css', '/projects.css': 'projects.css', '/secretary.css': 'secretary.css', '/dashboard.css': 'dashboard.css', '/organizer.css': 'organizer.css' };
   files['/assistant-control.js'] = 'assistant-control.js';
+  files['/master-data.js']='master-data.js';files['/commerce.js']='commerce.js';files['/self-development.js']='self-development.js';
   files['/browser-workspace.js'] = 'browser-workspace.js';
   files['/browser-workspace.css'] = 'browser-workspace.css';
   files['/job-policy.js'] = 'job-policy.js';

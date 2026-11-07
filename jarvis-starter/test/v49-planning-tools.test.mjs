@@ -316,3 +316,11 @@ test('local recipe-ID validation still accepts Unicode and rejects invalid input
   }
   assert.equal(seen.length, 4);
 });
+
+test('explicit reported meal outcome is revision-bound and returned through the common channel handler',async()=>{
+ const f=fixture(),p=await f.meals.createPlan({startDate:'2026-11-08',days:2}),revision=p.revision;
+ const r=await f.handle('record_meal_outcome',{id:p.id,expectedRevision:revision,date:p.dishes[0].date,outcome:'cooked'});
+ assert.equal(r.plan.dishes[0].outcome,'cooked');assert.equal(r.plan.revision,revision+1);
+ await assert.rejects(f.handle('record_meal_outcome',{id:p.id,expectedRevision:revision,date:p.dishes[0].date,outcome:'not_cooked'}),/ændret|revision/i);
+ assert.equal(f.meals.getPlan(p.id).dishes[0].outcome,'cooked');assert.equal(f.calls.length,0);
+});

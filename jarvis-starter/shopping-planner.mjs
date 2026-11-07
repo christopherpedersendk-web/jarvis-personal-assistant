@@ -1,3 +1,4 @@
+import {shoppingSearchName} from './shopping-search-list.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { createJobTransitions } from './job-state-transition.mjs';
 import { foodWords, ingredientIdentity, ingredientMatchesAvoid, ingredientConstraints } from './food-identity.mjs';
@@ -193,10 +194,12 @@ export class ShoppingPlanner {
     const draft = { id: randomUUID(), ...source, basketFingerprint: basketHash(basket), revision: 1, status: 'draft', createdAt: this.now().toISOString(),
       items: [], warnings: ['Varematch er forslag. Kontroller variant, mærkning, pakningsstørrelse og antal før overførsel.'],
       budgetTargetDkk: plan.budgetTargetDkk ?? null, estimatedProductsDkk: null, priceCheckedAt: null };
+    const searchCache=new Map();
+    const search=ingredient=>{const query=shoppingSearchName(ingredient.name);const key=query.toLocaleLowerCase('da');if(!searchCache.has(key))searchCache.set(key,this.nemlig.search(query,5));return searchCache.get(key);};
     // Two read-only lookups at a time; never start dozens of MCP subprocesses.
     for (let i = 0; i < items.length; i += 2) {
       const found = await Promise.all(items.slice(i, i + 2).map(async ingredient => {
-        try { const products = await this.nemlig.search(ingredient.name, 5);
+        try { const products = await search(ingredient);
           return { ingredient, products, observedAt: this.now().toISOString() }; }
         catch { return { ingredient, products: [], error: true }; }
       }));

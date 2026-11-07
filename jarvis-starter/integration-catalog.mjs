@@ -31,7 +31,7 @@ export function integrationCatalog({ discordStatus = 'disabled', discordConfigur
       lastCheckedAt: provider.id === 'google-calendar' ? googleCalendarStatus?.lastReadAt || null
         : provider.id === 'discord' ? discordSnapshot?.lastHeartbeatAckAt || null : home?.lastCheckedAt || null,
       lastError: provider.id === 'google-calendar' ? googleCalendarStatus?.lastReadError || ''
-        : provider.id === 'discord' ? discordSnapshot?.lastError || '' : home?.lastError || '',
+        : provider.id === 'discord' ? [discordSnapshot?.lastError,discordSnapshot?.channelManagement?.reason].filter(Boolean).join(' ') : home?.lastError || '',
       permissions: { read: provider.capabilities.some(x => x.endsWith('.read') || x === 'message.owner' || x === 'doorbell.events'),
         externalWrite: provider.capabilities.some(x => x.includes('.write.') || x.includes('control') || x.startsWith('notify.')) } };
   });

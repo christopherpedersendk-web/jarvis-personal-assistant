@@ -258,3 +258,39 @@ test('H1 HTTP current procedure details expose their complete contract and retai
   assert.deepEqual(created.body.task.permissions, ['web.search']);
   assert.equal((await f.request('/api/tasks')).body.usage.started, 0);
 });
+
+test('master data HTTP is private, atomic, revision checked and durable across restart',async t=>{
+ const f=await fixture(t),path='/api/master-data';assert.equal((await f.request(path,undefined,{authorized:false})).status,401);
+ const profile={id:'test',label:'Hjem',name:'Syntetisk Person',email:'fixture@example.org',phone:'+4512345678',delivery:{street:'Privat testvej 72',postalCode:'1234',city:'Testby',country:'DK'},billing:null};
+ const input={expectedRevision:0,profiles:[profile],defaultProfileId:'test'};
+ const results=await Promise.all([f.request(path,input),f.request(path,input)]);assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ assert.equal((await f.request('/api/state')).body.masterData,undefined);assert.equal((await readFile(join(f.dataDir,'state.json'),'utf8')).includes(profile.delivery.street),false);
+ assert.equal((await stat(join(f.dataDir,'private-settings.json'))).mode&0o777,0o600);
+ await f.stop();await f.start();const d=(await f.request(path)).body.masterData;assert.equal(d.revision,1);assert.equal(d.profiles[0].delivery.street,profile.delivery.street);
+ await f.patch('discord',await f.snapshot('discord'),{userId:'123456789012345678'});assert.equal((await f.request(path)).body.masterData.revision,1);
+ assert.equal(f.logs().includes(profile.delivery.street),false);
+});
+
+test('explicit web chat address review avoids model/history and saves exactly once',async t=>{
+ const f=await fixture(t),input={expectedRevision:0,profiles:[],defaultProfileId:null};const review=await f.request('/api/message',{message:'!stamdata gem '+JSON.stringify(input)});assert.equal(review.status,200);const id=review.body.answer.match(/!stamdata godkend ([0-9a-f-]+)/)[1];
+ assert.equal((await f.request('/api/master-data')).body.masterData.revision,0);
+ assert.equal((await f.request('/api/message',{message:'!stamdata godkend '+id})).status,200);
+ assert.equal((await f.request('/api/master-data')).body.masterData.revision,1);
+ await f.request('/api/message',{message:'!stamdata godkend '+id});assert.equal((await f.request('/api/master-data')).body.masterData.revision,1);
+ assert.equal(JSON.stringify((await f.request('/api/state')).body.history).includes('!stamdata'),false);
+});
+
+test('commerce and self-development routes require owner auth and remain disabled without configuration',async t=>{
+ const f=await fixture(t);
+ for(const path of ['/api/master-data','/api/commerce','/api/self-development']){
+  assert.equal((await f.request(path,undefined,{authorized:false})).status,401);
+  assert.equal((await f.request(path,{}, {authorized:false})).status,401);
+ }
+ const commerce=await f.request('/api/commerce'),dev=await f.request('/api/self-development');
+ assert.equal(commerce.body.status.enabled,false);assert.equal(commerce.body.status.browserWritesEnabled,false);assert.equal(commerce.body.status.paymentInitiationEnabled,false);
+ assert.equal(dev.body.status.enabled,false);assert.equal(dev.body.status.automaticDeployment,false);
+ assert.equal((await f.request('/api/commerce',{})).status,400);
+ assert.equal((await f.request('/api/commerce/read',{url:'https://www.proshop.dk/test',store:'proshop'})).status,400);
+ assert.equal((await f.request('/api/self-development',{file:'jarvis-starter/meal-variety.mjs',request:'Synthetic',version:'5.4.1'})).status,400);
+ assert.equal(f.logs().includes('SYNTHETIC_NETWORK_BLOCK'),false);
+});

@@ -529,3 +529,23 @@ footer { color: var(--gui-muted); font-size: 12px; line-height: 18px; padding: 2
 .meal-day-disclosure .meal-day-editor { border: 0; margin: 0; }
 .meal-secondary-section > summary { padding: 16px; font-weight: 600; }
 #meal-plan-choice { margin-block: 8px; }
+
+/* Private workflow forms share the existing settings controls and spacing. */
+:is(#master-data-panel, #commerce-panel, #self-development-panel) form { display: grid; gap: 16px; margin-top: 16px; }
+:is(#master-data-panel, #commerce-panel, #self-development-panel) label { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+:is(#master-data-panel, #commerce-panel, #self-development-panel) label:has(input[type="checkbox"]) { flex-direction: row; align-items: flex-start; }
+:is(#master-data-panel, #commerce-panel, #self-development-panel) input,
+:is(#master-data-panel, #commerce-panel, #self-development-panel) select,
+:is(#master-data-panel, #commerce-panel, #self-development-panel) textarea { width: 100%; min-width: 0; max-width: 100%; margin: 0; }
+#master-data-panel input[type="checkbox"] { flex: 0 0 18px; width: 18px; margin-top: 3px; }
+#master-data-panel [data-fields], #master-data-panel [data-invoice], #commerce-panel fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+#commerce-panel [data-lines], #commerce-panel [data-orders], #self-development-panel [data-jobs] { display: grid; gap: 16px; }
+#commerce-panel fieldset { padding: 16px; border: 1px solid var(--gui-separator); border-radius: var(--gui-radius); }
+:is(#master-data-panel, #commerce-panel, #self-development-panel) button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+:is(#master-data-panel, #commerce-panel, #self-development-panel) :is([role="status"], [data-address], article) { overflow-wrap: anywhere; }
+#commerce-panel article { display: grid; gap: 12px; padding: 16px; }
+#commerce-panel article p { margin: 0; }
+@media (max-width: 600px) {
+  #master-data-panel [data-fields], #master-data-panel [data-invoice], #commerce-panel fieldset { grid-template-columns: minmax(0, 1fr); }
+  :is(#master-data-panel, #commerce-panel, #self-development-panel) button { width: 100%; }
+}

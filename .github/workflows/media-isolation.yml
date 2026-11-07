@@ -17,8 +17,59 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Restore pinned source cache (always reverified)
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/jarvis-ffmpeg-source
+          key: ffmpeg-source-9.0.2-8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e-v1
+      - name: Prepare verified source outside Docker networking
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/jarvis-ffmpeg-source"
+          mkdir -p "$source_dir"
+          export GNUPGHOME
+          GNUPGHOME="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          echo '397b3becedcd5a98769967ff1ff8501ddc89f8368b8f766e4701377d7dbaabe5  jarvis-starter/media-runtime/ffmpeg-devel.asc' | sha256sum -c -
+          gpg --batch --import jarvis-starter/media-runtime/ffmpeg-devel.asc
+          verify_source() {
+            (cd "$source_dir" && echo '8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e  ffmpeg.tar.xz' | sha256sum -c -) &&
+            gpg --batch --status-fd 1 --verify "$source_dir/ffmpeg.tar.xz.asc" "$source_dir/ffmpeg.tar.xz" |
+              grep '^\[GNUPG:\] VALIDSIG FCF986EA15E6E293A5644F10B4322F04D67658D8 '
+          }
+          if ! verify_source; then
+            rm -f "$source_dir/ffmpeg.tar.xz" "$source_dir/ffmpeg.tar.xz.asc"
+            for origin in https://www.ffmpeg.org/releases https://ffmpeg.org/releases; do
+              if curl -4 --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 180 --retry 2 --retry-delay 3 --retry-max-time 240 --output "$source_dir/ffmpeg.tar.xz" "$origin/ffmpeg-9.0.2.tar.xz" &&
+                 curl -4 --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 60 --retry 2 --retry-delay 3 --retry-max-time 120 --output "$source_dir/ffmpeg.tar.xz.asc" "$origin/ffmpeg-9.0.2.tar.xz.asc" &&
+                 verify_source; then
+                break
+              fi
+              rm -f "$source_dir/ffmpeg.tar.xz" "$source_dir/ffmpeg.tar.xz.asc"
+            done
+          fi
+          verify_source
+          # Disposable build context: repository application files stay byte-identical.
+          export MEDIA_CONTEXT="$RUNNER_TEMP/jarvis-media-context"
+          mkdir -p "$MEDIA_CONTEXT"
+          cp jarvis-starter/media-runtime/* "$MEDIA_CONTEXT/"
+          cp "$source_dir/ffmpeg.tar.xz" "$source_dir/ffmpeg.tar.xz.asc" "$MEDIA_CONTEXT/"
+          python3 - <<'PY'
+          import os, pathlib
+          p = pathlib.Path(os.environ["MEDIA_CONTEXT"]) / "Dockerfile"
+          original = p.read_text()
+          start = original.index("RUN curl ")
+          end = original.index("    echo '397b3bec", start)
+          downloads = original[start:end]
+          assert downloads.count("curl ") == 2
+          assert "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz" in downloads
+          # Only replace acquisition. All original hashes, GPG, build flags and
+          # runtime isolation checks remain unchanged and execute inside Docker.
+          p.write_text(original[:start] + "COPY ffmpeg.tar.xz ffmpeg.tar.xz.asc /build/\nRUN " + original[end:].lstrip())
+          PY
       - name: Build pinned minimal decoder and verify official release signature
-        run: docker build -t jarvis-media-test jarvis-starter/media-runtime
+        run: docker build -t jarvis-media-test "$RUNNER_TEMP/jarvis-media-context"
       - name: Install generator for trusted synthetic fixtures only
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Exercise actual isolated decoder and stop containment

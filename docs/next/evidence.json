@@ -1,0 +1,217 @@
+{
+  "baselineCommit": "5ed073367e6db86b3bb6af9aee6376a3c85fbf35",
+  "historicalPr18Candidate": "177aa483614ee1f9dab072ae3c6d59a5c9f784e6",
+  "releaseVersion": "5.4.0",
+  "schema": {
+    "version": 1,
+    "readableFrom": 0
+  },
+  "candidate": "PR19 head and exact candidate-bound GitHub Actions artifacts; do not substitute local reconstructed commit IDs",
+  "local": {
+    "focusedChannelMealTests": {
+      "passed": 34,
+      "failed": 0
+    },
+    "githubTransportTests": {
+      "passed": 3,
+      "failed": 0
+    },
+    "nativeOpenClawBrowserContract": {
+      "version": "2026.11.1",
+      "status": "passed",
+      "scope": "configuration/control auth/fixed profile status/forbidden generic tool; no Chrome or merchant visit"
+    },
+    "mealBenchmark": {
+      "baselineSourceSha256": "9977da9e384dcb1ecd9fdcb53604220377e321b558d56440e31b4db2568481ec",
+      "syntheticRecipes": 24,
+      "weeks": 4,
+      "proposals": 12,
+      "before": {
+        "unique": 9,
+        "repeated": 3
+      },
+      "afterHighVariation": {
+        "unique": 12,
+        "repeated": 0
+      },
+      "modelEvaluation": false
+    },
+    "fullRegression": {
+      "passed": 1282,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm test",
+      "log": "next-full-tests4.log",
+      "scope": "latest source working tree; exact tree verified by CI"
+    },
+    "browserUI": "pending CI; local installed Chromium launch denied by host IPC permissions; pinned browser download also failed",
+    "dockerRepair": "pending CI; local Docker CLI unavailable",
+    "postCheckpointFocused": {
+      "masterDataAndChannelTestsPassed": 35,
+      "routeAuthTestsPassed": 13,
+      "approvalStopTestsPassed": 7,
+      "overlap": "counts overlap; do not add",
+      "nativeContractBounded": "passed; same assertions, cold tool registry deadline 30s"
+    }
+  },
+  "notPerformed": [
+    "live owner Discord channels",
+    "physical iPhone",
+    "owner installation restore",
+    "real merchant/Chrome egress containment",
+    "login/cart/payment or purchase",
+    "real model quality tasks",
+    "real Jarvis self-development PR with development credential"
+  ],
+  "historicalFailures": [
+    {
+      "scope": "first full working tree run",
+      "passed": 1262,
+      "failed": 12,
+      "total": 1274,
+      "resolution": "VM extraction boundary and price/reuse ranking corrected; tests retained"
+    },
+    {
+      "scope": "second full working tree run",
+      "passed": 1273,
+      "failed": 1,
+      "total": 1274,
+      "resolution": "HTTP fixture readiness now checks its own authenticated settings, not an unrelated health responder; focused reproduction passed"
+    }
+  ],
+  "ciCheckpoints": [
+    {
+      "candidate": "5b8c4f671675f92aca7c659801b514de3a5897ee",
+      "run": 42359288984,
+      "isolatedSelfDevelopment": "passed",
+      "scope": "actual Docker runner with synthetic defect/model and simulated GitHub publication",
+      "openClawBrowserContract": "config/auth/profile passed; generic-tool cold initialization exceeded 2s probe timeout; bounded 30s probe prepared",
+      "mediaRun": 42359289116,
+      "media": "source archive fetched; detached signature download reset/timed out before build; no verification bypass",
+      "guiRun": 42359288816,
+      "gui": "1,279 unit tests and existing full browser matrix passed; new commerce smoke stopped at ambiguous test navigation selector (link/button). Locator narrowed to settings button; no assertion removed."
+    },
+    {
+      "candidate": "f1c26ae566695be888dc5b35b6024929373c6dec",
+      "commerceRun": 42359891610,
+      "nativeContract": "passed",
+      "realDockerRepair": "passed with simulated model and GitHub",
+      "guiRun": 42359891670,
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0
+      },
+      "newCommerceUI": {
+        "artifactId": 13568659590,
+        "sha256": "50efff9d0218a1a1b2845ee71593633a2f94caba6972163b06c0499cca026b87",
+        "status": "passed",
+        "engines": [
+          "Chromium 156.0.8078.80",
+          "WebKit 27.2"
+        ],
+        "widths": [
+          320,
+          390,
+          1280
+        ],
+        "checks": [
+          "private profile",
+          "conflict preserves draft",
+          "manual handoff",
+          "disabled development",
+          "logout",
+          "no overflow"
+        ],
+        "visualReview": "forms functional; follow-up aligns spacing/check labels/buttons with existing UI"
+      },
+      "mediaRun": 42359891574,
+      "media": "upstream source/signature TLS reset/timeouts before compilation; remains blocked, no check disabled"
+    },
+    {
+      "candidate": "b648b9808f23593bf3d159e438e399aa760eb46a",
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0,
+        "skipped": 0
+      },
+      "successfulRuns": [
+        42360165371,
+        42360165334,
+        42360165207,
+        42360165228,
+        42360165298,
+        42360165256
+      ],
+      "mediaRun": 42360165335,
+      "media": "curl exit 28 downloading pinned source archive; build and containment not executed"
+    },
+    {
+      "candidate": "7dfed08a5833982f16422b897d3d13e8077eaa8f",
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0,
+        "skipped": 0
+      },
+      "workflowRuns": [
+        {
+          "id": 42364914938,
+          "name": "Discord voice dependency and policy checks",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914886,
+          "name": "Isolated browser containment",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914951,
+          "name": "Commerce and self-development contracts",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914846,
+          "name": "Pinned OpenClaw contract",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914875,
+          "name": "JARVIS v5 candidate regression and browser smoke",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914792,
+          "name": "Isolated Discord media",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914842,
+          "name": "JARVIS GUI exact-candidate verification",
+          "conclusion": "success"
+        }
+      ],
+      "mediaArtifactId": 13570879381,
+      "unitArtifactId": 13571347585
+    }
+  ],
+  "mediaDownloadFollowup": {
+    "scope": "CI host acquisition/cache and disposable Docker context only; application tree unchanged. Actual isolated decoder/stop/cleanup passed; no real model or owner-host acceptance.",
+    "status": "passed",
+    "local": "YAML parsing, bash -n and exact unchanged Docker verification/build/runtime suffix passed",
+    "cache": "Verified official source downloaded, then saved successfully. Cache reuse verification is implemented; no second run was started merely to exercise a warm cache.",
+    "access": {
+      "docker": false,
+      "sshAgent": false,
+      "tailscale": false,
+      "modelCredential": false,
+      "restrictedGateway": false
+    },
+    "testedCandidate": "7dfed08a5833982f16422b897d3d13e8077eaa8f",
+    "run": 42364914792,
+    "artifactId": 13570879381,
+    "decoderVersion": "9.0.2"
+  },
+  "finalDocumentation": {
+    "scope": "docs/next only after 7dfed08a; [skip ci] prevents redundant suites. Application and workflows exactly unchanged; verify final diff against tested candidate.",
+    "merge": "Owner-authorized after all seven workflows succeeded; merge result recorded in PR metadata."
+  }
+}

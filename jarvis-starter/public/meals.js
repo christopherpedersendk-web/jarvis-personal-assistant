@@ -1157,6 +1157,7 @@ function showMealPlans(plans) {
     const actions = mealNode('div', '', 'meal-actions');
     let savePlan, buildList, findProducts, saveList, regenerate, swap, saveLeftovers;
     const resetShoppingChoices = [];
+    if(plan.shoppingSearchList?.length){const summary=mealNode('details'),heading=mealNode('summary','Samlet søgeliste til Nemlig'),list=mealNode('ul');for(const item of plan.shoppingSearchList)list.append(mealNode('li',item.name+' · '+item.amounts.map(a=>a.quantity+' '+a.unit).join(' + ')));summary.append(heading,list,mealNode('p','Kun varenavnet bruges ved søgning. Mængderne vises separat; kurven ændres først efter din gennemgang.','micro'));card.append(summary);}
     const listFields = document.createElement('fieldset'); listFields.className = 'meal-list-editor';
     const shoppingEditor = mealIngredientEditor(plan.shoppingList || [], () => {
       listDirty = true; mealDirty.add(key);
@@ -1190,6 +1191,8 @@ function showMealPlans(plans) {
     dayGrid.append(...editors.map(editor => editor.panel)); card.append(dayGrid);
     for (const [index, dish] of (plan.dishes || []).entries()) if (dish.leftoverFromDate) editors[index].element.append(
       mealRecordSourceLink('meal-plan:' + plan.id + ':' + dish.leftoverFromDate, 'Åbn den præcise tilberedningsdag ' + dish.leftoverFromDate));
+    const outcomeDetails=mealNode('details');outcomeDetails.append(mealNode('summary','Registrér hvad der blev tilberedt'));card.append(outcomeDetails);
+    for(const dish of plan.dishes||[])if(!dish.skip){const row=mealNode('div','', 'meal-actions'),choice=document.createElement('select');choice.setAttribute('aria-label','Din registrering for '+dish.date);for(const [value,label]of [['selected','Valgt til dagen'],['cooked','Jeg har tilberedt retten'],['not_cooked','Ikke tilberedt']]){const o=mealNode('option',label);o.value=value;choice.append(o);}choice.value=dish.outcome||'selected';row.append(mealNode('span',dish.date+' · '+dish.title),choice,mealAction('Gem min registrering',async()=>{if(mealDirty.has(key))throw new Error('Gem øvrige rettelser først.');await mealApi('/api/meals/plans/'+plan.id+'/outcome','POST',{expectedRevision:plan.revision,date:dish.date,outcome:choice.value});await refreshMeals();},status));outcomeDetails.append(row);}
     savePlan = mealAction('Gem ændringer i madplanen', async () => {
       await mealApi('/api/meals/plans/' + plan.id, 'PUT', { expectedRevision: plan.revision || 1, dishes: editors.map(editor => editor.collect()) });
       mealClearDraft(key); await refreshMeals(); toast('Madplanen er gemt. Indkøbslisten skal beregnes fra den nye version.');
@@ -1832,7 +1835,7 @@ mealEl('meal-plan-form').addEventListener('submit', async event => {
       [...mealDirty].some(key => key.startsWith('family-day:'))) return toast('Gem dine præferencer, lager og husstandsdage før et nyt forslag.');
   const unlock = mealLockControls(event.currentTarget);
   try {
-    const created = await mealApi('/api/meals/plans', 'POST', { startDate: mealEl('meal-start').value, days: Number(mealEl('meal-days').value), useCalendar: mealEl('meal-use-calendar').checked });
+    const created = await mealApi('/api/meals/plans', 'POST', { startDate: mealEl('meal-start').value, days: Number(mealEl('meal-days').value), variation:mealEl('meal-variation')?.value||'balanced', useCalendar: mealEl('meal-use-calendar').checked });
     mealSelectedPlan = created.plan?.id || '';
     if (mealSelectedPlan) selectTab('meals', { sourceId: 'meal-plan:' + mealSelectedPlan });
     await refreshMeals(); toast('Madplansforslag oprettet. Gennemgå det, før du laver indkøbslisten.');
@@ -2007,3 +2010,5 @@ window.addEventListener('beforeunload', event => {
   if (mealDraftStorageAvailable && [...mealDirty].every(key => mealDraftControllers.has(key))) return;
   event.preventDefault(); event.returnValue = '';
 });
+
+mealEl('meal-more-recipes')?.addEventListener('click',()=>{const field=document.getElementById('message');if(!field)return;if(field.value.trim())return toast('Din eksisterende kladde bevares. Send eller ryd den før en ny opskriftsanmodning.');field.value='Find mindst fem nye, forskellige hverdagsopskrifter fra offentlige sider hos Arla, Valdemarsro og Madens Verden. Brug mine gemte kostvalg og undgå-listen som begrænsning; spørg om manglende oplysninger. Bevar kilder, sammenlign med mine gemte opskrifter og nylige madplaner, og foreslå opskrifter til gennemgang. Gem eller ændr ikke madplanen endnu. Brug kun offentligt tilgængeligt indhold uden login.';field.dispatchEvent(new Event('input',{bubbles:true}));selectTab('home');field.focus();});
