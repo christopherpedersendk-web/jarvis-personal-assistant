@@ -1,6 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {masterDataFingerprint,shareProfile} from './master-data.mjs';
 import {proshopProduct,proshopAddForm,proshopBasket,assertProshopBasket,proshopSearchLinks,proshopDetails,proshopCheckout} from './proshop.mjs';
+import {ProshopGuestCheckout} from './proshop-guest-checkout.mjs';
 import {rejectSecrets} from './privacy.mjs';
 export const STORES=Object.freeze({proshop:{origin:'https://www.proshop.dk',methods:['manual'],terms:'https://www.proshop.dk/handelsbetingelser.htm'},amazon:{origin:'https://www.amazon.de',methods:['manual'],terms:'https://www.amazon.de/gp/help/customer/display.html'}});
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
@@ -10,10 +11,10 @@ function integer(x,max){if(!Number.isSafeInteger(x)||x<0||x>max)throw new Error(
 export function storeUrl(value,store){const u=new URL(value);if(!STORES[store]||u.origin!==STORES[store].origin||u.username||u.password||u.hash||value.length>2048)throw new Error('Brug en offentlig HTTPS-adresse hos den valgte butik.');for(const [key]of u.searchParams)if(/token|secret|session|auth|email|phone|address|payment/i.test(key))throw new Error('Links med persondata eller sessionsoplysninger må ikke gemmes.');return u.href;}
 export function validateOrder(input){closed(input,['store','profileId','profileRevision','currency','shippingMinor','items','paymentMethod','observedAt','billingChoice']);if(input.billingChoice!==undefined&&!['same-as-delivery','profile-billing'].includes(input.billingChoice))throw new Error('Vælg faktureringsadresse eksplicit.');const store=STORES[input.store];if(!store||!store.methods.includes(input.paymentMethod))throw new Error('Betalingsmetoden er ikke dokumenteret for denne butik. Vælg manuel checkout.');if(!['DKK','EUR'].includes(input.currency))throw new Error('Vælg DKK eller EUR uden automatisk valutaomregning.');if(!Array.isArray(input.items)||!input.items.length||input.items.length>20)throw new Error('Ordren skal indeholde 1–20 varelinjer.');const items=input.items.map(item=>{closed(item,['url','title','variant','seller','quantity','unitPriceMinor']);const quantity=integer(item.quantity,30);if(!quantity)throw new Error('Antal skal være mindst én.');return {url:storeUrl(item.url,input.store),title:text(item.title,160),variant:text(item.variant,160),seller:text(item.seller,160),quantity,unitPriceMinor:integer(item.unitPriceMinor,10000000)};});const shippingMinor=input.shippingMinor===null?null:integer(input.shippingMinor,1000000),subtotalMinor=items.reduce((s,i)=>s+i.quantity*i.unitPriceMinor,0),totalMinor=shippingMinor===null?null:subtotalMinor+shippingMinor;if(subtotalMinor>100000000||totalMinor>100000000)throw new Error('Ordren overstiger klargøringsgrænsen.');if(typeof input.observedAt!=='string'||!Number.isFinite(Date.parse(input.observedAt)))throw new Error('Pristidspunkt mangler.');return {...input,items,subtotalMinor,shippingMinor,totalMinor};}
 export class Commerce{
- constructor({state,save,transact,control,masterData,enabled=false,proshopSession=null,now=()=>Date.now()}){Object.assign(this,{state,save,transact,control,masterData,enabled,proshopSession,now});}
+ constructor({state,save,transact,control,masterData,enabled=false,proshopSession=null,guestEnabled=false,now=()=>Date.now()}){Object.assign(this,{state,save,transact,control,masterData,enabled,proshopSession,guestEnabled,now});this.guest=new ProshopGuestCheckout(this);}
  rows(){return this.state.commerceOrders||[];}
- async recover(){await this.transact(['commerceOrders'],async()=>{for(const r of this.rows())if(r.status==='preparing')r.status='unknown';else if(['draft','reviewed'].includes(r.status))r.status='stopped';await this.save();});}
- status(){return {enabled:this.enabled,browserWritesEnabled:false,proshopCartEnabled:Boolean(this.proshopSession),checkoutHandoffEnabled:false,sharedBasketHandoffEnabled:Boolean(this.proshopSession),paymentInitiationEnabled:false,note:'Ordrekladde og manuel butiksoverdragelse. Ingen betaling eller bestilling sendes af Jarvis.'};}
+ async recover(){await this.transact(['commerceOrders'],async()=>{for(const r of this.rows()){delete r.guestReview;if(['preparing','guest_sending'].includes(r.status))r.status='unknown';else if(['draft','reviewed'].includes(r.status))r.status='stopped';}await this.save();});}
+ status(){return {enabled:this.enabled,browserWritesEnabled:false,proshopCartEnabled:Boolean(this.proshopSession),guestContactEnabled:this.guestEnabled===true,checkoutHandoffEnabled:false,sharedBasketHandoffEnabled:Boolean(this.proshopSession),paymentInitiationEnabled:false,note:'Ordrekladde og manuel butiksoverdragelse. Ingen betaling eller bestilling sendes af Jarvis.'};}
  list(){return structuredClone(this.rows());}
  assert(){this.control.assertAllowed();if(!this.enabled)throw new Error('Indkøbsklargøring er deaktiveret.');}
  validate(input){const order=validateOrder(input),data=this.masterData();shareProfile(data,{profileId:input.profileId,expectedRevision:input.profileRevision,origin:STORES[input.store].origin,allowedOrigins:Object.values(STORES).map(s=>s.origin)});if(Date.parse(order.observedAt)>this.now()+60000||this.now()-Date.parse(order.observedAt)>900000)throw new Error('Priserne skal være kontrolleret inden for 15 minutter.');return {order,data};}
@@ -61,6 +62,9 @@ export class Commerce{
   }catch(error){if(consumed)await this.transact(['commerceOrders'],async()=>{const r=this.rows().find(x=>x.id===id);r.status=writeStarted?'unknown':'stopped';await this.save();}).catch(()=>{});throw new Error(consumed?'Proshop-udfaldet kræver manuel inspektion. Ingen automatisk gentagelse; hent status.':error.message);}
   finally{this.preparing=false;}
  }
- async stop(){await this.transact(['commerceOrders'],async()=>{for(const row of this.rows())if(row.status==='draft')row.status='stopped';else if(row.status==='preparing')row.status='unknown';await this.save();});}
+ async previewProshopGuest(id,input){return this.guest.preview(id,input);}
+ async submitProshopGuest(id,input){return this.guest.submit(id,input);}
+ async cancelProshopGuest(id,input){return this.guest.cancel(id,input);}
+ async stop(){await this.transact(['commerceOrders'],async()=>{for(const row of this.rows()){delete row.guestReview;if(row.status==='draft')row.status='stopped';else if(['preparing','guest_sending'].includes(row.status))row.status='unknown';}await this.save();});}
 }
 

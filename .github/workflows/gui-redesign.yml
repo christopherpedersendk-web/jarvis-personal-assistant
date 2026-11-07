@@ -122,6 +122,14 @@ jobs:
         run: |
           export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
           node scripts/commerce-ui-smoke.mjs
+      - name: Verify explicit guest contact review using synthetic API on both browsers
+        if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
+        working-directory: jarvis-starter
+        shell: bash
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/gui-browser-runtime/node_modules"
+          set -o pipefail
+          node scripts/proshop-guest-ui-smoke.mjs 2>&1 | tee artifacts/gui/guest-review.log
       - name: Retain commerce UI evidence independently of later browser checks
         if: always() && steps.identity.outcome == 'success' && steps.binaries.outcome == 'success'
         uses: actions/upload-artifact@v4

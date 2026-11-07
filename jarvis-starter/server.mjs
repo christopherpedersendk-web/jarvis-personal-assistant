@@ -235,7 +235,7 @@ function persistPrivateSettings(change = () => {}, stateChange = () => {}) {
 async function saveMasterData(input){await persistPrivateSettings(next=>{next.masterData=replaceMasterData(next.masterData,input);});return structuredClone(masterDataConfig);}
 const masterDataReviews=new MasterDataReviews({read:()=>masterDataConfig,write:saveMasterData});
 
-const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes',proshopSession:process.env.JARVIS_PROSHOP_CART==='yes'?id=>createProshopSession({file:join(dirname(dataPath),'proshop-sessions',id+'.json')}):null});
+const commerce=new Commerce({state,save,transact:mutateV5,control:providerControl,masterData:()=>masterDataConfig,enabled:process.env.JARVIS_COMMERCE==='yes',guestEnabled:process.env.JARVIS_PROSHOP_GUEST==='yes',proshopSession:process.env.JARVIS_PROSHOP_CART==='yes'?id=>createProshopSession({file:join(dirname(dataPath),'proshop-sessions',id+'.json'),allowGuestContact:process.env.JARVIS_PROSHOP_GUEST==='yes'}):null});
 const commerceBrowser=process.env.JARVIS_OPENCLAW_CONTAINER==='yes'?createContainedOpenClawBrowser({control:providerControl}):createOpenClawBrowserReader({control:providerControl});
 await commerce.recover();
 
@@ -1377,6 +1377,8 @@ async function route(req, res) {
     if(path==='/api/commerce/proshop/research'&&req.method==='POST'){try{return json(res,200,await commerce.researchProshop(await bodyJson(req)));}catch(error){return json(res,400,{error:error.message});}}
     const proshopCart=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/proshop-cart$/);
     if(proshopCart&&req.method==='POST'){try{return json(res,200,await commerce.prepareProshop(proshopCart[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
+    const proshopGuest=path.match(/^\/api\/commerce\/([0-9a-f-]{36})\/proshop-guest\/(preview|submit|cancel)$/);
+    if(proshopGuest&&req.method==='POST'){try{const actions={preview:'previewProshopGuest',submit:'submitProshopGuest',cancel:'cancelProshopGuest'};return json(res,200,await commerce[actions[proshopGuest[2]]](proshopGuest[1],await bodyJson(req)));}catch(error){return json(res,409,{error:error.message});}}
     if(path==='/api/commerce/read'&&req.method==='POST'){try{if(!commerceBrowser)throw new Error('Den særskilte isolerede OpenClaw-browser er ikke konfigureret. Offentlig research er fortsat tilgængelig gennem eksisterende funktioner.');const input=await bodyJson(req);return json(res,200,await commerceBrowser.read(input.url,input.store));}catch{return json(res,400,{error:'Produktlæsningen kunne ikke udføres sikkert. Ingen fallback, bestilling eller betaling er udført.'});}}
     if(path==='/api/master-data'){
       if(req.method==='GET')return json(res,200,{masterData:masterDataConfig});

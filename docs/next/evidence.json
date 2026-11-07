@@ -619,5 +619,6 @@
     "evidence": "codex-test-only-evidence.json",
     "actualReproduction": "codex-test-only-live.json",
     "originalProductionJobChanged": false
-  }
+  },
+  "proshopGuestContactEvidence": "docs/next/proshop-guest-evidence.json"
 }

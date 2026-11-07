@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "codeRevision": "8c200f41a8e33ade5f3dfa2caceeb48b199c4575",
+  "integrationBase": "5b40ad448323dfec2c7a0d21e081840e3ae3e28e",
+  "files": {
+    "jarvis-starter/commerce.mjs": "cd2e2f9d55411cb3ef522cc39f909d6f7a72790423d6de01baeeba6a0b238b0e",
+    "jarvis-starter/proshop-session.mjs": "4157065bb402a93ee4b1d280e06ab8077a80e21270315bd3d95ca910db594f4e",
+    "jarvis-starter/proshop-guest.mjs": "7534a38c159674c8be646eca21e15fab1d177d5eef2641fa469f8c3d504e1018",
+    "jarvis-starter/proshop-guest-checkout.mjs": "069e0197921770f303acf5c975d2fa41937940c3130161a04274015cc6939454",
+    "jarvis-starter/public/commerce.js": "6cb37f6c5969811f90073a45ffbf9fd04a3a56c9c6780a221f121243b8a521a0",
+    "jarvis-starter/server.mjs": "ac71c8e135cbba01588740a3c0aa7aee91b438f4c023c222bbd12fc8d728ecd9",
+    "jarvis-starter/test/proshop-guest.test.mjs": "fd08144a73b118ff14fc9fe6b85a73f998635bcddef883f7121b3186de705c6f",
+    "jarvis-starter/test/proshop-session.test.mjs": "e4c75c4fcf2fbf065356f2b281b6efc325b020234da81592504a16b07310420a",
+    "jarvis-starter/scripts/proshop-guest-ui-smoke.mjs": "c0f4fc652da5d1c1f54b7d3b5185a8b4f4a70e0b11ddef59ad72725daa1d2e6c"
+  },
+  "merchantObservation": {
+    "at": "2026-11-07T20:40:43Z",
+    "origin": "https://www.proshop.dk",
+    "method": "POST",
+    "path": "/Basket/CheckOut/Register",
+    "namedFields": 13,
+    "checkoutHtmlSha256": "76a1aa9a479e5a0e801a47c8dbd54118d4ad6a6de7d37b3eef68302d6e60a9f0",
+    "contactSubmitted": false,
+    "scope": "Fresh own anonymous verified one-item Sandberg basket; GET checkout only. No personal data, account lookup, payment or order."
+  },
+  "localTests": {
+    "guestController": {
+      "passed": 6,
+      "kind": "simulated merchant; actual durable-state and ProviderControl"
+    },
+    "typedSession": {
+      "passed": 5,
+      "kind": "simulated HTTPS; one new case plus four necessary regressions for changed transport"
+    },
+    "privateUi": {
+      "passed": 6,
+      "kind": "real Chromium/WebKit at 320/390/1280; synthetic authenticated API, no merchant access"
+    },
+    "initialFailures": [
+      "UI fixture initially used opaque origin, preventing localStorage check; fixture assigned intercepted synthetic origin.",
+      "After cancellation the UI requires a fresh explicit billing choice; fixture corrected to make that choice."
+    ],
+    "lostResult": "Earlier guest-controller tool result could not be recovered after context compaction; six cases rerun to obtain actual evidence."
+  },
+  "production": {
+    "deployed": false,
+    "guestFlagEnabled": false
+  },
+  "remaining": [
+    "Actual contact acceptance after explicit private profile/order review",
+    "Observed delivery/payment step and confirmed total and delivery to 2900",
+    "Secure owner takeover of the same guest session",
+    "Full M16 acceptance remains open"
+  ]
+}
