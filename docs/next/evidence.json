@@ -144,19 +144,74 @@
       ],
       "mediaRun": 42360165335,
       "media": "curl exit 28 downloading pinned source archive; build and containment not executed"
+    },
+    {
+      "candidate": "7dfed08a5833982f16422b897d3d13e8077eaa8f",
+      "unitTests": {
+        "passed": 1282,
+        "failed": 0,
+        "skipped": 0
+      },
+      "workflowRuns": [
+        {
+          "id": 42364914938,
+          "name": "Discord voice dependency and policy checks",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914886,
+          "name": "Isolated browser containment",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914951,
+          "name": "Commerce and self-development contracts",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914846,
+          "name": "Pinned OpenClaw contract",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914875,
+          "name": "JARVIS v5 candidate regression and browser smoke",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914792,
+          "name": "Isolated Discord media",
+          "conclusion": "success"
+        },
+        {
+          "id": 42364914842,
+          "name": "JARVIS GUI exact-candidate verification",
+          "conclusion": "success"
+        }
+      ],
+      "mediaArtifactId": 13570879381,
+      "unitArtifactId": 13571347585
     }
   ],
   "mediaDownloadFollowup": {
-    "scope": "workflow only; jarvis-starter tree unchanged",
-    "status": "pending CI",
+    "scope": "CI host acquisition/cache and disposable Docker context only; application tree unchanged. Actual isolated decoder/stop/cleanup passed; no real model or owner-host acceptance.",
+    "status": "passed",
     "local": "YAML parsing, bash -n and exact unchanged Docker verification/build/runtime suffix passed",
-    "cache": "Exact source checksum key, isolated GPG home, verification before use plus original verification inside Docker",
+    "cache": "Verified official source downloaded, then saved successfully. Cache reuse verification is implemented; no second run was started merely to exercise a warm cache.",
     "access": {
       "docker": false,
       "sshAgent": false,
       "tailscale": false,
       "modelCredential": false,
       "restrictedGateway": false
-    }
+    },
+    "testedCandidate": "7dfed08a5833982f16422b897d3d13e8077eaa8f",
+    "run": 42364914792,
+    "artifactId": 13570879381,
+    "decoderVersion": "9.0.2"
+  },
+  "finalDocumentation": {
+    "scope": "docs/next only after 7dfed08a; [skip ci] prevents redundant suites. Application and workflows exactly unchanged; verify final diff against tested candidate.",
+    "merge": "Owner-authorized after all seven workflows succeeded; merge result recorded in PR metadata."
   }
 }

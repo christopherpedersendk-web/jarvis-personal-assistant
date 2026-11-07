@@ -28,11 +28,11 @@ Alle åbne M1–M14-kriterier og deres betydninger videreføres uændret fra [v5
 
 M1 restore/fysisk mobil, M2 faktisk providerstop, M3 faktisk gateway/research, M5 rigtig voice og M6/M10 mindst 30 modelopgaver er fortsat åbne på de historiske betingelser. Ingen score er opfundet. Smart Home afventer lokal agent; kalenderwrite og rigtige køb er ikke aktiveret.
 
-Supplerende buildblokering: medie-decoderens obligatoriske FFmpeg source/signature-download fejlede også i run 42359891574 (TLS reset/timeouts). Faktisk decodercontainment blev derfor ikke kørt på den kandidat. Ingen produktions-/releaseaccept uden en vellykket signaturverificeret build og containmentprøve.
+Historisk buildblokering: FFmpeg-download fejlede i runs 42359891574 og 42360165335. Løst i 7dfed08a5833982f16422b897d3d13e8077eaa8f: run 42364914792 bestod officiel signatur/checksum, build og faktisk decodercontainment/stop/cleanup. Ejerhost og modelaccept er stadig åbne.
 
 ## Samlet M1–M18-status, opfølgning 2026-11-07
 
-Grundlag: b648b9808f23593bf3d159e438e399aa760eb46a. De seks beståede runs og 1.282 tests er registreret i evidence.json. Medie-workflow 42360165335 fejlede ved download før build. Efterfølgende ændring er alene CI-download/cache og dokumentation; medieaccept afventer ny faktisk kørsel. Ingen hel milestone lukkes.
+Grundlag: b648b9808f23593bf3d159e438e399aa760eb46a. De seks beståede runs og 1.282 tests er registreret i evidence.json. Medie-workflow 42360165335 fejlede ved download før build. Efterfølgende ændring er alene CI-download/cache og dokumentation; CI-medieaccept er nu bestået på 7dfed08a i run 42364914792; ejerhost/modelaccept er fortsat åben. Ingen hel milestone lukkes.
 
 | Milestone | Implementeret / præcis evidens | Manglende accept og næste handling |
 |---|---|---|
@@ -48,8 +48,8 @@ Grundlag: b648b9808f23593bf3d159e438e399aa760eb46a. De seks beståede runs og 1.
 | M10 Hybridmåling | Fælles datasæt og sammenligningsscript | Samme model/kode/datasæt; kvalitet, tid og målt forbrug; score og besparelse ukendt |
 | M11 Skills | Katalog, filtre, kladder og versioner; GUI run 42360165298 | Fysisk mobil og reelt modelbaseret skillvalg |
 | M12 Discord-kanaler | Kontrol og diagnoser; unit run 42360165298 | Testguild med Manage Channels, konkrete engangsreviews |
-| M13 Billeder | Intake/isolationskode | Signaturverificeret build og faktisk containment mangler på aktuel kandidat; derefter model/ejerhost |
-| M14 Video | Begrænset decoding, stop og delvise resultater | Samme medieblokering; derefter faktisk video-/lydforståelse |
+| M13 Billeder | Intake/isolationskode | Signaturverificeret build/containment bestået i run 42364914792 på 7dfed08a; model/ejerhost mangler |
+| M14 Video | Begrænset decoding, stop og delvise resultater | Decoder/stop/cleanup bestået i run 42364914792 på 7dfed08a; faktisk video-/lydforståelse og ejerhost mangler |
 | M15 Stamdata | Private revisioner, review, UI; run 42360165298 | Live DM, privat backup og sletning på installationen |
 | M16 Handel | Ordregrundlag/manual handoff; native kontrakt run 42360165207 | Faktisk Chrome-egress, derefter særskilt login/kurv/checkout-kontrakt; ingen køb |
 | M17 Madplan/Nemlig | Historik, variation, navneaggregation; unit run 42360165298 | Egne opskrifter, kildebevarelse og faktisk Nemlig-læsning |
@@ -58,3 +58,7 @@ Grundlag: b648b9808f23593bf3d159e438e399aa760eb46a. De seks beståede runs og 1.
 Adgang kontrolleret i arbejdsmiljøet: Docker og Tailscale findes ikke; SSH_AUTH_SOCK, OPENAI_API_KEY og begrænset gateway-URL/token er ikke konfigureret. GitHub viser main uden branch protection; rulesets-read returnerer 403 med krav om Pro eller public repository. Ingen beskyttelse er ændret. Dette blokerer M18-agentgodkendelse, ikke en særskilt ejerautoriseret manuel merge efter relevante checks.
 
 Se [næste reviewbare pakke](next-package.md) for rækkefølge, reproducerbare evalueringskommandoer og særskilte acceptkriterier.
+
+## Afsluttende CI-evidens
+
+Alle syv workflows er bestået på 7dfed08a5833982f16422b897d3d13e8077eaa8f, inklusive 1.282 unit-tests uden fejl/skips og mediecontainment. Runs: 42364914938, 42364914886, 42364914951, 42364914846, 42364914875, 42364914792, 42364914842. Det afsluttende evidenscommit ændrer kun docs/next og anvender [skip ci]; applikations- og workflowindhold er identisk med den testede kandidat. Merge-SHA findes i PR #19. Dette afslutter CI-blokeringen, ikke de åbne live-/målhostkriterier.
